@@ -27,12 +27,12 @@ class SwapCard extends StatelessWidget {
   Color get _lockColor {
     final String name = swap.lockTypeName.toUpperCase();
     if (name == 'PTLC') {
-      return const Color(0xFF2E7D32);
+      return AppTheme.primaryColor;
     }
     if (name == 'BRIDGE') {
-      return const Color(0xFFEF6C00);
+      return AppTheme.primaryVariant;
     }
-    return const Color(0xFF6B7280);
+    return AppTheme.textMuted;
   }
 
   Color get _statusColor {
@@ -124,19 +124,23 @@ class SwapCard extends StatelessWidget {
                       : _fallbackIcon(pairName, chainColor),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: chainColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: chainColor.withValues(alpha: 0.4)),
-                  ),
-                  child: Text(
-                    pairName,
-                    style: TextStyle(
-                      color: chainColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: chainColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: chainColor.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      pairName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: chainColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
@@ -176,12 +180,16 @@ class SwapCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                xfgAmount(
-                  swap.xfgAmountDecimal.toStringAsFixed(2),
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: xfgAmount(
+                    swap.xfgAmountDecimal.toStringAsFixed(2),
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const Padding(

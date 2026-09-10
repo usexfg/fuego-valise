@@ -444,6 +444,8 @@ class DaemonManager {
       '--rpc-bind-port', fuegodPort.toString(),
       '--rpc-bind-ip', '127.0.0.1',
       '--log-level', '1',
+      // Headless: no TTY on stdin when spawned from the GUI.
+      '--no-console',
     ];
     if (useTestnet) args.add('--testnet');
 

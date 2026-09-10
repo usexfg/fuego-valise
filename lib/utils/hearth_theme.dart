@@ -32,6 +32,13 @@ class HearthTheme {
   static const Color chartLine = Color(0xFFC5A059);
   static const Color chartPulse = Color(0xFFC5A059);
 
+  // Asset marks — XFG burns ember on coal, HEAT burns white-hot.
+  static const Color xfgEmber = Color(0xFFE8622C);
+  static const Color xfgEmberDeep = Color(0xFF8C3B14);
+  static const Color xfgCoal = Color(0xFF000000);
+  static const Color heatFlame = Color(0xFFEAF6F9);
+  static const Color heatAqua = Color(0xFF9FD4DE);
+
   static TextStyle mono({double size = 12, FontWeight weight = FontWeight.w500, Color color = textPrimary}) {
     return TextStyle(
       fontFamily: 'IBMPlexMono',

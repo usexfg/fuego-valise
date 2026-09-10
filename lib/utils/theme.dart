@@ -22,6 +22,13 @@ class AppTheme {
   static const Color errorColor = Color(0xFF7A1C1C); // Burgundy — muted error
   static const Color infoColor = Color(0xFF5A7A9C); // Slate blue — muted info
 
+  // Asset colors — denomination marks only, never direction/buttons/progress
+  static const Color xfgEmber = Color(0xFFE8622C); // Ember Fire — XFG figures/marks
+  static const Color xfgEmberDeep = Color(0xFF8C3B14); // Deep Ember — XFG secondary
+  static const Color xfgCoal = Color(0xFF000000); // Coal Black — XFG mark fills
+  static const Color heatFlame = Color(0xFFEAF6F9); // White Flame — HEAT figures/marks
+  static const Color heatAqua = Color(0xFF9FD4DE); // Glacial Aqua — HEAT secondary
+
   // Enhanced surface variations — warm obsidian family
   static const Color surfaceLight = Color(0xFF1E1B14); // Lighter warm obsidian
   static const Color surfaceDark = Color(0xFF12100C); // Darker warm obsidian

@@ -90,7 +90,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       final authenticated = await _securityService.authenticateWithBiometrics(
-        reason: 'Enable biometric authentication for Fuego Wallet',
+        reason: 'Enable biometric authentication for Fuego Valise',
       );
 
       if (!authenticated) {
@@ -886,7 +886,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showAddressDialog(String? address) {
-    if (address == null || address.isEmpty) return;
+    if (address == null || address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No wallet address loaded yet'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
 
     final qrVersion = _qrVersionForLength(address.length);
 
@@ -940,16 +948,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// the auto-detection path (qr_flutter 4.1.x auto can hang or throw), and
   /// errorStateBuilder guarantees the dialog renders even if generation
   /// fails.
+  ///
+  /// CRITICAL: [QrImageView] builds a [LayoutBuilder], which cannot report
+  /// intrinsic dimensions. `AlertDialog` measures its content with
+  /// `IntrinsicWidth`, which reaches down through the tree and hits that
+  /// [LayoutBuilder], throwing "LayoutBuilder does not support returning
+  /// intrinsic dimensions" and freezing the app in debug builds. The
+  /// fixed-size [SizedBox] reports its own intrinsic dimensions and shields
+  /// the QR widget from that measurement.
   Widget _buildQrSafely(String address, int version) {
-    return QrImageView(
-      data: address,
-      version: version,
-      errorCorrectionLevel: QrErrorCorrectLevel.L,
-      size: 200.0,
-      errorStateBuilder: (_, __) => const SizedBox(
-        width: 200,
-        height: 200,
-        child: Center(child: Icon(Icons.qr_code_2, size: 96)),
+    return SizedBox(
+      width: 200,
+      height: 200,
+      child: QrImageView(
+        data: address,
+        version: version,
+        errorCorrectionLevel: QrErrorCorrectLevel.L,
+        size: 200.0,
+        errorStateBuilder: (_, __) => const SizedBox(
+          width: 200,
+          height: 200,
+          child: Center(child: Icon(Icons.qr_code_2, size: 96)),
+        ),
       ),
     );
   }
@@ -1158,8 +1178,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          content: SizedBox(
-            width: 340,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1282,7 +1302,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(width: 12),
               const Text(
-                'Fuego Wallet',
+                'Fuego Valise',
                 style: TextStyle(color: AppTheme.textPrimary),
               ),
             ],
@@ -1367,9 +1387,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.account_balance_wallet,
                 title: 'Wallet Address',
                 subtitle: _truncateAddress(state.address ?? 'Not available'),
-                onTap: () => WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _showAddressDialog(state.address);
-                }),
+                onTap: () => _showAddressDialog(state.address),
               ),
               _buildSettingsTile(
                 icon: Icons.key,
@@ -1573,7 +1591,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSettingsTile(
                 icon: Icons.help,
                 title: 'Help & Support',
-                subtitle: 'Get help using Fuego Wallet',
+                subtitle: 'Get help using Fuego Valise',
                 onTap: () {
                   // TODO: Open help/support
                 },

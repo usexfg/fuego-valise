@@ -99,11 +99,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::info!("--local: starting embedded fuegod...");
                 let data_dir = wallet_dir.join("fuegod");
                 let mut daemon = fuegod::DaemonProcess::new(daemon_port);
-                let url = daemon.start(testnet, data_dir.to_str().unwrap_or("fuegod"))
-                    .await
-                    .map_err(|e| format!("Failed to start fuegod: {}", e))?;
-                log::info!("Embedded fuegod ready at {}", url);
-                ("127.0.0.1".to_string(), daemon_port, Some(daemon))
+                match daemon.start(testnet, data_dir.to_str().unwrap_or("fuegod")).await {
+                    Ok(url) => {
+                        log::info!("Embedded fuegod ready at {}", url);
+                        ("127.0.0.1".to_string(), daemon_port, Some(daemon))
+                    }
+                    Err(e) => {
+                        // Local chain unavailable (e.g. corrupt DB mid-resync):
+                        // stay up on the remote seed so the wallet keeps working.
+                        log::warn!("Embedded fuegod unavailable: {} — falling back to remote {}:{}",
+                            e, daemon_host, daemon_port);
+                        (daemon_host.clone(), daemon_port, None)
+                    }
+                }
             } else {
                 (daemon_host.clone(), daemon_port, None)
             };

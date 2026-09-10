@@ -61,7 +61,7 @@ void main() {
         'http://127.0.0.1:${NetworkConfig.testnet.walletRpcPort}/health',
       );
       expect(health['status'], 'ok');
-      expect(health['wallet'], isA<Map>());
+      expect(health['wallet'], isA<Map<String, dynamic>>());
 
       // Chain via local proxy
       final bal = await rpc.getBalance();

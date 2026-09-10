@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web3dart/web3dart.dart';
 import 'package:fuego/services/erc20_service.dart';
@@ -24,7 +23,6 @@ void main() {
     });
 
     test('transfer encodes amount 1.5 USDT (6 decimals) correctly', () {
-      final to = EthereumAddress.fromHex('0x2222222222222222222222222222222222222222');
       final amount = Erc20Amount.toBaseUnits('1.5', 6); // 1500000 = 0x16e360
       expect(amount, BigInt.from(1500000));
       // Encoded amount should be 32-byte big endian

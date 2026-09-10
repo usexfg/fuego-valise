@@ -154,7 +154,9 @@ class _DexScreenState extends State<DexScreen>
   Widget _buildPairBar(DexState state) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     color: AppTheme.surfaceColor,
-    child: Row(
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
       children: [
         // Fuego logo + XFG
         ClipRRect(
@@ -298,18 +300,18 @@ class _DexScreenState extends State<DexScreen>
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: (state.lastLockType == 'PTLC'
-                      ? const Color(0xFF2E7D32)
+                      ? AppTheme.primaryColor
                       : state.lastLockType == 'BRIDGE'
-                          ? const Color(0xFFEF6C00)
-                          : const Color(0xFF6B7280))
+                          ? AppTheme.primaryVariant
+                          : AppTheme.textMuted)
                   .withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(4),
               border: Border.all(
                 color: state.lastLockType == 'PTLC'
-                    ? const Color(0xFF2E7D32)
+                    ? AppTheme.primaryColor
                     : state.lastLockType == 'BRIDGE'
-                        ? const Color(0xFFEF6C00)
-                        : const Color(0xFF6B7280),
+                        ? AppTheme.primaryVariant
+                        : AppTheme.textMuted,
                 width: 0.8,
               ),
             ),
@@ -317,17 +319,17 @@ class _DexScreenState extends State<DexScreen>
               state.lastLockType.isEmpty ? 'HTLC' : state.lastLockType,
               style: TextStyle(
                 color: state.lastLockType == 'PTLC'
-                    ? const Color(0xFF2E7D32)
+                    ? AppTheme.primaryColor
                     : state.lastLockType == 'BRIDGE'
-                        ? const Color(0xFFEF6C00)
-                        : const Color(0xFF6B7280),
+                        ? AppTheme.primaryVariant
+                        : AppTheme.textMuted,
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
         IconButton(
           icon: const Icon(
             Icons.info_outline,
@@ -363,6 +365,7 @@ class _DexScreenState extends State<DexScreen>
           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
         ),
       ],
+      ),
     ),
   );
 
@@ -517,8 +520,8 @@ class _DexScreenState extends State<DexScreen>
                                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                       decoration: BoxDecoration(
                                         color: (ChainInfo.isPtlcSupported(ticker)
-                                                ? const Color(0xFF2E7D32)
-                                                : const Color(0xFFEF6C00))
+                                                ? AppTheme.primaryColor
+                                                : AppTheme.primaryVariant)
                                             .withValues(alpha: 0.13),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
@@ -526,8 +529,8 @@ class _DexScreenState extends State<DexScreen>
                                         ChainInfo.isPtlcSupported(ticker) ? 'PTLC' : 'BRIDGE',
                                         style: TextStyle(
                                           color: ChainInfo.isPtlcSupported(ticker)
-                                              ? const Color(0xFF2E7D32)
-                                              : const Color(0xFFEF6C00),
+                                              ? AppTheme.primaryColor
+                                              : AppTheme.primaryVariant,
                                           fontSize: 8,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -1699,9 +1702,9 @@ class _DexScreenState extends State<DexScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _ptlcBullet('PTLC', 'Point T=t·G, sig s\'=k+e·sk+t, extract t=s\'-s. Per-hop T_i decorrelated.', const Color(0xFF2E7D32)),
-              _ptlcBullet('BRIDGE', 'XFG PTLC + CTR HTLC H(t) + DLEQ Q=t·escrowPub. Current default.', const Color(0xFFEF6C00)),
-              _ptlcBullet('HTLC', 'Legacy hash only. Linkable.', const Color(0xFF6B7280)),
+              _ptlcBullet('PTLC', 'Point T=t·G, sig s\'=k+e·sk+t, extract t=s\'-s. Per-hop T_i decorrelated.', AppTheme.primaryColor),
+              _ptlcBullet('BRIDGE', 'XFG PTLC + CTR HTLC H(t) + DLEQ Q=t·escrowPub. Current default.', AppTheme.primaryVariant),
+              _ptlcBullet('HTLC', 'Legacy hash only. Linkable.', AppTheme.textMuted),
               const SizedBox(height: 12),
               const Text('Require PTLC ON aborts if chain cannot do PTLC. Leave OFF for BRIDGE (works everywhere).', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
               const SizedBox(height: 8),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:imp_trading_chart/imp_trading_chart.dart';
 import '../models/candlestick.dart';
+import 'maison_candle_chart.dart';
 
+/// House quotation-board chart. Maison candle law: rising = Champagne Gold
+/// filled, falling = hollow Muted Gold. See chart-doctrine.md.
 class FuegoChart extends StatelessWidget {
   final List<Candlestick> candles;
   final String pair;
@@ -12,23 +14,13 @@ class FuegoChart extends StatelessWidget {
     super.key,
     required this.candles,
     this.pair = '',
-    this.lineColor = const Color(0xFFFF5722),
-    this.bgColor = const Color(0xFF0A0E14),
+    this.lineColor = const Color(0xFFC5A059),
+    this.bgColor = const Color(0xFF0D0B08),
   });
 
   @override
   Widget build(BuildContext context) {
     if (candles.isEmpty) return const SizedBox.shrink();
-    final impCandles = candles
-        .map((c) => Candle(
-              time: c.time,
-              open: c.open,
-              high: c.high,
-              low: c.low,
-              close: c.close,
-              volume: c.volume,
-            ))
-        .toList();
     return LayoutBuilder(builder: (context, constraints) {
       final height = constraints.maxHeight;
       final width = constraints.maxWidth;
@@ -43,14 +35,9 @@ class FuegoChart extends StatelessWidget {
         clipBehavior: Clip.hardEdge,
         child: Stack(
           children: [
-            ImpChart.trading(
-              candles: impCandles,
-              lineColor: lineColor,
-              backgroundColor: Colors.transparent,
-              pulseColor: lineColor,
-              enableGestures: true,
-              showCrosshair: true,
-              defaultVisibleCount: candles.length,
+            MaisonCandleChart(
+              candles: candles,
+              upColor: lineColor,
             ),
             if (pair.isNotEmpty)
               Positioned(
@@ -60,7 +47,7 @@ class FuegoChart extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: bgColor.withAlpha(200),
+                    color: bgColor.withValues(alpha: 0.78),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(pair,

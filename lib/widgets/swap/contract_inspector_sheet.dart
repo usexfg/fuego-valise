@@ -267,12 +267,12 @@ Future<void> showContractInspectorSheet(
 Color _lockColorFor(SwapInfo swap) {
   final String name = swap.lockTypeName.toUpperCase();
   if (name == 'PTLC') {
-    return const Color(0xFF2E7D32);
+    return AppTheme.primaryColor;
   }
   if (name == 'BRIDGE') {
-    return const Color(0xFFEF6C00);
+    return AppTheme.primaryVariant;
   }
-  return const Color(0xFF6B7280);
+  return AppTheme.textMuted;
 }
 
 Widget _sectionHeader(String title) {

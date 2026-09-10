@@ -6,7 +6,7 @@
 
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = fuego_wallet
-PRODUCT_BUNDLE_DISPLAY_NAME = Fuego Wallet
+PRODUCT_BUNDLE_DISPLAY_NAME = Fuego Valise
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet

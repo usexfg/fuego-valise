@@ -26,7 +26,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<Offset> _slideAnimation;
 
   bool _isInitializing = true;
-  String _initMessage = 'Initializing Fuego Wallet...';
+  String _initMessage = 'Initializing Fuego Valise...';
   String _versionString = '';
   String? _daemonWarning;
 
@@ -43,11 +43,11 @@ class _SplashScreenState extends State<SplashScreen>
       final info = await PackageInfo.fromPlatform();
       setState(() {
         _versionString =
-            'Fuego Wallet v${info.version} • Privacy Bank & Purchasing Power Chain';
+            'Fuego Valise v${info.version} • Privacy Bank & Purchasing Power Chain';
       });
     } catch (_) {
       setState(() {
-        _versionString = 'Fuego Wallet v5.11.0 • Privacy Bank & Purchasing Power Chain';
+        _versionString = 'Fuego Valise v5.11.0 • Privacy Bank & Purchasing Power Chain';
       });
     }
   }

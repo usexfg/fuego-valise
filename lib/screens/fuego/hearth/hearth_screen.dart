@@ -159,8 +159,7 @@ children: [
     if (xfgUsd < _lastXfgUsd && _lastXfgUsd > 0) _priceUp = false;
     _lastXfgUsd = xfgUsd;
 
-    final xfgColor = _priceUp ? HearthTheme.bidPrimary : HearthTheme.askPrimary;
-
+    // Candle law: rising = Champagne Gold, falling = Midnight Blue.
     return Container(
       color: HearthTheme.bgDeep,
       padding: EdgeInsets.only(
@@ -186,7 +185,8 @@ children: [
                     style: HearthTheme.mono(
                       size: 13,
                       weight: FontWeight.w700,
-                      color: xfgColor.withOpacity(0.4 + _pulseAnim.value * 0.6),
+                      color: HearthTheme.xfgEmber.withValues(
+                          alpha: 0.4 + _pulseAnim.value * 0.6),
                     ),
                   ),
                 );
@@ -194,7 +194,7 @@ children: [
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(child: _metricChip('24h ${_priceUp ? '+' : ''}0.00%', _priceUp ? HearthTheme.bidPrimary : HearthTheme.askPrimary)),
+          Flexible(child: _metricChip('24h ${_priceUp ? '+' : ''}0.00%', _priceUp ? HearthTheme.askPrimary : HearthTheme.bidPrimary)),
           const SizedBox(width: 6),
           // Center: XFG priced in ΗΞΔŦ — expanded but ellipsized
           Expanded(
@@ -224,7 +224,7 @@ children: [
                 style: HearthTheme.mono(
                   size: 13,
                   weight: FontWeight.w700,
-                  color: HearthTheme.textWhite,
+                  color: HearthTheme.heatFlame,
                 ),
               ),
             ),

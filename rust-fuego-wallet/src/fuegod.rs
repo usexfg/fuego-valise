@@ -14,11 +14,14 @@ impl DaemonProcess {
         std::fs::create_dir_all(data_dir).map_err(|e| format!("mkdir: {}", e))?;
 
         let port_str = self.port.to_string();
-        let mut args = vec!["--data-dir", data_dir, "--rpc-bind-port", &port_str, "--rpc-bind-ip", "127.0.0.1", "--log-level", "1"];
+        let mut args = vec!["--data-dir", data_dir, "--rpc-bind-port", &port_str, "--rpc-bind-ip", "127.0.0.1", "--log-level", "1",
+            // Headless: no TTY on stdin under the GUI.
+            "--no-console"];
         if testnet { args.push("--testnet"); }
 
         log::info!("Starting fuegod: {}", fuegod.display());
         let child = Command::new(&fuegod).args(&args)
+            .stdin(Stdio::null())
             .stdout(Stdio::piped()).stderr(Stdio::piped())
             .spawn().map_err(|e| format!("spawn: {}", e))?;
 
