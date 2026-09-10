@@ -7,8 +7,8 @@
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
 </p>
 
-A desktop & mobile _valise_ for Fuego Blockchain Bank of **XFG** privacy cryptocurrency & Fuego's new flatcoin ΗΞΔŦ - pegged to purchasing power by tracking a US dollar's rate of inflation since Q1|2009 (or 1.58)
-Burn XFG to mint ΗΞΔŦ or buy & sell on HⲈⲆ☈ⲦН Floor; Fuego's on-chain orderbook block-discrete market swap & limit order exchange, DeXFG cross-chain PYLC atomic swaps, earn yield on ΗΞΔŦ_𝖢𝖣s, register your 8-character fire alias, built-in pool mining and more. 🔥
+A desktop & mobile _valise_ for Fuego Blockchain Bank of **XFG** privacy cryptocurrency & Fuego's new flatcoin ΗΞΔŦ - pegged to purchasing power by tracking the US dollar's rate of inflation since Q1|2009 (or 1.58)
+Burn XFG to mint ΗΞΔŦ or buy & sell on HⲈⲆ☈ⲦН Floor; Fuego's on-chain orderbook block-discrete market swap & limit order exchange, DeXFG cross-chain atomic (PTLC & HTLC) swaps, earn yield on ΗΞΔŦ_𝖢𝖣s, register your 8-character fire alias, built-in pool mining and more. 🔥
 
 <p align="center">
   <img src="https://github.com/usexfg/fuego-valise/raw/master/assets/images/xfgwalletdesktopsplash.gif" alt="Fuego Valise Screenshot" />
@@ -44,7 +44,7 @@ Burn XFG to mint ΗΞΔŦ or buy & sell on HⲈⲆ☈ⲦН Floor; Fuego's on-cha
 ### 🔄 Unified Daemon
 The app uses a **unified daemon** process (`unified`) that bundles fuegod, walletd, and xfg-swapd into a single embedded process for local node operation. When the unified daemon is unavailable, the app falls back to a remote node connection.
 
-## 🚀 Get Started
+## Get Started
 
 ### Prerequisites
 
@@ -93,7 +93,7 @@ flutter build linux --release
 flutter build windows --release
 ```
 
-## 🏗️ Architecture
+##  Architecture
 
 ### Project Structure
 ```
@@ -169,7 +169,7 @@ The unified daemon is started automatically when the binary is present in the ap
 - **Memory Protection** with automatic data clearing
 - **Secure Key Derivation** and storage
 
-## 🔧 Configuration
+##  Configuration
 
 ### Local Node (Unified Daemon)
 When running with a local node, the app uses the unified daemon process. The daemon is managed automatically by `DaemonManager`:
@@ -204,7 +204,7 @@ static const List<String> defaultRemoteNodes = [
 - RPC port: `18180` (default)
 - Must support standard CryptoNote RPC methods
 
-## 🔒 Security Features
+## Security Features
 
 ### Cryptographic Protection
 - **AES-256-CBC** encryption for all stored wallet data
@@ -271,15 +271,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🔗 Links
 
 - **Fuego Website**: [https://usexfg.org](https://usexfg.org)
-- **Main Repository**: [https://github.com/usexfg/fuego-valise](https://github.com/usexfg/fuego-wallet)
+- **Main Repository**: [https://github.com/usexfg/fuego-valise](https://github.com/usexfg/fuego-valise)
 - **Discord**: [https://discord.gg/5UJcJJg](https://discord.gg/5UJcJJg)
 - **Twitter**: [https://twitter.com/useXFG](https://twitter.com/useXFG)
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/usexfg/fuego-wallet/issues)
+- **Issues**: [GitHub Issues](https://github.com/usexfg/fuego-valise/issues)
 - **Discord**: [Fuego Community](https://discord.gg/5UJcJJg)
-- **Email**: support@usexfg.org
 
 ## ⚠️ Disclaimer
 
