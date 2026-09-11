@@ -81,10 +81,18 @@ Widget xfgAmount(
   TextStyle? style,
   String plainTail = ' XFG',
   Key? key,
+  int? maxLines,
+  TextOverflow? overflow,
 }) {
   final s = style ?? const TextStyle();
   if (!XfgTicker.isGlyph) {
-    return Text(key: key, '$amount$plainTail', style: s);
+    return Text(
+      key: key,
+      '$amount$plainTail',
+      style: s,
+      maxLines: maxLines,
+      overflow: overflow,
+    );
   }
   return Text.rich(
     key: key,
@@ -92,5 +100,7 @@ Widget xfgAmount(
       TextSpan(text: XfgTicker.glyph, style: XfgTicker.glyphStyle(s)),
       TextSpan(text: amount),
     ]),
+    maxLines: maxLines,
+    overflow: overflow,
   );
 }
