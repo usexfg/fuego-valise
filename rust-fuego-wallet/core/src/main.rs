@@ -81,6 +81,10 @@ fn load_or_create_seed(wallet_dir: &PathBuf) -> Result<[u8; 32], Box<dyn std::er
     use rand::RngCore;
     rand::rngs::OsRng.fill_bytes(&mut seed);
     std::fs::write(&seed_path, &seed)?;
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&seed_path, std::fs::Permissions::from_mode(0o600));
+    }
     log::info!("Created new wallet seed at {:?}", seed_path);
     Ok(seed)
 }

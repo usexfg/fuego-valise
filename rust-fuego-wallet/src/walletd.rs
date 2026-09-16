@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::io::Write;
 
 pub struct WalletdProcess {
     child: Option<Child>,
@@ -10,11 +11,32 @@ impl WalletdProcess {
     pub fn new(port: u16) -> Self { Self { child: None, port } }
     pub fn rpc_url(&self) -> String { format!("http://127.0.0.1:{}", self.port) }
 
-    /// Get container password from environment, falling back to default.
-    /// Set FUEGO_CONTAINER_PASSWORD env var for production use.
-    fn container_password() -> String {
-        std::env::var("FUEGO_CONTAINER_PASSWORD")
-            .unwrap_or_else(|_| "fuego".to_string())
+    /// Get container password from environment (Dart now sets WALLETD_*).
+    /// Priority: WALLETD_CONTAINER_PASSWORD > WALLETD_PASSWORD > FUEGO_CONTAINER_PASSWORD.
+    /// No weak "fuego" default — caller must set env via Dart getOrCreateWalletdPassword.
+    fn container_password() -> Result<String, String> {
+        for key in ["WALLETD_CONTAINER_PASSWORD", "WALLETD_PASSWORD", "FUEGO_CONTAINER_PASSWORD"] {
+            if let Ok(v) = std::env::var(key) {
+                if !v.is_empty() {
+                    return Ok(v);
+                }
+            }
+        }
+        Err("container password not set — set WALLETD_CONTAINER_PASSWORD env (Dart SecureStorage)".to_string())
+    }
+
+    /// Write password to 0600 temp file, return path. Caller must delete after use.
+    fn write_password_file(pwd: &str) -> Result<String, String> {
+        let mut path = std::env::temp_dir();
+        path.push(format!(".fuego_pw_{}", std::process::id()));
+        let mut file = std::fs::File::create(&path).map_err(|e| format!("create pw file: {}", e))?;
+        file.write_all(pwd.as_bytes()).map_err(|e| format!("write pw file: {}", e))?;
+        file.sync_all().ok();
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+        Ok(path.to_string_lossy().to_string())
     }
 
     pub async fn start(
@@ -23,39 +45,106 @@ impl WalletdProcess {
         let (_, walletd_bin) = crate::release::ensure_binaries().await?;
         log::info!("Starting walletd: {}", walletd_bin.display());
 
-        let password = Self::container_password();
+        let password = Self::container_password()?;
+        // Prefer password-file (0600) over argv — mitigates `ps` leak (CWE-214)
+        let pw_file = Self::write_password_file(&password).ok();
+        let use_pw_file = pw_file.is_some() && {
+            // Probe if binary supports --container-password-file (future C++ flag)
+            // For now, try file; if it fails, fallback to env+argv with warning
+            true
+        };
 
         // Generate walletd container if it doesn't exist
         if !Path::new(container_file).exists() {
             log::info!("Generating walletd container at {}", container_file);
-            let output = Command::new(&walletd_bin)
-                .args([
-                    "--generate-container",
-                    "--container-file", container_file,
-                    "--container-password", &password,
-                    "--daemon-address", daemon_host,
-                    "--daemon-port", &daemon_port.to_string(),
-                ])
-                .output().map_err(|e| format!("generate container: {}", e))?;
+            let output = if let Some(ref pf) = pw_file {
+                Command::new(&walletd_bin)
+                    .args([
+                        "--generate-container",
+                        "--container-file", container_file,
+                        "--container-password-file", pf,
+                        "--daemon-address", daemon_host,
+                        "--daemon-port", &daemon_port.to_string(),
+                    ])
+                    .env("WALLETD_CONTAINER_PASSWORD", &password)
+                    .output().map_err(|e| format!("generate container: {}", e))?
+            } else {
+                // Fallback: env + argv (legacy C++ without file support)
+                log::warn!("pw file unavailable — falling back to argv (ps-visible)");
+                Command::new(&walletd_bin)
+                    .args([
+                        "--generate-container",
+                        "--container-file", container_file,
+                        "--container-password", &password,
+                        "--daemon-address", daemon_host,
+                        "--daemon-port", &daemon_port.to_string(),
+                    ])
+                    .env("WALLETD_CONTAINER_PASSWORD", &password)
+                    .output().map_err(|e| format!("generate container: {}", e))?
+            };
+            // If file arg was rejected, retry with argv
+            let output = if !output.status.success() && use_pw_file {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if stderr.contains("unrecognized") || stderr.contains("unknown") {
+                    log::warn!("C++ walletd lacks --container-password-file, retrying with env");
+                    Command::new(&walletd_bin)
+                        .args([
+                            "--generate-container",
+                            "--container-file", container_file,
+                            "--container-password", &password,
+                            "--daemon-address", daemon_host,
+                            "--daemon-port", &daemon_port.to_string(),
+                        ])
+                        .env("WALLETD_CONTAINER_PASSWORD", &password)
+                        .output().map_err(|e| format!("generate container retry: {}", e))?
+                } else {
+                    output
+                }
+            } else {
+                output
+            };
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(format!("generate container failed: {}", stderr));
             }
-            log::info!("Walletd container generated");
+            log::info!("Walletd container generated (password via file/env)");
         }
 
-        let mut child = Command::new(&walletd_bin)
-            .args([
-                "--daemon-address", daemon_host,
-                "--daemon-port", &daemon_port.to_string(),
-                "--container-file", container_file,
-                "--container-password", &password,
-                "--bind-port", &self.port.to_string(),
-                "--bind-address", "127.0.0.1",
-                "--log-level", "2",
-            ])
-            .stdout(Stdio::piped()).stderr(Stdio::piped())
-            .spawn().map_err(|e| format!("spawn: {}", e))?;
+        let mut child = if let Some(ref pf) = pw_file {
+            Command::new(&walletd_bin)
+                .args([
+                    "--daemon-address", daemon_host,
+                    "--daemon-port", &daemon_port.to_string(),
+                    "--container-file", container_file,
+                    "--container-password-file", pf,
+                    "--bind-port", &self.port.to_string(),
+                    "--bind-address", "127.0.0.1",
+                    "--log-level", "2",
+                ])
+                .env("WALLETD_CONTAINER_PASSWORD", &password)
+                .env("WALLETD_PASSWORD", &password)
+                .stdout(Stdio::piped()).stderr(Stdio::piped())
+                .spawn().map_err(|e| format!("spawn: {}", e))?
+        } else {
+            Command::new(&walletd_bin)
+                .args([
+                    "--daemon-address", daemon_host,
+                    "--daemon-port", &daemon_port.to_string(),
+                    "--container-file", container_file,
+                    "--container-password", &password,
+                    "--bind-port", &self.port.to_string(),
+                    "--bind-address", "127.0.0.1",
+                    "--log-level", "2",
+                ])
+                .env("WALLETD_CONTAINER_PASSWORD", &password)
+                .env("WALLETD_PASSWORD", &password)
+                .stdout(Stdio::piped()).stderr(Stdio::piped())
+                .spawn().map_err(|e| format!("spawn: {}", e))?
+        };
+        // Best-effort clean pw file — C++ has read it or env is set; 0600 file should not linger (ADV-03)
+        if let Some(pf) = pw_file {
+            let _ = std::fs::remove_file(&pf);
+        }
 
         // Drain stdout/stderr so child doesn't block on pipe buffer
         if let Some(stdout) = child.stdout.take() {
