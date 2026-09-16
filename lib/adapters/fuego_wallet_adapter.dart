@@ -23,6 +23,7 @@ class FuegoWalletAdapter {
 
   final Dio _dio;
   final String _walletRpcUrl;
+  // ignore: unused_field — reserved for network-aware routing (mainnet vs testnet)
   final NetworkConfig _networkConfig;
   Wallet? _wallet;
   bool _isOpen = false;

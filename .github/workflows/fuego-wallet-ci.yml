@@ -30,8 +30,24 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze (warnings are errors; infos reported)
+        run: |
+          flutter analyze --fatal-warnings 2>&1 | tee analyze.log
+          EXIT=${PIPESTATUS[0]}
+          echo "## Analyzer summary" >> $GITHUB_STEP_SUMMARY
+          grep -E "warning -|error -" analyze.log | wc -l | xargs echo "Warnings+Errors:" >> $GITHUB_STEP_SUMMARY || true
+          grep -E "info -" analyze.log | wc -l | xargs echo "Infos:" >> $GITHUB_STEP_SUMMARY || true
+          # Debt: strict-inference warnings exist (see PRODUCTION_AUDIT_REPORT.md). Gate currently on warnings only.
+          # Roadmap: fix inference + cascade/const infos, then enable --fatal-infos.
+          exit $EXIT
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed lib/ test/
+
+      - name: Run tests (with coverage)
+        run: |
+          flutter test --coverage
+          test -f coverage/lcov.info || (echo "coverage/lcov.info missing" && exit 1)
 
   build-macos:
     name: Build macOS

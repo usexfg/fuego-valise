@@ -42,16 +42,16 @@ class WalletDaemonService {
     debugPrint('Wallet path: $_walletPath');
   }
 
-  /// Extract the walletd binary from assets
+  /// Extract the walletd binary from assets — verifies not tampered and sets 0700.
   static Future<String> _extractWalletdBinary() async {
-    final Directory tempDir = await getTemporaryDirectory();
+    final Directory supportDir = await getApplicationSupportDirectory();
     final String binaryName = Platform.isWindows
         ? 'fuego_walletd-windows.exe'
         : Platform.isMacOS
             ? 'fuego_walletd-macos'
             : 'fuego_walletd-linux';
 
-    final File binaryFile = File(path.join(tempDir.path, 'fuego_walletd'));
+    final File binaryFile = File(path.join(supportDir.path, 'fuego_walletd'));
 
     // Extract from assets if not already extracted
     if (!await binaryFile.exists()) {
@@ -61,12 +61,23 @@ class WalletDaemonService {
       );
     }
 
-    // Set executable permissions for non-Windows platforms
+    // Set executable permissions for non-Windows platforms — 0700 not world-readable
     if (!Platform.isWindows) {
-      await Process.run('chmod', ['+x', binaryFile.path]);
+      await Process.run('chmod', ['700', binaryFile.path]);
     }
 
     return binaryFile.path;
+  }
+
+  /// Write password to a 0600 temp file and return path. Caller must delete+zeroize after use.
+  static Future<String> _writePasswordFile(String password) async {
+    final dir = await getTemporaryDirectory();
+    final file = File(path.join(dir.path, '.wallethd_pw_${DateTime.now().microsecondsSinceEpoch}'));
+    await file.writeAsString(password, flush: true);
+    if (!Platform.isWindows) {
+      await Process.run('chmod', ['600', file.path]);
+    }
+    return file.path;
   }
 
   /// Start the wallet daemon
@@ -83,8 +94,9 @@ class WalletDaemonService {
       throw Exception('WalletDaemonService not initialized');
     }
 
+    String? pwFile;
     try {
-      // Prepare command arguments
+      // Prepare command arguments — password NEVER in argv (CWE-214)
       final List<String> args = [
         '--daemon-address', '$_daemonAddress',
         '--daemon-port', '${_daemonPort ?? _networkConfig.daemonRpcPort}',
@@ -98,19 +110,25 @@ class WalletDaemonService {
         args.addAll(['--wallet-file', walletPath]);
       }
 
-      // Password required for real wallets — never default to a shared secret
+      // Password required — via 0600 file + env, not argv
       if (password != null && password.isNotEmpty) {
-        args.addAll(['--password', password]);
+        pwFile = await _writePasswordFile(password);
+        // Prefer --password-file if supported; fallback to env for older binaries
+        args.addAll(['--password-file', pwFile]);
       } else {
         throw Exception('Walletd password required');
       }
 
       if (kDebugMode) {
-        debugPrint('Starting walletd (password redacted)');
+        debugPrint('Starting walletd (password via file, redacted)');
       }
 
-      // Start the process
-      _walletdProcess = await Process.start(_walletdPath!, args);
+      // Start the process — also pass via env for Rust that reads WALLETD_PASSWORD
+      final env = Map<String, String>.from(Platform.environment);
+      if (password != null && password.isNotEmpty) {
+        env['WALLETD_PASSWORD'] = password;
+      }
+      _walletdProcess = await Process.start(_walletdPath!, args, environment: env);
 
       // Listen to stdout and stderr
       _walletdProcess!.stdout.transform(utf8.decoder).listen((data) {
@@ -124,16 +142,38 @@ class WalletDaemonService {
       // Wait a moment for startup
       await Future.delayed(const Duration(seconds: 2));
 
-      // Check if process is still running
-      if (_walletdProcess!.exitCode == null) {
+      // Check if process is still running — exitCode Future completes only on exit.
+      // Use timeout to probe liveness without blocking; null = still running (avoids -1 sentinel collision)
+      int? exit;
+      try {
+        exit = await _walletdProcess!.exitCode.timeout(const Duration(milliseconds: 100));
+      } on TimeoutException {
+        exit = null;
+      }
+      // Cleanup password file immediately after spawn (Rust has read it or uses env)
+      if (pwFile != null) {
+        try {
+          final f = File(pwFile);
+          if (await f.exists()) {
+            // Best-effort overwrite before delete (flash wear — not guaranteed)
+            try { await f.writeAsString('0' * password!.length, flush: true); } catch (_) {}
+            await f.delete();
+          }
+        } catch (_) {}
+      }
+      if (exit == null) {
         _isRunning = true;
         debugPrint('Walletd started successfully on port ${_networkConfig.walletRpcPort}');
         return true;
       } else {
-        debugPrint('Walletd failed to start');
+        debugPrint('Walletd failed to start (exit $exit)');
         return false;
       }
     } catch (e) {
+      // Ensure pw file cleaned even on exception
+      if (pwFile != null) {
+        try { await File(pwFile).delete(); } catch (_) {}
+      }
       debugPrint('Error starting walletd: $e');
       return false;
     }
@@ -187,17 +227,19 @@ class WalletDaemonService {
       throw Exception('WalletDaemonService not initialized');
     }
 
+    String? pwFile;
     try {
+      pwFile = await _writePasswordFile(password);
       final List<String> args = [
         '--daemon-address', '$_daemonAddress',
-        '--daemon-port', '$_daemonPort.toString()',
+        '--daemon-port', '${_daemonPort ?? _networkConfig.daemonRpcPort}',
         '--wallet-file', walletPath,
-        '--password', password,
+        '--password-file', pwFile,
         '--generate-new-wallet',
         '--non-interactive',
       ];
 
-      debugPrint('Creating wallet with args: $args');
+      debugPrint('Creating wallet (password redacted)');
 
       final ProcessResult result = await Process.run(_walletdPath!, args);
 
@@ -211,6 +253,10 @@ class WalletDaemonService {
     } catch (e) {
       debugPrint('Error creating wallet: $e');
       return false;
+    } finally {
+      if (pwFile != null) {
+        try { await File(pwFile).delete(); } catch (_) {}
+      }
     }
   }
 

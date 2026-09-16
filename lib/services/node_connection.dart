@@ -228,6 +228,7 @@ class NodeConnection {
           .transform(utf8.decoder)
           .join()
           .timeout(const Duration(seconds: 3));
+      if (body.length > 65536) return false; // cap probe body
       Object? decoded;
       try {
         decoded = jsonDecode(body);
@@ -359,19 +360,6 @@ class NodeConnection {
   }) async {
     final walletPort = networkConfig.walletRpcPort;
     final seed = await _resolveReachableSeed();
-    if (seed == null) {
-      debugPrint('[node] no reachable seed node found');
-      rpcService.updateNode('127.0.0.1', port: walletPort);
-      return ConnectionEndpoints(
-        mode: ConnectionMode.remote,
-        walletHost: '127.0.0.1',
-        walletPort: walletPort,
-        chainHost: _remoteHost,
-        chainPort: _remotePort,
-        proxyRunning: false,
-        error: 'No reachable Fuego seed node found',
-      );
-    }
     _remoteHost = seed.host;
     _remotePort = seed.port;
 
@@ -439,20 +427,75 @@ class NodeConnection {
       );
     }
 
-    // Accept "host:port" or bare host.
+    // Accept "host:port" or bare host — validated to prevent SSRF (ADV-01)
+    String newHost;
+    int newPort = port ?? _remotePort;
     if (h.contains(':') && !h.startsWith('[')) {
       final parts = h.split(':');
-      _remoteHost = parts.first;
-      final parsed = int.tryParse(parts.last);
-      if (parsed != null) _remotePort = parsed;
+      if (parts.length != 2) {
+        return ConnectionEndpoints(
+          mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
+          chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+          error: 'Invalid host:port format',
+        );
+      }
+      newHost = parts.first.trim();
+      final parsed = int.tryParse(parts.last.trim());
+      if (parsed == null || parsed < 1 || parsed > 65535) {
+        return ConnectionEndpoints(
+          mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
+          chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+          error: 'Invalid port (1-65535)',
+        );
+      }
+      newPort = parsed;
     } else {
-      _remoteHost = h;
-      if (port != null) _remotePort = port;
+      newHost = h;
+      if (port != null) {
+        if (port < 1 || port > 65535) {
+          return ConnectionEndpoints(
+            mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
+            chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+            error: 'Invalid port (1-65535)',
+          );
+        }
+        newPort = port;
+      }
     }
+    if (!_isValidRemoteHost(newHost)) {
+      return ConnectionEndpoints(
+        mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
+        chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+        error: 'Invalid or blocked host (SSRF guard)',
+      );
+    }
+    _remoteHost = newHost;
+    _remotePort = newPort;
 
     _mode = ConnectionMode.remote;
     await _savePreferences();
     return connect(useTestnet: useTestnet);
+  }
+
+  /// SSRF guard: allow DNS names + IPv4/IPv6, block link-local/metadata and obvious bad patterns.
+  static bool _isValidRemoteHost(String host) {
+    final h = host.trim();
+    if (h.isEmpty || h.length > 253) return false;
+    if (h.contains(' ') || h.contains('\t') || h.contains('\n') || h.contains('/')) return false;
+    // Block link-local/cloud metadata and loopback tricks
+    if (h.startsWith('169.254.') || h == '0.0.0.0' || h == '::' || h == '::1') return false;
+    if (h.startsWith('169.254.') || h.contains('metadata.google.internal')) return false;
+    // IPv4
+    if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(h)) {
+      final parts = h.split('.').map(int.tryParse).toList();
+      if (parts.any((p) => p == null || p < 0 || p > 255)) return false;
+      // Already blocked 0.0.0.0 and 169.254 above; allow private for testnet
+      return true;
+    }
+    // DNS name
+    if (!RegExp(r'^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,61}[a-zA-Z0-9])?$').hasMatch(h)) return false;
+    if (h.contains('..') || h.startsWith('-') || h.startsWith('.')) return false;
+    return true;
   }
 
   Future<void> disconnect() async {

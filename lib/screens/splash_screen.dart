@@ -106,33 +106,44 @@ class _SplashScreenState extends State<SplashScreen>
       final securityService = SecurityService();
       final walletProvider = Provider.of<WalletProvider>(context, listen: false);
 
-      // Always clear stale lockout FIRST — before any PIN/wallet checks.
-      // This runs unconditionally so a stale lockout never blocks navigation.
-      try {
-        await securityService.clearStaleLockout();
-      } catch (_) {}
-
+      // Do NOT clear lockout unconditionally — that bypasses brute-force protection.
+      // isLockedOut() already clears only if expired; stale lockout must persist until expiry.
       bool hasWallet = false;
       bool hasPIN = false;
+      bool isLocked = false;
       try {
         hasWallet = await walletProvider.hasWalletData();
         hasPIN = await securityService.hasPIN();
+        isLocked = await securityService.isLockedOut();
       } catch (e) {
-        debugPrint('Secure storage check failed — requiring setup/unlock');
+        debugPrint('Secure storage check failed — requiring setup/unlock: $e');
       }
 
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
 
-      // Skip PIN screen — go straight to MainScreen.
+      setState(() => _isInitializing = false);
+
+      // Enforce PIN gate: if wallet exists and PIN set, require unlock before main.
+      if (isLocked) {
+        final remain = await securityService.lockoutRemaining();
+        setState(() {
+          _initMessage = remain != null
+              ? 'Too many attempts — try again in ${remain.inMinutes}m ${remain.inSeconds % 60}s'
+              : 'Wallet locked — try again later';
+        });
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (!mounted) return;
+        _navigateToScreen(const PinEntryScreen());
+        return;
+      }
+      if (hasWallet && hasPIN) {
+        _navigateToScreen(const PinEntryScreen());
+        return;
+      }
       _navigateToScreen(const MainScreen());
     } catch (e) {
       if (!mounted) return;
-
-      // Clear lockout even in error path
-      try {
-        await SecurityService().clearStaleLockout();
-      } catch (_) {}
 
       setState(() {
         _initMessage = 'Unable to initialize securely. Please unlock or set up.';

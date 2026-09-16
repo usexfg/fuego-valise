@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 class Subaddress {
@@ -60,7 +61,7 @@ class SubaddressStore {
             .toList();
       }
     } catch (e) {
-      print('[subaddress] failed to load: $e');
+      debugPrint('[subaddress] failed to load: $e');
       _subaddresses = [];
       _nextIndex = 1;
     }
@@ -69,13 +70,18 @@ class SubaddressStore {
   Future<void> _save() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/$_fileName');
-      await file.writeAsString(jsonEncode({
+      final dst = File('${dir.path}/$_fileName');
+      final tmp = File('${dir.path}/$_fileName.tmp');
+      await tmp.writeAsString(jsonEncode({
         'nextIndex': _nextIndex,
         'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
       }), flush: true);
+      if (!Platform.isWindows) {
+        try { await Process.run('chmod', ['600', tmp.path]); } catch (_) {}
+      }
+      await tmp.rename(dst.path);
     } catch (e) {
-      print('[subaddress] failed to save: $e');
+      debugPrint('[subaddress] failed to save: $e');
     }
   }
 
@@ -83,9 +89,14 @@ class SubaddressStore {
     required String address,
     required String label,
   }) async {
+    final trimmed = address.trim();
+    if (trimmed.isEmpty || trimmed.length < 90) {
+      throw ArgumentError('Invalid address');
+    }
+    if (label.length > 64) throw ArgumentError('Label too long');
     final sub = Subaddress(
-      address: address,
-      label: label,
+      address: trimmed,
+      label: label.trim(),
       index: _nextIndex,
       createdAt: DateTime.now(),
     );

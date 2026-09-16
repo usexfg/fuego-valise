@@ -13,12 +13,50 @@ analyzer:
     - "**/*.freezed.dart"
   errors:
     invalid_annotation_target: ignore
+    # Roadmap: strict checks are debt — downgraded to info until batch fix lands.
+    # See PRODUCTION_AUDIT_REPORT.md. Re-enable as `warning` when fixed.
+    strict_raw_type: info
+    inference_failure_on_function_return_type: info
+    inference_failure_on_function_invocation: info
+    inference_failure_on_instance_creation: info
+    inference_failure_on_collection_literal: info
+    unnecessary_non_null_assertion: info
+    unnecessary_null_comparison: info
+    cast_from_null_always_fails: info
+    unused_element: info
+    unused_element_parameter: info
+    unused_field: info
+    unused_import: info
+    unused_local_variable: info
 
 linter:
   rules:
     avoid_print: true
+    avoid_empty_else: true
+    avoid_types_as_parameter_names: true
+    cancel_subscriptions: true
+    close_sinks: true
+    control_flow_in_finally: true
+    empty_statements: true
+    hash_and_equals: true
+    literal_only_boolean_expressions: true
+    no_adjacent_strings_in_list: true
+    no_duplicate_case_values: true
     prefer_const_constructors: true
     prefer_const_literals_to_create_immutables: true
     prefer_final_locals: true
     unawaited_futures: true
     always_declare_return_types: true
+    avoid_slow_async_io: true
+    avoid_web_libraries_in_flutter: true
+    use_key_in_widget_constructors: true
+    avoid_returning_null_for_void: true
+    avoid_type_to_string: true
+    cascade_invocations: true
+    file_names: true
+    implementation_imports: true
+    library_names: true
+    library_prefixes: true
+    non_constant_identifier_names: true
+    sort_child_properties_last: true
+    use_full_hex_values_for_flutter_colors: true

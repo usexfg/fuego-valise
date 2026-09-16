@@ -44,8 +44,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze code
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze code (warnings are errors)
+        run: flutter analyze --fatal-warnings
+
+      - name: Run tests
+        run: flutter test --coverage
 
       - name: Setup Android keystore
         if: inputs.dry_run == false

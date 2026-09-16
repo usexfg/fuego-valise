@@ -61,7 +61,9 @@ class PoolMiningService {
     _walletAddress = walletAddress;
     if (poolHost != null) _poolHost = poolHost;
     if (poolPort != null) _poolPort = poolPort;
-    _coreCount = coreCount.clamp(1, 64);
+    final hw = Platform.numberOfProcessors;
+    final cap = hw > 0 ? (hw > 8 ? 8 : hw) : 4;
+    _coreCount = coreCount.clamp(1, cap);
 
     return _connect();
   }
@@ -77,7 +79,7 @@ class PoolMiningService {
 
       _socket!.listen(
         _onData,
-        onError: (e) => debugPrint('[pool] Socket error: $e'),
+        onError: (Object e) => debugPrint('[pool] Socket error: $e'),
         onDone: () {
           debugPrint('[pool] Connection closed');
           _handleDisconnect();
@@ -147,13 +149,34 @@ class PoolMiningService {
     }
   }
 
+  static const _kMaxRecvBuffer = 1 << 20; // 1 MiB cap (ADV-06)
+  static const _kMaxLineLen = 64 * 1024; // 64 KiB per line
   void _onData(Uint8List data) {
-    _recvBuffer += utf8.decode(data, allowMalformed: true);
+    // Guard against allowMalformed smuggling — strict utf8, drop malformed chunk
+    String chunk;
+    try {
+      chunk = utf8.decode(data, allowMalformed: false);
+    } catch (_) {
+      debugPrint('[pool] dropped malformed utf8 chunk (${data.length}B)');
+      return;
+    }
+    _recvBuffer += chunk;
+    if (_recvBuffer.length > _kMaxRecvBuffer) {
+      debugPrint('[pool] recv buffer overflow (${_recvBuffer.length}) — closing');
+      _recvBuffer = '';
+      _socket?.destroy();
+      _handleDisconnect();
+      return;
+    }
     while (_recvBuffer.contains('\n')) {
       final idx = _recvBuffer.indexOf('\n');
       final line = _recvBuffer.substring(0, idx).trim();
       _recvBuffer = _recvBuffer.substring(idx + 1);
       if (line.isEmpty) continue;
+      if (line.length > _kMaxLineLen) {
+        debugPrint('[pool] line too long (${line.length}) — dropping');
+        continue;
+      }
       try {
         final msg = json.decode(line) as Map<String, dynamic>;
         debugPrint('[pool] RECV: $line');
@@ -165,18 +188,32 @@ class PoolMiningService {
   }
 
   void _handleMessage(Map<String, dynamic> msg) {
-    // Response to login
+    // Unified result handler: login vs submit (fixes dead second branch)
     if (msg.containsKey('result')) {
-      final result = msg['result'] as Map<String, dynamic>?;
       final error = msg['error'];
-      final id = msg['id'];
+      final Object? id = msg['id'];
 
       if (error != null) {
-        debugPrint('[pool] Error: $error');
+        debugPrint('[pool] Error (id=$id): $error');
         return;
       }
 
-      if (result == null) return;
+      final dynamic rawResult = msg['result'];
+      if (rawResult == null) return;
+
+      // Submit response: result is bool/string, not map
+      if (rawResult is bool || rawResult is String) {
+        if (rawResult == true || rawResult == 'OK') {
+          _sharesAccepted++;
+          debugPrint('[pool] Share ACCEPTED! Total: $_sharesAccepted');
+        } else {
+          debugPrint('[pool] Share REJECTED: $rawResult');
+        }
+        return;
+      }
+
+      if (rawResult is! Map<String, dynamic>) return;
+      final result = rawResult;
 
       // Login response
       final status = result['status'] as String?;
@@ -191,18 +228,6 @@ class PoolMiningService {
         if (job != null) {
           _processJob(job);
         }
-      }
-      return;
-    }
-
-    // Submit response
-    if (msg.containsKey('result') && msg.containsKey('id')) {
-      final result = msg['result'];
-      if (result == true || result == 'OK') {
-        _sharesAccepted++;
-        debugPrint('[pool] Share ACCEPTED! Total: $_sharesAccepted');
-      } else {
-        debugPrint('[pool] Share REJECTED');
       }
       return;
     }
@@ -353,6 +378,8 @@ class PoolMiningService {
   }
 
   static Uint8List _hexToBytes(String hex) {
+    if (hex.length % 2 != 0) throw FormatException('odd hex length');
+    if (!RegExp(r'^[0-9a-fA-F]*$').hasMatch(hex)) throw FormatException('non-hex char');
     final bytes = Uint8List(hex.length ~/ 2);
     for (int i = 0; i < hex.length; i += 2) {
       bytes[i ~/ 2] = int.parse(hex.substring(i, i + 2), radix: 16);
