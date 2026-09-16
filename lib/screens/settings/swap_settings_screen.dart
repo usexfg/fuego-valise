@@ -246,8 +246,8 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Private Key (WIF)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)), const SizedBox(height: 8),
         TextField(controller: _wifControllers[chain], obscureText: true, decoration: InputDecoration(hintText: _wifHint(chain), hintStyle: TextStyle(color: AppTheme.textSecondary.withOpacity(0.5), fontFamily: 'IBMPlexMono', fontSize: 13), enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: AppTheme.textSecondary.withOpacity(0.3))), focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: AppTheme.primaryColor)), suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(icon: const Icon(Icons.paste, size: 18), onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) setState(() => _wifControllers[chain]!.text = data!.text!); }, tooltip: 'Paste'),
-          IconButton(icon: const Icon(Icons.content_paste_go, size: 18), onPressed: () => _importFromClipboard(chain), tooltip: 'Import & validate'),
+          IconButton(icon: const Icon(Icons.paste, size: 18), onPressed: () async { final data = await Clipboard.getData('text/plain'); if (data?.text != null) setState(() => _wifControllers[chain]!.text = data!.text!); }, tooltip: 'Paste', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 40, minHeight: 40, maxWidth: 40, maxHeight: 40)),
+          IconButton(icon: const Icon(Icons.content_paste_go, size: 18), onPressed: () => _importFromClipboard(chain), tooltip: 'Import & validate', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 40, minHeight: 40, maxWidth: 40, maxHeight: 40)),
         ])), style: const TextStyle(color: AppTheme.textPrimary, fontFamily: 'IBMPlexMono', fontSize: 13)),
         const SizedBox(height: 8),
         Text('Electrum Servers', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)), const SizedBox(height: 8),

@@ -94,7 +94,9 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Failed to create subaddress'),
+          content: Text(
+            'Failed to create subaddress — unlock your wallet first',
+          ),
           backgroundColor: AppTheme.errorColor,
         ),
       );
@@ -176,6 +178,22 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     );
   }
 
+  /// Deterministic QR version for a payload length (binary mode, level L/M).
+  /// The auto-detection path in qr_flutter 4.1.x can hang or throw; choosing
+  /// the version explicitly keeps QR generation O(1).
+  int _qrVersionForLength(int length, {int min = 4}) {
+    const capacities = <int>[
+      0, 17, 32, 53, 78, 106, 134, 154, 192, 230, 271,
+      321, 367, 425, 458, 520, 586, 644, 718, 792, 858,
+      929, 1003, 1091, 1171, 1273, 1367, 1465, 1528, 1628, 1732,
+      1840, 1952, 2068, 2188, 2303, 2431, 2563, 2699, 2809, 2953,
+    ];
+    for (int v = min; v <= 40; v++) {
+      if (length <= capacities[v]) return v;
+    }
+    return 40;
+  }
+
   Widget _buildQRCode() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -191,12 +209,21 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         ],
       ),
       child: _selectedAddress != null && _selectedAddress!.isNotEmpty
-          ? QrImageView(
-              data: _generateQRData(),
-              version: QrVersions.auto,
-              size: 200,
-              backgroundColor: Colors.white,
-              errorCorrectionLevel: QrErrorCorrectLevel.M,
+          ? SizedBox(
+              width: 200,
+              height: 200,
+              child: QrImageView(
+                data: _generateQRData(),
+                version: _qrVersionForLength(_generateQRData().length),
+                size: 200,
+                backgroundColor: Colors.white,
+                errorCorrectionLevel: QrErrorCorrectLevel.M,
+                errorStateBuilder: (_, __) => const SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: Center(child: Icon(Icons.qr_code_2, size: 96)),
+                ),
+              ),
             )
           : Container(
               width: 200,
@@ -431,12 +458,16 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                 children: [
                   Row(
                     children: [
-                      Text(
-                        sub.label,
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 13,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          sub.label,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                          ),
                         ),
                       ),
                       if (isSelected) ...[

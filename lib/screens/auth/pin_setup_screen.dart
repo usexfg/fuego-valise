@@ -209,7 +209,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   }
 
   Widget _buildSetupPinPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -273,11 +274,13 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
   Widget _buildConfirmPinPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -326,11 +329,13 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
           ],
         ],
       ),
+      ),
     );
   }
 
   Widget _buildSecurityOptionsPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -464,6 +469,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
             ),
           ],
         ],
+      ),
       ),
     );
   }

@@ -226,12 +226,19 @@ class _SendScreenState extends State<SendScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-        Text(value, style: TextStyle(
-          color: bold ? AppTheme.textPrimary : AppTheme.textSecondary,
-          fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-          fontSize: 15,
-          fontFamily: AppTheme.numberFontFamily,
-        )),
+        Flexible(
+          child: Text(value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: bold ? AppTheme.textPrimary : AppTheme.textSecondary,
+              fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+              fontSize: 15,
+              fontFamily: AppTheme.numberFontFamily,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -533,6 +540,13 @@ class _SendScreenState extends State<SendScreen> {
                                   onPressed: _pasteFromClipboard,
                                   icon: const Icon(Icons.paste),
                                   tooltip: 'Paste',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 40,
+                                    minHeight: 40,
+                                    maxWidth: 40,
+                                    maxHeight: 40,
+                                  ),
                                 ),
                                 IconButton(
                                   onPressed: () {
@@ -542,6 +556,13 @@ class _SendScreenState extends State<SendScreen> {
                                   },
                                   icon: const Icon(Icons.qr_code_scanner),
                                   tooltip: 'Scan QR',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 40,
+                                    minHeight: 40,
+                                    maxWidth: 40,
+                                    maxHeight: 40,
+                                  ),
                                 ),
                               ],
                             ),

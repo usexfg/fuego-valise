@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Bank of XFG Luxury Swiss Watch & Monaco Private Banking — Ultra Rare Edition
+  // Obsidian Reserve Luxury Swiss Watch & Monaco — Ultra Rare Edition
   // Golden champagne dial, brushed platinum case, Midnight Blue accents
   static const Color primaryColor = Color(0xFFC5A059); // Champagne gold (Swiss watch dial)
   static const Color secondaryColor = Color(0xFF1A1814); // Midnight blue-black (depth)

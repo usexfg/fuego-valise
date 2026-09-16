@@ -106,6 +106,28 @@ class CdClaimResult {
       );
 }
 
+class CdRolloverResult {
+  final String cdId;
+  final String txHash;
+  final String coin;
+  final String status;
+
+  const CdRolloverResult({
+    required this.cdId,
+    required this.txHash,
+    required this.coin,
+    required this.status,
+  });
+
+  factory CdRolloverResult.fromJson(Map<String, dynamic> json) =>
+      CdRolloverResult(
+        cdId: json['cd_id'] as String? ?? '',
+        txHash: json['tx_hash'] as String? ?? json['txHash'] as String? ?? '',
+        coin: json['coin'] as String? ?? 'HEAT',
+        status: json['status'] as String? ?? '',
+      );
+}
+
 class CdMarketListing {
   final String listingId;
   final String cdId;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../bloc/wallet/wallet_cubit.dart';
 import '../../services/fuego_rpc_service.dart';
 import '../../utils/theme.dart';
 
@@ -47,8 +48,29 @@ class _AliasRegistrationScreenState extends State<AliasRegistrationScreen> {
     });
 
     try {
+      setState(() => _isLoading = true);
+      _errorMessage = null;
+      _successMessage = null;
+
+      // Alias registration uses a subaddress (derived from vault) instead of
+      // master wallet address. Generate it first; if vault is locked, ask.
+      final cubit = context.read<WalletCubit>();
+      final sub = await cubit.createSubaddress(
+        _aliasController.text.trim().toLowerCase(),
+      );
+      if (sub == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Unlock your wallet first to generate the alias subaddress';
+        });
+        return;
+      }
+
       final rpcService = context.read<FuegoRPCService>();
-      final txHash = await rpcService.registerAlias(_aliasController.text.trim().toLowerCase());
+      final txHash = await rpcService.registerAlias(
+        _aliasController.text.trim().toLowerCase(),
+        address: sub.address,
+      );
       setState(() {
         _successMessage = 'Alias registration sent! Tx: $txHash';
       });

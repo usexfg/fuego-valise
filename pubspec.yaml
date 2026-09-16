@@ -94,7 +94,7 @@ flutter:
     - assets/bin/
     - assets/data/
     - assets/charts/
-    - assets/coin icons/
+    - assets/coin-icons/
     - assets/brand/
 
   fonts:

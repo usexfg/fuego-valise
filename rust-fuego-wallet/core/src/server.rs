@@ -66,6 +66,8 @@ fn is_wallet_method(method: &str) -> bool {
         "getBalance" | "getAddresses" | "getAddress" | "getTransactions" |
         "sendTransaction" | "getStatus" | "register_alias" | "create_cd" | "claim_cd" |
         "create_integrated" | "list_cds" | "cd::list" | "cd::create" | "cd::claim" |
+        "rollover_cd" | "cd::rollover" | "cd::config" | "get_cd_config" |
+        "cd::create_ladder" | "create_ladder" |
         "mint_heat" | "swap" | "add_liq" | "remove_liq" | "place_limit_order"
     )
 }
@@ -345,6 +347,70 @@ async fn handle_wallet_method(
                 "integratedAddress": addr,
             }))
         }
+        "cd::config" | "get_cd_config" => {
+            // Single source of truth for CD ladder tiers — GUI and AI agents
+            // fetch this to build amount/term selection and ladder configs.
+            Ok(serde_json::json!({
+                "epoch_blocks": 900,
+                "testnet_epoch_blocks": 10,
+                "amount_tiers": [80000000, 10000000000_u64, 100000000000_u64, 1000000000000_u64, 10000000000000_u64],
+                "amount_tiers_display": ["8", "1,000", "10,000", "100,000", "1M"],
+                "term_tiers": [6, 18, 36, 72],
+                "products": [
+                    {"amount": 80000000, "term_epochs": 1,  "rollover": "AUTO",   "bonus_x": 1.00, "label": "Epoch-to-epoch (8 HEAT)"},
+                    {"amount": null,     "term_epochs": 6,  "rollover": "MANUAL", "bonus_x": 1.25, "label": "6 epochs"},
+                    {"amount": null,     "term_epochs": 18, "rollover": "MANUAL", "bonus_x": 1.50, "label": "18 epochs"},
+                    {"amount": null,     "term_epochs": 36, "rollover": "MANUAL", "bonus_x": 2.00, "label": "36 epochs"},
+                    {"amount": null,     "term_epochs": 72, "rollover": "MANUAL", "bonus_x": 2.50, "label": "72 epochs"}
+                ],
+                "rolling_term": 4294967294_u32,
+                "deposit_min_amount": 80000000_u64,
+                "deposit_min_term": 5400,
+                "deposit_max_term": 64800,
+                "ladder_example": {
+                    "description": "Example 4-rung ladder: split 111,108 HEAT across 4 terms",
+                    "rungs": [
+                        {"amount": 10000000000_u64, "term_epochs": 6},
+                        {"amount": 100000000000_u64, "term_epochs": 18},
+                        {"amount": 1000000000000_u64, "term_epochs": 36},
+                        {"amount": 10000000000000_u64, "term_epochs": 72}
+                    ]
+                }
+            }))
+        }
+        // CD market / APY — proxied to daemon (is_fuegod_method). Kept as wallet
+        // fallback only if daemon unavailable: return empty to keep GUI loadAll from failing.
+        "cd::apy" | "estimate_cd_yield" => {
+            Ok(serde_json::json!({
+                "coin": "HEAT",
+                "current_apy": 0.0,
+                "average_apy": 0.0,
+                "epoch": 0
+            }))
+        }
+        "cd::create_ladder" => {
+            let ladder = params.get("rungs")
+                .or_else(|| params.get("ladder"))
+                .and_then(|v| v.as_array())
+                .ok_or("missing rungs array")?;
+            let mut tx_hashes = Vec::new();
+            for rung in ladder {
+                let amount = rung.get("amount")
+                    .and_then(|a| a.as_u64())
+                    .or_else(|| rung.get("amount").and_then(|a| a.as_str()).and_then(|s| s.parse().ok()))
+                    .ok_or("rung missing amount")?;
+                let term_epochs = rung.get("term_epochs")
+                    .or_else(|| rung.get("term"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(6);
+                let blocks = term_epochs * 900;
+                let wallet = wallet.lock().await;
+                let tx = wallet.create_cd(amount, blocks as u32).await
+                    .map_err(|e| format!("ladder rung failed: {}", e))?;
+                tx_hashes.push(tx);
+            }
+            Ok(serde_json::json!({"tx_hashes": tx_hashes, "created": tx_hashes.len()}))
+        }
         "list_cds" | "cd::list" => {
             let wallet = wallet.lock().await;
             let cds = wallet.list_cds().await;
@@ -359,22 +425,62 @@ async fn handle_wallet_method(
                 .ok_or("missing amount")?;
             let duration_blocks = params.get("duration_blocks")
                 .and_then(|d| d.as_u64())
+                .or_else(|| params.get("term").and_then(|d| d.as_u64()))
+                .or_else(|| params.get("epochs").and_then(|d| d.as_u64()).map(|e| e * 900))
                 .ok_or("missing duration_blocks")?;
             let wallet = wallet.lock().await;
             let tx_hash = wallet.create_cd(amount, duration_blocks as u32).await
                 .map_err(|e| format!("create_cd failed: {}", e))?;
+            let height = wallet.height().await;
             Ok(serde_json::json!({
+                "cd_id": tx_hash,
+                "tx_hash": tx_hash,
                 "transactionHash": tx_hash,
                 "txHash": tx_hash,
+                "coin": "HEAT",
+                "amount": (amount as f64 / 10_000_000.0).to_string(),
+                "maturity_at": (height + duration_blocks).to_string(),
             }))
         }
         "cd::claim" | "claim_cd" => {
+            let cd_id = params.get("cd_id")
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string();
             let wallet = wallet.lock().await;
             let tx_hash = wallet.claim_cd().await
                 .map_err(|e| format!("claim_cd failed: {}", e))?;
             Ok(serde_json::json!({
+                "cd_id": cd_id,
+                "tx_hash": tx_hash,
                 "transactionHash": tx_hash,
                 "txHash": tx_hash,
+                "coin": "HEAT",
+                "principal": "0",
+                "interest": "0",
+                "total": "0",
+            }))
+        }
+        "rollover_cd" | "cd::rollover" => {
+            let cd_id = params.get("cd_id")
+                .and_then(|a| a.as_str())
+                .or_else(|| params.get("deposit_id").and_then(|a| a.as_str()))
+                .ok_or("missing cd_id")?
+                .to_string();
+            let new_term = params.get("new_term")
+                .and_then(|a| a.as_u64())
+                .or_else(|| params.get("term").and_then(|a| a.as_u64()))
+                .unwrap_or(0) as u32;
+            let wallet = wallet.lock().await;
+            let tx_hash = wallet.rollover_cd(&cd_id, new_term).await
+                .map_err(|e| format!("rollover_cd failed: {}", e))?;
+            Ok(serde_json::json!({
+                "cd_id": cd_id,
+                "tx_hash": tx_hash,
+                "transactionHash": tx_hash,
+                "txHash": tx_hash,
+                "coin": "HEAT",
+                "status": "OK",
             }))
         }
         "create_afk_lock" => {

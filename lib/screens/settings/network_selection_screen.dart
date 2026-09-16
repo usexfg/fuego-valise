@@ -24,7 +24,7 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
         title: const Text('Network Selection'),
         backgroundColor: AppTheme.backgroundColor,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

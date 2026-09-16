@@ -162,7 +162,7 @@ class _DexScreenState extends State<DexScreen>
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: Image.asset(
-            'assets/coin icons/xfg.png',
+            'assets/coin-icons/xfg.png',
             width: 20,
             height: 20,
             errorBuilder: (_, __, ___) => Container(

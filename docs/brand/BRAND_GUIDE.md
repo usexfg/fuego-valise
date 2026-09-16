@@ -1,4 +1,4 @@
-# Bank of XFG — Brand System — The Obsidian Case
+# Obsidian Reserve — Brand System — The Obsidian Case
 
 > Single source: `assets/brand/design-tokens.json`
 > Doctrine: `~/.opencode/skills/fuego-luxury-brand/references/brand-doctrine.md`
