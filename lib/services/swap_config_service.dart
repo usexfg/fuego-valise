@@ -4,8 +4,20 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/chain_registry.g.dart';
+
 /// Manages xfg-swapd configuration and process lifecycle.
 class SwapConfigService {
+  static const _daemonConfigPrefixes = {
+    'xpl': 'plasma',
+    'pls': 'pulsex',
+  };
+
+  static final Set<String> _evmSwapChains = kChains
+      .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
+      .map((chain) => chain.key)
+      .toSet();
+
   Process? _swapDaemon;
   String? _configPath;
   String? _swapdPath;
@@ -55,6 +67,31 @@ class SwapConfigService {
     required Map<String, SwapChainConfig> chains,
     String? xfgSecretKey,
   }) async {
+    final config = buildConfig(
+      chains: chains,
+      xfgSecretKey: xfgSecretKey,
+    );
+
+    final path = await configPath();
+    // The config contains chain private keys + the XFG spend key. Restrict
+    // to the owning user on POSIX platforms; never write to a shared temp
+    // dir (configPathSync's /tmp fallback is dead code — do not use it).
+    final file = File(path);
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(config));
+    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux)) {
+      try {
+        await Process.run('chmod', ['600', path]);
+      } catch (_) {
+        // Non-fatal: the write still succeeded; perms stay umask-dependent.
+      }
+    }
+    return path;
+  }
+
+  static Map<String, dynamic> buildConfig({
+    required Map<String, SwapChainConfig> chains,
+    String? xfgSecretKey,
+  }) {
     final config = <String, dynamic>{};
 
     for (final entry in chains.entries) {
@@ -62,21 +99,24 @@ class SwapConfigService {
       final cfg = entry.value;
       if (cfg.wif.isEmpty) continue;
 
-      final isEvmOrSol = const {'eth', 'arb', 'base', 'bsc', 'poly', 'sol'}.contains(chain);
+      final isSol = chain == 'sol';
+      final isEvm = _evmSwapChains.contains(chain);
+      final daemonPrefix = _daemonConfigPrefixes[chain] ?? chain;
 
-      if (isEvmOrSol && cfg.rpcUrl != null && cfg.rpcUrl!.isNotEmpty) {
-        config['${chain}_mode'] = 'rpc';
-        if (chain == 'sol') {
-          config['${chain}_keypair_path'] = cfg.wif;
+      if ((isEvm || isSol) && cfg.rpcUrl != null && cfg.rpcUrl!.isNotEmpty) {
+        config['${daemonPrefix}_mode'] = 'rpc';
+        if (isSol) {
+          config['${daemonPrefix}_keypair_path'] = cfg.wif;
         } else {
-          config['${chain}_priv_key'] = cfg.wif;
+          config['${daemonPrefix}_priv_key'] = cfg.wif;
+          config['${daemonPrefix}_chain_id'] = kChainIds[chain]!;
         }
         final uri = Uri.tryParse(cfg.rpcUrl!);
         if (uri != null) {
-          config['${chain}_rpc_host'] = uri.host;
-          config['${chain}_rpc_port'] = uri.port;
+          config['${daemonPrefix}_rpc_host'] = uri.host;
+          config['${daemonPrefix}_rpc_port'] = uri.port;
         }
-      } else if (!isEvmOrSol) {
+      } else if (!isEvm && !isSol) {
         config['${chain}_mode'] = 'spv';
         config['${chain}_wif'] = cfg.wif;
         if (cfg.servers.isNotEmpty) {
@@ -97,21 +137,7 @@ class SwapConfigService {
     if (xfgSecretKey != null && xfgSecretKey.isNotEmpty) {
       config['xfg_secret_key'] = xfgSecretKey;
     }
-
-    final path = await configPath();
-    // The config contains chain private keys + the XFG spend key. Restrict
-    // to the owning user on POSIX platforms; never write to a shared temp
-    // dir (configPathSync's /tmp fallback is dead code — do not use it).
-    final file = File(path);
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(config));
-    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux)) {
-      try {
-        await Process.run('chmod', ['600', path]);
-      } catch (_) {
-        // Non-fatal: the write still succeeded; perms stay umask-dependent.
-      }
-    }
-    return path;
+    return config;
   }
 
   static String? validateWif(String wif, String chain) {

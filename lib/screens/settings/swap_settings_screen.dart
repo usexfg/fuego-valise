@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../models/chain_registry.g.dart';
 import '../../services/swap_config_service.dart';
 import '../../utils/theme.dart';
 
@@ -14,23 +15,35 @@ const Map<String, List<String>> _defaultServers = {
   'dcr': ['localhost:19100'],
 };
 
-const Map<String, String> _defaultRpcUrls = {
-  'eth': 'https://eth.llamarpc.com', 'arb': 'https://arb1.arbitrum.io/rpc',
-  'base': 'https://mainnet.base.org', 'bsc': 'https://bsc-dataseed.binance.org',
-  'poly': 'https://polygon-rpc.com', 'sol': 'https://api.mainnet-beta.solana.com',
+final List<ChainEntry> _evmSwapChains = kChains
+    .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
+    .toList(growable: false);
+final List<String> _evmSwapChainKeys = _evmSwapChains
+    .map((chain) => chain.key)
+    .toList(growable: false);
+final List<String> _rpcSwapChainKeys = [
+  ..._evmSwapChainKeys,
+  'sol',
+];
+
+final Map<String, String> _defaultRpcUrls = {
+  for (final chain in _evmSwapChains) chain.key: chain.rpc,
+  'sol': 'https://api.mainnet-beta.solana.com',
 };
 
-const Map<String, Map<String, String>> _chainInfo = {
+final Map<String, Map<String, String>> _chainInfo = {
   'btc': {'name': 'Bitcoin', 'icon': 'B', 'desc': 'P2WSH SegWit HTLC', 'type': 'spv'},
   'ltc': {'name': 'Litecoin', 'icon': 'L', 'desc': 'P2WSH SegWit HTLC', 'type': 'spv'},
   'kmd': {'name': 'Komodo', 'icon': 'K', 'desc': 'P2SH HTLC', 'type': 'spv'},
   'bch': {'name': 'Bitcoin Cash', 'icon': 'B', 'desc': 'P2SH HTLC', 'type': 'spv'},
   'dcr': {'name': 'Decred', 'icon': 'D', 'desc': 'SPV + RPC HTLC', 'type': 'spv'},
-  'eth': {'name': 'Ethereum', 'icon': 'E', 'desc': 'EVM HTLC (web3)', 'type': 'evm'},
-  'arb': {'name': 'Arbitrum', 'icon': 'A', 'desc': 'L2 HTLC (web3)', 'type': 'evm'},
-  'base': {'name': 'Base', 'icon': 'B', 'desc': 'L2 HTLC (web3)', 'type': 'evm'},
-  'bsc': {'name': 'BNB Chain', 'icon': 'B', 'desc': 'EVM HTLC (web3)', 'type': 'evm'},
-  'poly': {'name': 'Polygon', 'icon': 'P', 'desc': 'EVM HTLC (web3)', 'type': 'evm'},
+  for (final chain in _evmSwapChains)
+    chain.key: {
+      'name': chain.name,
+      'icon': chain.ticker.substring(0, 1),
+      'desc': 'EVM HTLC (web3)',
+      'type': 'evm',
+    },
   'sol': {'name': 'Solana', 'icon': 'S', 'desc': 'SPL HTLC (web3)', 'type': 'sol'},
   'xmr': {'name': 'Monero', 'icon': 'M', 'desc': 'Daemon + Wallet RPC', 'type': 'rpc'},
 };
@@ -60,7 +73,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       _serverControllers[chain] = TextEditingController();
       _serverLists[chain] = List<String>.from(_defaultServers[chain] ?? []);
     }
-    for (final chain in ['eth', 'arb', 'base', 'bsc', 'poly', 'sol']) {
+    for (final chain in _rpcSwapChainKeys) {
       _wifControllers[chain] = TextEditingController();
       _serverControllers[chain] = TextEditingController();
       _serverLists[chain] = [];
@@ -88,7 +101,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       final serversStr = await _secureStorage.read(key: 'swap_servers_$chain');
       if (serversStr != null && serversStr.isNotEmpty) _serverLists[chain] = serversStr.split(',').where((s) => s.isNotEmpty).toList();
     }
-    for (final chain in ['eth', 'arb', 'base', 'bsc', 'poly', 'sol']) {
+    for (final chain in _rpcSwapChainKeys) {
       final wif = await _secureStorage.read(key: 'swap_wif_$chain');
       if (wif != null && wif.isNotEmpty) { _wifControllers[chain]!.text = wif; }
       final rpcUrl = await _secureStorage.read(key: 'swap_rpc_url_$chain');
@@ -118,7 +131,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       chains[chain] = SwapChainConfig(wif: wif, servers: _serverLists[chain]!);
     }
 
-    for (final chain in ['eth', 'arb', 'base', 'bsc', 'poly']) {
+    for (final chain in _evmSwapChainKeys) {
       final wif = _wifControllers[chain]!.text.trim(); if (wif.isEmpty) continue;
       final rpcUrl = _rpcControllers[chain]?.text.trim() ?? '';
       if (wif.length != 64 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(wif)) { _showError('${chain.toUpperCase()} key must be 64-char hex'); return; }
@@ -194,9 +207,9 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       _buildSectionHeader('Fuego (XFG)'), _buildXfgKeyTile(), const SizedBox(height: 24),
       _buildSectionHeader('SPV Chains (BTC, LTC, KMD, BCH, DCR)'),
       for (final chain in ['btc', 'ltc', 'kmd', 'bch', 'dcr']) _buildChainCard(chain), const SizedBox(height: 24),
-      _buildSectionHeader('EVM / Solana / Polygon (Light Client)'),
+      _buildSectionHeader('EVM / Solana (Light Client)'),
       _buildEvmInfoBox(), const SizedBox(height: 8),
-      for (final chain in ['eth', 'arb', 'base', 'bsc', 'poly', 'sol']) _buildEvmChainCard(chain), const SizedBox(height: 24),
+      for (final chain in _rpcSwapChainKeys) _buildEvmChainCard(chain), const SizedBox(height: 24),
       _buildSectionHeader('Monero (RPC)'), _buildMoneroCard(), const SizedBox(height: 24),
       SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _saveConfig, icon: const Icon(Icons.save), label: const Text('Save Configuration'), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(vertical: 14)))),
       const SizedBox(height: 16),
