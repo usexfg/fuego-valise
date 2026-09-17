@@ -15,6 +15,7 @@ import '../../utils/theme.dart';
 import '../main/main_screen.dart';
 import 'swap_settings_screen.dart';
 import 'alias_registration_screen.dart';
+import 'evm_wallets_screen.dart';
 import 'network_selection_screen.dart';
 import 'wallets_screen.dart';
 import '../../utils/xfg_ticker.dart';
@@ -1404,6 +1405,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => const WalletsScreen(),
+                    ),
+                  );
+                },
+                trailing: const Icon(Icons.chevron_right),
+              ),
+              _buildSettingsTile(
+                icon: Icons.hub_outlined,
+                title: 'EVM Wallets',
+                subtitle: 'Create and manage wallets across EVM networks',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const EvmWalletsScreen(),
                     ),
                   );
                 },
