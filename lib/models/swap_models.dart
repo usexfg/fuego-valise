@@ -2,7 +2,7 @@
 /// Maps 1:1 with Rust SDK types.rs SwapPair, SwapOffer, SwapStatus, etc.
 
 /// Supported swap pair IDs matching fuego-suite.
-/// SOL=0, ETH=1, XMR=2, BCH=3, ARB=4, BASE=5, KMD=6, BNB=7, DCR=8, BTC=9, LTC=10, POLY=11
+/// IDs match C++ `SwapPair`; gaps are non-EVM pairs not mirrored here yet.
 enum SwapPairSdk {
   sol(0, 'SOL', 'XFG/SOL'),
   eth(1, 'ETH', 'XFG/ETH'),
@@ -15,7 +15,17 @@ enum SwapPairSdk {
   dcr(8, 'DCR', 'XFG/DCR'),
   btc(9, 'BTC', 'XFG/BTC'),
   ltc(10, 'LTC', 'XFG/LTC'),
-  poly(11, 'POLY', 'XFG/POLY');
+  poly(11, 'POLY', 'XFG/POLY'),
+  gleec(12, 'GLEEC', 'XFG/GLEEC'),
+  robinhood(13, 'RHC', 'XFG/RHC'),
+  avax(14, 'AVAX', 'XFG/AVAX'),
+  cro(15, 'CRO', 'XFG/CRO'),
+  bob(16, 'BOB', 'XFG/BOB'),
+  unichain(18, 'UNI', 'XFG/UNI'),
+  plasma(19, 'XPL', 'XFG/XPL'),
+  pulsex(23, 'PLS', 'XFG/PLS'),
+  monad(25, 'MON', 'XFG/MON'),
+  optimism(26, 'OP', 'XFG/OP');
 
   final int id;
   final String ticker;
@@ -77,7 +87,17 @@ enum ChainTypeSdk {
   decred(9, 'DCR', 'Decred'),
   bitcoin(10, 'BTC', 'Bitcoin'),
   litecoin(11, 'LTC', 'Litecoin'),
-  polygon(12, 'POLY', 'Polygon');
+  polygon(12, 'POLY', 'Polygon'),
+  avax(13, 'AVAX', 'Avalanche'),
+  gleec(14, 'GLEEC', 'Gleec Chain'),
+  robinhood(15, 'RHC', 'Robinhood Chain'),
+  cro(16, 'CRO', 'Cronos'),
+  bob(17, 'BOB', 'BOB'),
+  unichain(18, 'UNI', 'Unichain'),
+  plasma(19, 'XPL', 'Plasma'),
+  pulsex(20, 'PLS', 'PulseChain'),
+  monad(21, 'MON', 'Monad'),
+  optimism(22, 'OP', 'Optimism');
 
   final int id;
   final String symbol;
@@ -89,7 +109,17 @@ enum ChainTypeSdk {
       this == ChainTypeSdk.arbitrum ||
       this == ChainTypeSdk.base ||
       this == ChainTypeSdk.bnb ||
-      this == ChainTypeSdk.polygon;
+      this == ChainTypeSdk.polygon ||
+      this == ChainTypeSdk.avax ||
+      this == ChainTypeSdk.gleec ||
+      this == ChainTypeSdk.robinhood ||
+      this == ChainTypeSdk.cro ||
+      this == ChainTypeSdk.bob ||
+      this == ChainTypeSdk.unichain ||
+      this == ChainTypeSdk.plasma ||
+      this == ChainTypeSdk.pulsex ||
+      this == ChainTypeSdk.monad ||
+      this == ChainTypeSdk.optimism;
   bool get isBtcFamily =>
       this == ChainTypeSdk.bitcoinCash ||
       this == ChainTypeSdk.komodo ||
