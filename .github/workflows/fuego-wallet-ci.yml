@@ -49,6 +49,41 @@ jobs:
           flutter test --coverage
           test -f coverage/lcov.info || (echo "coverage/lcov.info missing" && exit 1)
 
+  rust-sdk:
+    name: Rust SDK (tests + binding consistency)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
+
+      - name: Test fuego-ffi (live Dart bridge crate)
+        run: cargo test --manifest-path rust-fuego-wallet/fuego-sdk/fuego-ffi/Cargo.toml
+
+      - name: Test native/crypto (mobile fuego_crypto crate)
+        run: cargo test --manifest-path native/crypto/Cargo.toml
+
+      - name: Binding consistency (every Dart FFI lookup must have a Rust export)
+        run: |
+          RUST=$(grep -oE 'fn (fuego|cn)_[a-z_]+' rust-fuego-wallet/fuego-sdk/fuego-ffi/src/lib.rs | sed 's/fn //;s/(//' | sort -u)
+          DART=$(grep -oE "lookupFunction<[^,]+,[^>]+>\('[a-z_]+'" lib/ffi/fuego_native.dart | grep -oE "'[a-z_]+'" | tr -d "'" | sort -u)
+          MISSING=$(comm -23 <(echo "$DART") <(echo "$RUST"))
+          if [ -n "$MISSING" ]; then
+            echo "::error::Dart FFI lookups with no matching Rust export in fuego-ffi:"
+            echo "$MISSING"
+            exit 1
+          fi
+          echo "All $(echo "$DART" | wc -l) Dart FFI lookups resolve to Rust exports."
+
+      - name: Clippy (report-only)
+        continue-on-error: true
+        run: cargo clippy --manifest-path rust-fuego-wallet/fuego-sdk/fuego-ffi/Cargo.toml
+
   build-macos:
     name: Build macOS
     runs-on: macos-latest

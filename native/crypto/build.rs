@@ -26,7 +26,8 @@ fn main() {
         .files(cn_sources.iter().map(|f| cn_dir.join(f)))
         .include(&cn_dir)
         .include(cn_dir.parent().unwrap())  // for Common/ at src/Common
-        .flag_if_supported("-std=c11")
+        .define("_GNU_SOURCE", None)
+        .flag_if_supported("-std=gnu11")
         .flag_if_supported("-O2");
 
     // Only add -maes on x86_64

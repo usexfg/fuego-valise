@@ -510,14 +510,14 @@ mod tests {
         let spend_pub = [0x12u8; 32];
         let view_pub = [0x34u8; 32];
         let prefix = std::ffi::CString::new("FUEGO").unwrap();
-        let mut address = [0u8; 100];
+        let mut address = [0u8; 200];
 
         let result = fuego_generate_address(
             spend_pub.as_ptr(),
             view_pub.as_ptr(),
             prefix.as_ptr(),
             address.as_mut_ptr() as *mut i8,
-            100,
+            200,
         );
 
         assert_eq!(result, 0);
