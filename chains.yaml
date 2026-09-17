@@ -92,7 +92,7 @@ chains:
     gasToken: ETH
     color: "#FF0420"
     icon: assets/coin-icons/op.jpg
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: avax
@@ -104,7 +104,7 @@ chains:
     gasToken: AVAX
     color: "#E84142"
     icon: assets/coin-icons/avax.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: cro
@@ -116,7 +116,7 @@ chains:
     gasToken: CRO
     color: "#002D74"
     icon: assets/coin-icons/cronos.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: monad
@@ -128,7 +128,7 @@ chains:
     gasToken: MON
     color: "#836EF9"
     icon: assets/coin-icons/monad.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: xpl
@@ -140,7 +140,7 @@ chains:
     gasToken: XPL
     color: "#4FA9E0"
     icon: assets/coin-icons/xpl.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: pls
@@ -152,7 +152,7 @@ chains:
     gasToken: PLS
     color: "#9C27B0"
     icon: assets/coin-icons/pls.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: uni
@@ -164,7 +164,7 @@ chains:
     gasToken: ETH
     color: "#FF007A"
     icon: assets/coin-icons/uni.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: rh
@@ -176,7 +176,7 @@ chains:
     gasToken: ETH
     color: "#6B7280"
     icon: assets/coin-icons/rhc.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: bob
@@ -188,7 +188,7 @@ chains:
     gasToken: ETH
     color: "#FF6D00"
     icon: assets/coin-icons/bob.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: gleec
@@ -200,7 +200,7 @@ chains:
     gasToken: GLEEC
     color: "#00A3C4"
     icon: assets/coin-icons/gleec.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: linea
