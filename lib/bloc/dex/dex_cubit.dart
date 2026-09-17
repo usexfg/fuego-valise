@@ -343,6 +343,26 @@ class DexCubit extends Cubit<DexState> {
         return ChainTypeSdk.litecoin;
       case SwapPairSdk.poly:
         return ChainTypeSdk.polygon;
+      case SwapPairSdk.gleec:
+        return ChainTypeSdk.gleec;
+      case SwapPairSdk.robinhood:
+        return ChainTypeSdk.robinhood;
+      case SwapPairSdk.avax:
+        return ChainTypeSdk.avax;
+      case SwapPairSdk.cro:
+        return ChainTypeSdk.cro;
+      case SwapPairSdk.bob:
+        return ChainTypeSdk.bob;
+      case SwapPairSdk.unichain:
+        return ChainTypeSdk.unichain;
+      case SwapPairSdk.plasma:
+        return ChainTypeSdk.plasma;
+      case SwapPairSdk.pulsex:
+        return ChainTypeSdk.pulsex;
+      case SwapPairSdk.monad:
+        return ChainTypeSdk.monad;
+      case SwapPairSdk.optimism:
+        return ChainTypeSdk.optimism;
     }
   }
 
