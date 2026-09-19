@@ -168,13 +168,12 @@ impl ChainType {
         matches!(self, Self::Ethereum | Self::Arbitrum | Self::Base | Self::Bnb | Self::Polygon | Self::Gleec | Self::Robinhood | Self::Avalanche | Self::Cronos | Self::Bob | Self::Unichain | Self::Plasma | Self::PulseChain | Self::Monad | Self::Optimism)
     }
 
-    /// Canonical EVM chain id, or `None` for a non-EVM chain.
+    /// Canonical EVM mainnet chain id, or `None` for a non-EVM chain.
     ///
-    /// Values match `chains.yaml` in the wallet, which is what the wallet's
-    /// RPC layer is generated from. NOTE: fuego-suite's
-    /// `ChainClientConfig.cpp` defaults `monad_chain_id` to 185 while
-    /// `chains.yaml` says 143 — one of the two is wrong, and a mismatch makes
-    /// the wrong-network guard reject every Monad proof.
+    /// Values match `chains.yaml`, which the wallet's RPC layer is generated
+    /// from. Monad is **143**; fuego-suite's `ChainClientConfig.cpp` defaults
+    /// `monad_chain_id` to 185, which is wrong and makes the wrong-network
+    /// guard reject every Monad proof. Fix it there, not here.
     pub fn evm_chain_id(&self) -> Option<u64> {
         match self {
             Self::Ethereum => Some(1),
@@ -194,6 +193,27 @@ impl ChainType {
             Self::Optimism => Some(10),
             _ => None,
         }
+    }
+
+    /// EVM **testnet** chain id where one is recorded.
+    ///
+    /// Sparse on purpose: only chains whose testnet id has been confirmed
+    /// appear. `None` means "not recorded here", not "no testnet" — so a
+    /// caller must treat it as unknown rather than as a mainnet-only chain.
+    pub fn evm_testnet_chain_id(&self) -> Option<u64> {
+        match self {
+            Self::Monad => Some(10143),
+            _ => None,
+        }
+    }
+
+    /// True when `id` is a chain id this type accepts — mainnet, or a
+    /// recorded testnet when `allow_testnet`.
+    pub fn accepts_chain_id(&self, id: u64, allow_testnet: bool) -> bool {
+        if self.evm_chain_id() == Some(id) {
+            return true;
+        }
+        allow_testnet && self.evm_testnet_chain_id() == Some(id)
     }
 
     pub fn all() -> &'static [ChainType] {

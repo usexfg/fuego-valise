@@ -87,6 +87,28 @@ fn evm_chains_all_have_a_chain_id() {
 }
 
 #[test]
+fn monad_is_143_mainnet_and_10143_testnet() {
+    // fuego-suite's ChainClientConfig.cpp defaults monad_chain_id to 185,
+    // which is wrong; chains.yaml and this table say 143.
+    assert_eq!(ChainType::Monad.evm_chain_id(), Some(143));
+    assert_eq!(ChainType::Monad.evm_testnet_chain_id(), Some(10143));
+    assert_ne!(ChainType::Monad.evm_chain_id(), Some(185));
+}
+
+#[test]
+fn accepts_chain_id_gates_testnet_behind_the_flag() {
+    let m = ChainType::Monad;
+    assert!(m.accepts_chain_id(143, false));
+    assert!(m.accepts_chain_id(143, true));
+    assert!(!m.accepts_chain_id(10143, false), "testnet must not pass as mainnet");
+    assert!(m.accepts_chain_id(10143, true));
+    assert!(!m.accepts_chain_id(185, true), "the upstream default is not a Monad id");
+    // A chain with no recorded testnet accepts only its mainnet id.
+    assert!(ChainType::Ethereum.accepts_chain_id(1, true));
+    assert!(!ChainType::Ethereum.accepts_chain_id(11155111, true));
+}
+
+#[test]
 fn decimals_are_set_for_every_chain() {
     assert_eq!(ChainType::Fuego.decimals(), 7);
     assert_eq!(ChainType::Bitcoin.decimals(), 8);

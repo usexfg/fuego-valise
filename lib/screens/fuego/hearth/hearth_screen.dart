@@ -182,7 +182,10 @@ children: [
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'XFG = \$${xfgUsd.toStringAsFixed(2)}',
+                    // No pool, no price — an em dash, never a stand-in number.
+                    xfgUsd == null
+                        ? 'XFG = —'
+                        : 'XFG = \$${xfgUsd.toStringAsFixed(2)}',
                     style: HearthTheme.mono(
                       size: 13,
                       weight: FontWeight.w700,
