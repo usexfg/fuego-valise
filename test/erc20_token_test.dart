@@ -3,9 +3,30 @@ import 'package:fuego/models/erc20_token.dart';
 
 void main() {
   group('Erc20Registry', () {
-    test('contains 40 tokens across 33 chains', () {
-      expect(Erc20Registry.all.length, 40);
+    test('contains 41 tokens across 33 chains', () {
+      expect(Erc20Registry.all.length, 41);
       expect(EvmChainKey.values.length, 33);
+    });
+
+    test('every registry entry is reachable by address and by symbol', () {
+      for (final t in Erc20Registry.all) {
+        expect(Erc20Registry.findByAddress(t.chainKey, t.address), isNotNull,
+            reason: '${t.symbol} on ${t.chainKey} not addressable');
+        expect(Erc20Registry.find(t.chainKey, t.symbol), isNotNull,
+            reason: '${t.symbol} on ${t.chainKey} not findable');
+      }
+    });
+
+    test('Venice Token (VVV) on Base — 18 decimals, not a stable', () {
+      final t = Erc20Registry.find('base', 'VVV')!;
+      expect(t.lcAddress, '0xacfe6019ed1a7dc6f7b508c02d1b04ec88cc21bf');
+      expect(t.name, 'Venice Token');
+      expect(t.decimals, 18);
+      expect(t.chainId, 8453);
+      expect(t.isNativeStable, isFalse);
+      // 1 VVV must scale by 1e18, not the 6 the Base stables use.
+      expect(Erc20Amount.toBaseUnits('1', t.decimals),
+          BigInt.parse('1000000000000000000'));
     });
 
     test('oUSDT same Superchain address on all six chains', () {
@@ -32,7 +53,7 @@ void main() {
 
     test('forChain filters', () {
       expect(Erc20Registry.forChain('poly').length, 2);
-      expect(Erc20Registry.forChain('base').length, 3); // USDC + USDT + oUSDT
+      expect(Erc20Registry.forChain('base').length, 4); // USDC + USDT + oUSDT + VVV
       expect(Erc20Registry.forChain('eth').length, 2);
       expect(Erc20Registry.forChain('rsk'), isEmpty); // chain-only until verified
     });

@@ -101,10 +101,11 @@ class Erc20Token {
   String toString() => '$symbol@$chainKey:$address';
 }
 
-/// Registry of well-known stablecoins per EVM chain.
+/// Registry of well-known tokens per EVM chain.
 ///
 /// Contract addresses are mainnet. For bridged variants the canonical
-/// native stable is listed first.
+/// native stable is listed first. Entries that are not dollar stables carry
+/// `isNativeStable: false`.
 class Erc20Registry {
   // ETH mainnet
   static const usdtEth = Erc20Token(
@@ -160,6 +161,18 @@ class Erc20Registry {
     name: 'Tether USD (Base)',
     decimals: 6,
     chain: EvmChainKey.base,
+  );
+
+  // Venice AI (VVV) on Base — not a stablecoin. Access token for private
+  // inference through the Venice API; 18 decimals, verified on BaseScan at
+  // https://basescan.org/token/0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf
+  static const vvvBase = Erc20Token(
+    address: '0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf',
+    symbol: 'VVV',
+    name: 'Venice Token',
+    decimals: 18,
+    chain: EvmChainKey.base,
+    isNativeStable: false,
   );
 
   // BNB Chain — BEP20 stablecoins use 18 decimals on BSC
@@ -445,7 +458,7 @@ class Erc20Registry {
   static const List<Erc20Token> all = [
     usdtEth, usdcEth,
     usdtArb, usdcArb, usdcArbNative,
-    usdcBase, usdtBase, ousdtBase,
+    usdcBase, usdtBase, ousdtBase, vvvBase,
     usdtBsc, usdcBsc,
     usdtPoly, usdcPoly,
     usdtOp, usdcOp, usdcOpBridged, ousdtOp,
@@ -491,7 +504,8 @@ class Erc20Registry {
     return null;
   }
 
-  /// All chain keys that have at least one known stable.
+  /// Every EVM chain key the wallet can talk to. Not every one of these has
+  /// a registry token — several are chain-only until a contract is verified.
   static List<String> get supportedChainKeys =>
       EvmChainKey.values.map((e) => e.key).toList();
 

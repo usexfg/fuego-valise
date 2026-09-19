@@ -1421,7 +1421,7 @@ class _DexScreenState extends State<DexScreen>
             children: [
               const Icon(Icons.account_balance_wallet, size: 14, color: AppTheme.textMuted),
               const SizedBox(width: 6),
-              Text('Stablecoins on ${chainKey.toUpperCase()}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text('Tokens on ${chainKey.toUpperCase()}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TokenOverviewScreen())),
@@ -1431,7 +1431,7 @@ class _DexScreenState extends State<DexScreen>
           ),
           const SizedBox(height: 8),
           if (!hasAddr)
-            const Text('Enter your EVM private key above to preview USDT/USDC balances (key stays local).', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+            const Text('Enter your EVM private key above to preview token balances (key stays local).', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
           if (hasAddr)
             ...tokens.map((t) => _Erc20BalanceTile(chainKey: chainKey, token: t, holder: derived)),
         ],
