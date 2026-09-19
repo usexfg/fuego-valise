@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:dns_client/dns_client.dart' hide DnsClient;
 import 'package:dns_client/src/dns_over_https.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
+import '../../core/constants.dart';
 import '../../utils/theme.dart';
 import '../../utils/xfg_ticker.dart';
 
@@ -110,15 +111,31 @@ class _SendScreenState extends State<SendScreen> {
     }
   }
 
-  void _showConfirmDialog() {
+  Future<void> _showConfirmDialog() async {
+    // Resolve before validating. Resolution used to fire on focus-loss, which
+    // races the tap: the dialog could show `alice@example.com` while the send
+    // used whatever DNS returned a moment later.
+    if (_addressController.text.trim().contains('@')) {
+      await _resolveOpenAlias();
+      if (!mounted) return;
+      if (_resolvedAddress == null) {
+        setState(() => _errorMessage =
+            _errorMessage ?? 'Could not resolve that alias — check it and retry.');
+        return;
+      }
+    }
     if (!_formKey.currentState!.validate()) return;
 
     final wallet = context.read<WalletCubit>().state;
     final address = _addressController.text.trim();
+    if (address.contains('@')) {
+      setState(() => _errorMessage = 'Alias is unresolved — cannot send.');
+      return;
+    }
     final amountStr = _amountController.text.trim();
     final amount = double.tryParse(amountStr) ?? 0;
     final coin = _isHeat ? 'ΗΞΔŦ' : 'XFG';
-    final fee = _isHeat ? 0.001 : 0.008;
+    final fee = txFeeXfg;
     final total = amount + fee;
 
     if (_isHeat) {
@@ -130,7 +147,7 @@ class _SendScreenState extends State<SendScreen> {
         return;
       }
     } else {
-      final totalAtomic = (total * 1e7).round();
+      final totalAtomic = xfgToAtomic(total);
       if (totalAtomic > wallet.unlockedBalance) {
         setState(() {
           _errorMessage =
@@ -150,9 +167,32 @@ class _SendScreenState extends State<SendScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _confirmRow('Recipient', address.length > 30
-                ? '${address.substring(0, 15)}...${address.substring(address.length - 10)}'
-                : address),
+            const Text('Recipient',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+            const SizedBox(height: 4),
+            // Full address — a truncated middle hides exactly the bytes an
+            // address-swap attack changes.
+            SelectableText(
+              address,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 12,
+                fontFamily: 'IBMPlexMono',
+              ),
+            ),
+            if (_resolvedAddress != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Resolved from an OpenAlias TXT record. DNSSEC is not '
+                'validated — confirm the address out of band for large sends.',
+                style: TextStyle(
+                  color: AppTheme.warningColor,
+                  fontSize: 10,
+                  height: 1.3,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
             const SizedBox(height: 8),
             _confirmRow('Amount', '${amount.toStringAsFixed(7)} $coin'),
             const SizedBox(height: 8),
@@ -261,14 +301,14 @@ class _SendScreenState extends State<SendScreen> {
         txHash = await cubit.sendHeat(
           address: address,
           amount: amount,
-          fee: 0.001,
+          fee: txFeeXfg,
           pin: pin,
         );
       } else {
         txHash = await cubit.sendTransaction(
           address: address,
           amount: amount,
-          fee: 0.008,
+          fee: txFeeXfg,
           pin: pin,
           mixin: 7,
         );
@@ -387,8 +427,7 @@ class _SendScreenState extends State<SendScreen> {
   void _setMaxAmount() {
     final state = context.read<WalletCubit>().state;
     final availableBalance = _isHeat ? state.unlockedHeatXfg : state.unlockedBalanceXfg;
-    final fee = _isHeat ? 0.001 : 0.01;
-    final maxAmount = (availableBalance - fee).clamp(0.0, availableBalance);
+    final maxAmount = (availableBalance - txFeeXfg).clamp(0.0, availableBalance);
     _amountController.text = maxAmount.toStringAsFixed(7);
   }
 
@@ -522,6 +561,11 @@ class _SendScreenState extends State<SendScreen> {
                   TextFormField(
                     controller: _addressController,
                     focusNode: _addressFocusNode,
+                    onChanged: (_) {
+                      if (_resolvedAddress != null) {
+                        setState(() => _resolvedAddress = null);
+                      }
+                    },
                     decoration: InputDecoration(
                       hintText: 'fire... or user@domain.com',
                       suffixIcon: _isResolvingAlias
@@ -571,8 +615,15 @@ class _SendScreenState extends State<SendScreen> {
                       if (value == null || value.trim().isEmpty) {
                         return 'Please enter recipient address';
                       }
-                      if (value.contains('@')) return null;
-                      if (!value.startsWith('fire') || value.length != 98) {
+                      final v = value.trim();
+                      if (v.contains('@')) {
+                        // Accepted only as input; resolution happens before
+                        // the confirm dialog and rewrites this field.
+                        return _resolvedAddress == null
+                            ? 'Alias not resolved yet — leave the field to resolve it'
+                            : null;
+                      }
+                      if (!v.startsWith('fire') || v.length != 98) {
                         return 'Invalid address (must be fire... and 98 chars)';
                       }
                       return null;

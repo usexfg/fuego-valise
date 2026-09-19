@@ -4,11 +4,13 @@ import 'package:fuego/services/swap_daemon_client.dart';
 
 void main() {
   group('SwapLockTypeSdk', () {
-    test('fromId roundtrip', () {
-      expect(SwapLockTypeSdk.fromId(0), SwapLockTypeSdk.htlc);
-      expect(SwapLockTypeSdk.fromId(1), SwapLockTypeSdk.ptlc);
-      expect(SwapLockTypeSdk.fromId(2), SwapLockTypeSdk.bridge);
-      expect(SwapLockTypeSdk.fromId(99), SwapLockTypeSdk.htlc);
+    test('tryFromId roundtrip', () {
+      expect(SwapLockTypeSdk.tryFromId(0), SwapLockTypeSdk.htlc);
+      expect(SwapLockTypeSdk.tryFromId(1), SwapLockTypeSdk.ptlc);
+      expect(SwapLockTypeSdk.tryFromId(2), SwapLockTypeSdk.bridge);
+      // Was `fromId(99) == htlc`. An unknown lock type is a claim about how
+      // the swap is secured, so it must not resolve to HTLC.
+      expect(SwapLockTypeSdk.tryFromId(99), isNull);
     });
     test('fromString case insensitive', () {
       expect(SwapLockTypeSdk.fromString('ptlc'), SwapLockTypeSdk.ptlc);

@@ -25,7 +25,20 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 - xfg-swapd handles actual cross-chain lock/claim/refund on BTC, ETH, SOL, etc.
 - They use **separate databases** (fuegod: `<configFolder>/swaps`, xfg-swapd: `~/.xfg-swapd`)
 
-## Supported Swap Chains (12 pairs)
+## Supported Swap Chains
+
+`XfgSwap::SwapPair` (fuego-suite `src/SwapDaemon/SwapTypes.h:77`) defines **29
+pairs, ids 0-28**. `SwapDaemon.cpp` registers a chain client for **25** of
+them; `ZANO(24)`, `TON(27)`, `SIA(17)` and `DOT(28)` are staged and log
+"… is staged — not yet registered".
+
+The daemon parses pair names with `swapPairFromString`
+(`src/SwapDaemon/SwapTypes.cpp:30`), which does **not** accept the wallet's
+display tickers for five pairs — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`,
+`PULSEX`, `MONAD`, not `RHC`, `UNI`, `XPL`, `PLS`, `MON`.
+`SwapPairSdk.daemonName` carries the accepted string.
+
+### The original 12 (unchanged)
 
 | ID | Chain | Adapter | Connection | HTLC Type |
 |----|-------|---------|-----------|-----------|
@@ -59,9 +72,41 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 | XMR | Run your own monerod + monero-wallet-rpc (recommended), or use a remote node from monero.fail |
 
 ### Known Issues
-- POLYGON missing from `swapPairToString()`, `swapPairFromString()`, `msPerBlock()`, `PriceOracle.cpp` in xfg-swapd C++ code — shows "???" in logs, fails at CLI level, but works via JSON config.
-- `main.cpp` help text only lists "SOL, ETH, XMR, BCH, ARB, BASE" — stale.
 - SPV mode is read-only; claim/refund requires RPC mode for UTXO chains.
+- `redemption_rate_num` / `redemption_rate_denom` are declared in
+  `COMMAND_RPC_GET_HEAT_METRICS` but never assigned by `on_get_heat_metrics`.
+- `swf_heat_balance` does not exist in that response; the SWF figure is
+  `vault_heat_swf`.
+- `rust-fuego-wallet/fuego-sdk` is stale against the C++: 13 chains vs 29, an
+  AMM contract that matches no RPC struct, `u64` payment-proof amounts, and a
+  `scriptPubKey.addresses` read removed in Bitcoin Core 22.
+
+### Resolved
+- POLYGON is present in `swapPairToString()` / `swapPairFromString()`
+  (`SwapTypes.cpp:91`, `:45-46`). The earlier note was stale.
+
+## Hearth / ΗΞΔŦ RPC contract
+
+**Everything goes through `fuego_walletd` on 18189.** Never straight at fuegod.
+
+| Wallet call | Handled by | Notes |
+|---|---|---|
+| `heat_metrics`, `amm_quote`, `amm_pool_info`, `get_orderbook_state` | proxy re-POSTs to fuegod | fuegod's `jsonMethod` reads `request.getBody()` — query parameters are ignored |
+| `mint_heat`, `swap`, `add_liq`, `remove_liq`, `place_limit_order` | proxy → wallet | these are `WalletRpcServer` methods; fuegod does not implement them |
+
+- `COIN = 10^7` for **both** XFG and ΗΞΔŦ.
+- `amm_quote.input_amount` is a uint64 of atomic units.
+- `spot_price` is HEAT-per-XFG × COIN, so the human ratio is `spot_price / COIN`.
+- `mint_heat` takes `xfg_burned` **only**. walletd derives the ΗΞΔŦ side as
+  `xfg_burned * spot_price / COIN`, matching `HeatMintEngine::validateMint`,
+  which rejects `heatOutputs > expectedHeatFor(xfgBurned, price)`. Naming the
+  ΗΞΔŦ amount client-side gets the mint rejected below parity and silently
+  under-mints above it.
+- `place_limit_order.price` is a human decimal; walletd scales it by COIN.
+- Hearth taker fee: `HEARTH_FEE_BPS = 100` (1%), split
+  `HEARTH_CD_SHARE_PCT = 70` / `HEARTH_MAKER_REBATE_BPS = 30`.
+- Network fee: `MINIMUM_FEE = MINIMUM_FEE_8KH = 8000` (0.0008 XFG). The 0.008
+  figure is the retired V2 fee.
 
 ## Dart Wallet Backend Architecture
 

@@ -100,11 +100,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     await _securityService.setBiometricEnabled(enabled);
-    if (enabled) {
-      try {
-        await context.read<FuegoVaultService>().ensureBiometricEnvelope();
-      } catch (_) {}
-    }
+    if (!mounted) return;
+    final vault = context.read<FuegoVaultService>();
+    try {
+      if (enabled) {
+        await vault.ensureBiometricEnvelope();
+      } else {
+        // Removing the unwrap key is not enough — the envelopes it decrypts
+        // stay on disk until they are deleted.
+        await vault.purgeBiometricEnvelopes();
+      }
+    } catch (_) {}
+    if (!mounted) return;
     setState(() {
       _biometricEnabled = enabled;
     });

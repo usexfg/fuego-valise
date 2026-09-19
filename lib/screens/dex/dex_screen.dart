@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../bloc/dex/dex_cubit.dart';
+import '../../core/constants.dart';
 import '../../models/candlestick.dart';
 import '../../models/swap_models.dart';
 import '../../models/chain_info.dart';
@@ -421,9 +422,12 @@ class _DexScreenState extends State<DexScreen>
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: SwapPairSdk.values.length,
+                // Only pairs xfg-swapd registers a client for. SIA/ZANO/TON/
+                // DOT exist in the C++ enum but their clients are staged, so
+                // offering them produces a swap the daemon refuses to run.
+                itemCount: _selectablePairs.length,
                 itemBuilder: (_, i) {
-                  final pair = SwapPairSdk.values[i];
+                  final pair = _selectablePairs[i];
                   final ticker = pair.ticker;
                   final name = ChainInfo.names[ticker] ?? ticker;
                   final desc = ChainInfo.desc[ticker] ?? '';
@@ -864,7 +868,7 @@ class _DexScreenState extends State<DexScreen>
           children: [
             ClipOval(
               child: Image.asset(
-                ChainInfo.icons[offer.sellXfg ? 'XFG' : offer.pair.ticker] ??
+                ChainInfo.icons[offer.sellXfg ? 'XFG' : offer.ticker] ??
                     '',
                 width: 28,
                 height: 28,
@@ -872,7 +876,7 @@ class _DexScreenState extends State<DexScreen>
                   width: 28,
                   height: 28,
                   color:
-                      ChainInfo.colors[offer.pair.ticker] ??
+                      ChainInfo.colors[offer.ticker] ??
                       AppTheme.primaryColor,
                 ),
               ),
@@ -881,8 +885,8 @@ class _DexScreenState extends State<DexScreen>
             Expanded(
               child: Text(
                 offer.sellXfg
-                    ? 'Sell XFG → ${offer.pair.ticker}'
-                    : 'Buy XFG ← ${offer.pair.ticker}',
+                    ? 'Sell XFG → ${offer.ticker}'
+                    : 'Buy XFG ← ${offer.ticker}',
                 style: const TextStyle(color: AppTheme.textPrimary),
               ),
             ),
@@ -898,10 +902,10 @@ class _DexScreenState extends State<DexScreen>
               ),
               _offerDetailRow(
                 'Rate',
-                '${offer.rate.toStringAsFixed(6)} ${offer.pair.ticker}/XFG',
+                '${offer.rate.toStringAsFixed(6)} ${offer.ticker}/XFG',
               ),
               _offerDetailRow(
-                'XFG per ${offer.pair.ticker}',
+                'XFG per ${offer.ticker}',
                 offer.xfgPerCounterparty.toStringAsFixed(8),
               ),
               if (offer.makerPubKey.isNotEmpty)
@@ -1321,6 +1325,11 @@ class _DexScreenState extends State<DexScreen>
     ),
   );
 
+  /// Pairs whose chain client the daemon actually registers.
+  static final List<SwapPairSdk> _selectablePairs = SwapPairSdk.values
+      .where((p) => ChainInfo.isSwapable(p.ticker))
+      .toList(growable: false);
+
   void _submitOffer(DexState state) async {
     final amountStr = _amountController.text.trim();
     final rateStr = _rateController.text.trim();
@@ -1330,7 +1339,7 @@ class _DexScreenState extends State<DexScreen>
     if (amountXfg == null || rate == null || amountXfg <= 0 || rate <= 0)
       return;
 
-    final xfgAtomic = (amountXfg * 1e7).round();
+    final xfgAtomic = xfgToAtomic(amountXfg);
     // Form rate = counterparty token per XFG; wire rateNum = XFG per token
     // (matches the orderbook convention used by /getswapprice and the
     // composite price oracle), both scaled by 1e7.
@@ -1358,10 +1367,18 @@ class _DexScreenState extends State<DexScreen>
   }
 
   void _requestSwap(DexState state) async {
-    final offer =
-        state.selectedOffer ??
-        (state.offers.isNotEmpty ? state.offers.first : null);
-    if (offer == null) return;
+    // Only the offer the user actually tapped. Falling back to `offers.first`
+    // filled whichever offer the daemon happened to list first.
+    final offer = state.selectedOffer;
+    if (offer == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tap an offer in the book before filling.'),
+          backgroundColor: AppTheme.warningColor,
+        ),
+      );
+      return;
+    }
     final amountStr = _amountController.text.trim();
     if (amountStr.isEmpty) return;
     final amountXfg = double.tryParse(amountStr);
@@ -1371,8 +1388,8 @@ class _DexScreenState extends State<DexScreen>
         ? _xmrAddressController.text.trim()
         : _takerKeyController.text.trim();
     context.read<DexCubit>().requestSwap(
-      offerId: offer.offerId,
-      amount: (amountXfg * 1e7).toInt(),
+      offer: offer,
+      amount: xfgToAtomic(amountXfg),
       takerPubKey: '',
       proofOfFunds: '',
       takerChainKey: takerKey,

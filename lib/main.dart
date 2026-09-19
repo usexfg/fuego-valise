@@ -23,7 +23,6 @@ import 'providers/wallet_provider.dart';
 import 'screens/splash_screen.dart';
 import 'services/daemon_manager.dart';
 import 'services/evm_account_service.dart';
-import 'services/fuego_daemon_client.dart' as hearth;
 import 'services/fuego_rpc_service.dart';
 import 'services/fuego_vault_service.dart';
 import 'services/node_connection.dart';
@@ -270,13 +269,14 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
               create: (_) =>
                   CdCubit(rpcService, backendReady: widget.backendReady),
             ),
+            // Hearth rides the same local walletd proxy as the rest of the
+            // wallet. It used to build its own client against
+            // `nodeConnection.remoteHost` — the remote seed node, over plain
+            // HTTP, never re-pointed after `connect()` — and send `swap`,
+            // `add_liq`, `remove_liq` and `place_limit_order` there. Those are
+            // wallet methods; fuegod does not implement them.
             BlocProvider<HearthCubit>(
-              create: (_) => HearthCubit(
-                hearth.FuegoDaemonClient(
-                  host: nodeConnection.remoteHost,
-                  networkConfig: _activeConfig,
-                ),
-              ),
+              create: (_) => HearthCubit(rpcService),
             ),
             BlocProvider<DexCubit>(
               create: (_) {

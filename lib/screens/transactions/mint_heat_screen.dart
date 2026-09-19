@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
+import '../../core/constants.dart';
 import '../../models/heat_amm.dart';
 import '../../utils/theme.dart';
 import '../../utils/xfg_ticker.dart' as xt;
@@ -21,7 +22,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
   bool _isLoading = false;
   bool _isLoadingRate = true;
   String? _errorMessage;
-  HeatMetrics? _metrics;
+  PoolInfo? _pool;
   String? _rateError;
 
   @override
@@ -43,10 +44,14 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       _rateError = null;
     });
     try {
-      final metrics = await context.read<WalletCubit>().getHeatMetrics();
+      // The mint rate is the live pool ratio, not the redemption price.
+      // walletd sizes the mint as `xfg_burned * spot_price / COIN`, and
+      // SimpleWallet's `mint_heat` uses `reserveHeat / reserveXfg` from
+      // /amm_pool_info. Quoting anything else misstates what the user gets.
+      final pool = await context.read<WalletCubit>().getPoolInfo();
       if (mounted) {
         setState(() {
-          _metrics = metrics;
+          _pool = pool;
           _isLoadingRate = false;
         });
       }
@@ -60,14 +65,17 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
     }
   }
 
-  double get _twapRate {
-    if (_metrics == null) return 0;
-    return double.tryParse(_metrics!.redemptionPrice) ?? 0;
+  /// ΗΞΔŦ per XFG from the live pool. Zero when the pool is unseeded.
+  double get _poolRate {
+    final p = _pool;
+    if (p == null || !p.isSeeded) return 0;
+    return p.heatPerXfg;
   }
 
+  /// Estimate only — the daemon recomputes it at execution height.
   double get _estimatedHeat {
     final xfg = double.tryParse(_amountController.text) ?? 0;
-    return xfg * _twapRate;
+    return xfg * _poolRate;
   }
 
   void _onAmountChanged() {
@@ -87,7 +95,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       return;
     }
 
-    const fee = 0.008; // XFG network fee for burn transaction
+    const fee = txFeeXfg; // MINIMUM_FEE from CryptoNoteConfig.h
     final totalXfg = xfgAmount + fee;
 
     if (totalXfg > cubit.state.unlockedBalanceXfg) {
@@ -132,7 +140,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'You will receive',
+                    'Estimated (daemon recomputes at execution)',
                     style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                   ),
                   const SizedBox(height: 4),
@@ -147,7 +155,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Rate: 1 XFG = ${_twapRate.toStringAsFixed(4)} ΗΞΔŦ (TWAP)',
+                    'Rate: 1 XFG = ${_poolRate.toStringAsFixed(4)} ΗΞΔŦ (pool)',
                     style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -251,11 +259,21 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       final amountStr = _amountController.text.trim();
       final xfgAmount = double.tryParse(amountStr) ?? 0;
 
-      final result = await cubit.mintHeat(xfgAmount: xfgAmount, pin: pin);
+      final result = await cubit.mintHeat(xfgDisplay: amountStr, pin: pin);
 
       if (mounted) {
-        final txHash = result['tx_hash'] as String? ?? '';
-        _showSuccessDialog(txHash, xfgAmount);
+        final txHash = (result['transactionHash'] ??
+                result['txHash'] ??
+                result['tx_hash']) as String? ??
+            '';
+        // The daemon may report the minted amount; only show a figure it gave
+        // us. The old dialog printed the pre-trade estimate as if it were the
+        // settled amount.
+        final mintedAtomic = (result['heat_minted'] ?? result['heatMinted']);
+        final minted = mintedAtomic is num
+            ? atomicToDisplay(mintedAtomic.toInt())
+            : null;
+        _showSuccessDialog(txHash, xfgAmount, minted);
       }
     } catch (e) {
       if (!mounted) return;
@@ -271,8 +289,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
     }
   }
 
-  void _showSuccessDialog(String txHash, double xfgAmount) {
-    final estimatedHeat = _estimatedHeat;
+  void _showSuccessDialog(String txHash, double xfgAmount, String? minted) {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -302,10 +319,13 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                '+${estimatedHeat.toStringAsFixed(7)} ΗΞΔŦ received',
+                minted != null
+                    ? '+$minted ΗΞΔŦ minted'
+                    : 'ΗΞΔŦ minted at the pool rate — check your balance once '
+                        'the transaction confirms',
                 style: TextStyle(
                   color: AppTheme.successColor,
-                  fontSize: 16,
+                  fontSize: minted != null ? 16 : 13,
                   fontFamily: AppTheme.numberFontFamily,
                 ),
               ),
@@ -382,8 +402,8 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
   void _setMaxAmount() {
     final state = context.read<WalletCubit>().state;
     final available = state.unlockedBalanceXfg;
-    // Reserve 0.008 XFG for network fee
-    final maxAmount = (available - 0.008).clamp(0.0, available);
+    // Reserve the network minimum fee.
+    final maxAmount = (available - txFeeXfg).clamp(0.0, available);
     _amountController.text = maxAmount.toStringAsFixed(7);
     setState(() {}); // Update estimated ΗΞΔŦ
   }
@@ -475,7 +495,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                               ),
                               SizedBox(width: 12),
                               Text(
-                                'Loading TWAP rate...',
+                                'Loading pool rate...',
                                 style: TextStyle(color: AppTheme.textMuted),
                               ),
                             ],
@@ -508,7 +528,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   const Text(
-                                    'Minting Rate (TWAP)',
+                                    'Minting Rate (live pool)',
                                     style: TextStyle(
                                       color: AppTheme.textSecondary,
                                       fontSize: 14,
@@ -516,7 +536,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                                   ),
                                   Flexible(
                                     child: Text(
-                                      '1 XFG = ${_twapRate.toStringAsFixed(4)} ΗΞΔŦ',
+                                      '1 XFG = ${_poolRate.toStringAsFixed(4)} ΗΞΔŦ',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: TextAlign.right,
@@ -571,8 +591,9 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                       if (amount == null || amount <= 0) {
                         return 'Please enter a valid amount';
                       }
-                      if (amount + 0.008 > availableXfg) {
-                        return 'Insufficient XFG balance (incl. 0.008 fee)';
+                      if (amount + txFeeXfg > availableXfg) {
+                        return 'Insufficient XFG balance (incl. '
+                            '${txFeeXfg.toStringAsFixed(7)} fee)';
                       }
                       return null;
                     },
@@ -585,7 +606,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                   const SizedBox(height: 16),
 
                   // Estimated ΗΞΔŦ output
-                  if (_twapRate > 0 && _amountController.text.isNotEmpty) ...[
+                  if (_poolRate > 0 && _amountController.text.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
@@ -663,7 +684,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ||
                               availableXfg <= 0 ||
-                              _twapRate <= 0
+                              _poolRate <= 0
                           ? null
                           : _showConfirmDialog,
                       style: ElevatedButton.styleFrom(
@@ -713,8 +734,9 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Minting burns XFG to create ΗΞΔŦ at the current TWAP redemption rate. '
-                            'The rate is updated each block. This action cannot be undone.',
+                            'Minting burns XFG to create ΗΞΔŦ at the live Hearth pool rate. '
+                            'The daemon recomputes the rate when the transaction is built, so the '
+                            'amount above is an estimate. This action cannot be undone.',
                             style: TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 14,

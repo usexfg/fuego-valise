@@ -1,45 +1,69 @@
 /// Swap and DEX models aligned with fuego-sdk types.
 /// Maps 1:1 with Rust SDK types.rs SwapPair, SwapOffer, SwapStatus, etc.
 
-/// Supported swap pair IDs matching fuego-suite.
-/// IDs match C++ `SwapPair`; gaps are non-EVM pairs not mirrored here yet.
+/// Supported swap pair IDs — mirrors `XfgSwap::SwapPair` in
+/// fuego-suite `src/SwapDaemon/SwapTypes.h` (ids 0-28, no gaps).
+///
+/// [ticker] is what the wallet shows. [daemonName] is the string
+/// `swapPairFromString()` parses in `src/SwapDaemon/SwapTypes.cpp` — the two
+/// differ for six pairs (RHC/UNI/XPL/PLS/MON/KMD), and sending the display
+/// ticker where the daemon name is required is rejected as "Unknown swap pair".
 enum SwapPairSdk {
-  sol(0, 'SOL', 'XFG/SOL'),
-  eth(1, 'ETH', 'XFG/ETH'),
-  xmr(2, 'XMR', 'XFG/XMR'),
-  bch(3, 'BCH', 'XFG/BCH'),
-  arb(4, 'ARB', 'XFG/ARB'),
-  base(5, 'BASE', 'XFG/BASE'),
-  kmd(6, 'KMD', 'XFG/KMD'),
-  bnb(7, 'BNB', 'XFG/BNB'),
-  dcr(8, 'DCR', 'XFG/DCR'),
-  btc(9, 'BTC', 'XFG/BTC'),
-  ltc(10, 'LTC', 'XFG/LTC'),
-  poly(11, 'POLY', 'XFG/POLY'),
-  gleec(12, 'GLEEC', 'XFG/GLEEC'),
-  robinhood(13, 'RHC', 'XFG/RHC'),
-  avax(14, 'AVAX', 'XFG/AVAX'),
-  cro(15, 'CRO', 'XFG/CRO'),
-  bob(16, 'BOB', 'XFG/BOB'),
-  unichain(18, 'UNI', 'XFG/UNI'),
-  plasma(19, 'XPL', 'XFG/XPL'),
-  pulsex(23, 'PLS', 'XFG/PLS'),
-  monad(25, 'MON', 'XFG/MON'),
-  optimism(26, 'OP', 'XFG/OP');
+  sol(0, 'SOL', 'XFG/SOL', 'SOL'),
+  eth(1, 'ETH', 'XFG/ETH', 'ETH'),
+  xmr(2, 'XMR', 'XFG/XMR', 'XMR'),
+  bch(3, 'BCH', 'XFG/BCH', 'BCH'),
+  arb(4, 'ARB', 'XFG/ARB', 'ARB'),
+  base(5, 'BASE', 'XFG/BASE', 'BASE'),
+  kmd(6, 'KMD', 'XFG/KMD', 'KMD_SPV'),
+  bnb(7, 'BNB', 'XFG/BNB', 'BNB'),
+  dcr(8, 'DCR', 'XFG/DCR', 'DCR'),
+  btc(9, 'BTC', 'XFG/BTC', 'BTC'),
+  ltc(10, 'LTC', 'XFG/LTC', 'LTC'),
+  poly(11, 'POLY', 'XFG/POLY', 'POLYGON'),
+  gleec(12, 'GLEEC', 'XFG/GLEEC', 'GLEEC'),
+  robinhood(13, 'RHC', 'XFG/RHC', 'ROBINHOOD'),
+  avax(14, 'AVAX', 'XFG/AVAX', 'AVAX'),
+  cro(15, 'CRO', 'XFG/CRO', 'CRO'),
+  bob(16, 'BOB', 'XFG/BOB', 'BOB'),
+  sia(17, 'SIA', 'XFG/SIA', 'SIA'),
+  unichain(18, 'UNI', 'XFG/UNI', 'UNICHAIN'),
+  plasma(19, 'XPL', 'XFG/XPL', 'PLASMA'),
+  doge(20, 'DOGE', 'XFG/DOGE', 'DOGE'),
+  dash(21, 'DASH', 'XFG/DASH', 'DASH'),
+  zec(22, 'ZEC', 'XFG/ZEC', 'ZEC'),
+  pulsex(23, 'PLS', 'XFG/PLS', 'PULSEX'),
+  zano(24, 'ZANO', 'XFG/ZANO', 'ZANO'),
+  monad(25, 'MON', 'XFG/MON', 'MONAD'),
+  optimism(26, 'OP', 'XFG/OP', 'OPTIMISM'),
+  ton(27, 'TON', 'XFG/TON', 'TON'),
+  dot(28, 'DOT', 'XFG/DOT', 'DOT');
 
   final int id;
   final String ticker;
   final String displayName;
-  const SwapPairSdk(this.id, this.ticker, this.displayName);
 
-  static SwapPairSdk fromId(int id) => SwapPairSdk.values.firstWhere(
-    (p) => p.id == id,
-    orElse: () => SwapPairSdk.eth,
-  );
+  /// The exact string `swapPairFromString()` accepts. Never the display
+  /// ticker — see the six divergences noted above.
+  final String daemonName;
 
+  const SwapPairSdk(this.id, this.ticker, this.displayName, this.daemonName);
+
+  /// Null when [id] is not a pair this build knows. Callers must decide what
+  /// an unknown pair means rather than silently rendering it as another asset.
   static SwapPairSdk? tryFromId(int id) {
     for (final p in SwapPairSdk.values) {
       if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// Null for an unrecognised ticker or daemon name (case-insensitive).
+  static SwapPairSdk? tryFromName(String name) {
+    final u = name.trim().toUpperCase();
+    if (u.isEmpty) return null;
+    for (final p in SwapPairSdk.values) {
+      if (p.ticker == u || p.daemonName == u) return p;
     }
     return null;
   }
@@ -56,10 +80,14 @@ enum SwapLockTypeSdk {
   final String label;
   const SwapLockTypeSdk(this.id, this.label);
 
-  static SwapLockTypeSdk fromId(int id) => SwapLockTypeSdk.values.firstWhere(
-        (v) => v.id == id,
-        orElse: () => SwapLockTypeSdk.htlc,
-      );
+  /// Null for an id this build does not know — an unknown lock type must not
+  /// be shown as HTLC, since that is a claim about how the swap is secured.
+  static SwapLockTypeSdk? tryFromId(int id) {
+    for (final v in SwapLockTypeSdk.values) {
+      if (v.id == id) return v;
+    }
+    return null;
+  }
 
   static SwapLockTypeSdk fromString(String s) {
     final u = s.toUpperCase();
@@ -73,7 +101,9 @@ enum SwapLockTypeSdk {
   bool get isHtlc => this == htlc;
 }
 
-/// Supported chains for SPV verification.
+/// Wallet-local chain classification, one entry per [SwapPairSdk] plus Fuego.
+/// Ids are wallet-internal and are NOT the C++ SwapPair ids — use
+/// [SwapPairSdk.id] wherever a daemon pair id is meant.
 enum ChainTypeSdk {
   fuego(0, 'XFG', 'Fuego'),
   solana(1, 'SOL', 'Solana'),
@@ -97,7 +127,14 @@ enum ChainTypeSdk {
   plasma(19, 'XPL', 'Plasma'),
   pulsex(20, 'PLS', 'PulseChain'),
   monad(21, 'MON', 'Monad'),
-  optimism(22, 'OP', 'Optimism');
+  optimism(22, 'OP', 'Optimism'),
+  sia(23, 'SIA', 'Sia'),
+  doge(24, 'DOGE', 'Dogecoin'),
+  dash(25, 'DASH', 'Dash'),
+  zec(26, 'ZEC', 'Zcash'),
+  zano(27, 'ZANO', 'Zano'),
+  ton(28, 'TON', 'TON'),
+  dot(29, 'DOT', 'Polkadot');
 
   final int id;
   final String symbol;
@@ -120,6 +157,11 @@ enum ChainTypeSdk {
       this == ChainTypeSdk.pulsex ||
       this == ChainTypeSdk.monad ||
       this == ChainTypeSdk.optimism;
+
+  /// UTXO chains the in-app `signmessage` reserve proof is wired for.
+  /// DOGE/DASH/ZEC are UTXO too but have no verified P2PKH version bytes
+  /// here, so they stay out and fall to the explicit unsupported branch
+  /// rather than producing a proof for the wrong address.
   bool get isBtcFamily =>
       this == ChainTypeSdk.bitcoinCash ||
       this == ChainTypeSdk.komodo ||
@@ -127,10 +169,13 @@ enum ChainTypeSdk {
       this == ChainTypeSdk.bitcoin ||
       this == ChainTypeSdk.litecoin;
 
-  static ChainTypeSdk fromId(int id) => ChainTypeSdk.values.firstWhere(
-    (c) => c.id == id,
-    orElse: () => ChainTypeSdk.fuego,
-  );
+  /// Null for an id this build does not know.
+  static ChainTypeSdk? tryFromId(int id) {
+    for (final c in ChainTypeSdk.values) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
 }
 
 /// Swap state machine states.
@@ -143,17 +188,24 @@ enum SwapStateSdk {
   completed,
   cancelled;
 
-  static SwapStateSdk fromString(String s) => SwapStateSdk.values.firstWhere(
-    (v) => v.name == s,
-    orElse: () => SwapStateSdk.open,
-  );
+  /// Null for a state name this build does not know. Rendering an unknown
+  /// daemon state as `open` hides refunds and failures.
+  static SwapStateSdk? tryFromString(String s) {
+    for (final v in SwapStateSdk.values) {
+      if (v.name == s) return v;
+    }
+    return null;
+  }
 }
 
 /// Swap offer on the orderbook.
 class SwapOfferSdk {
   final String offerId;
   final String makerPubKey;
-  final SwapPairSdk pair;
+
+  /// The raw daemon pair id, always preserved. [pair] is null when this build
+  /// does not know the id — the offer is then shown, but not actionable.
+  final int pairId;
   final bool sellXfg;
   final int amount;
   final int rateNum;
@@ -163,7 +215,7 @@ class SwapOfferSdk {
   const SwapOfferSdk({
     required this.offerId,
     required this.makerPubKey,
-    required this.pair,
+    required this.pairId,
     required this.sellXfg,
     required this.amount,
     required this.rateNum,
@@ -175,12 +227,19 @@ class SwapOfferSdk {
   double get counterpartyPerXfg =>
       xfgPerCounterparty > 0 ? 1 / xfgPerCounterparty : 0;
   double get rate => counterpartyPerXfg;
-  String get pairLabel => pair.displayName;
+
+  SwapPairSdk? get pair => SwapPairSdk.tryFromId(pairId);
+
+  /// True when the wallet knows this pair well enough to act on it.
+  bool get isKnownPair => pair != null;
+
+  String get pairLabel => pair?.displayName ?? 'XFG/PAIR_$pairId';
+  String get ticker => pair?.ticker ?? 'PAIR_$pairId';
 
   SwapOfferSdk copyWith({String? makerPubKey}) => SwapOfferSdk(
     offerId: offerId,
     makerPubKey: makerPubKey ?? this.makerPubKey,
-    pair: pair,
+    pairId: pairId,
     sellXfg: sellXfg,
     amount: amount,
     rateNum: rateNum,
@@ -193,7 +252,7 @@ class SwapOfferSdk {
       offerId: j['offerId']?.toString() ?? j['offer_id']?.toString() ?? '',
       makerPubKey:
           j['makerPubKey']?.toString() ?? j['maker_pubkey']?.toString() ?? '',
-      pair: SwapPairSdk.fromId(_intValue(j['pair'])),
+      pairId: _intValue(j['pair']),
       sellXfg:
           j['sellXfg'] as bool? ??
           j['sell_xfg'] as bool? ??
@@ -214,7 +273,7 @@ class SwapOfferSdk {
   Map<String, dynamic> toJson() => {
     'offerId': offerId,
     'makerPubKey': makerPubKey,
-    'pair': pair.id,
+    'pair': pairId,
     'sellXfg': sellXfg,
     'amount': amount,
     'rateNum': rateNum,
@@ -226,8 +285,9 @@ class SwapOfferSdk {
 /// Active swap status.
 class SwapStatusSdk {
   final String swapId;
-  final SwapStateSdk state;
-  final SwapPairSdk pair;
+  final SwapStateSdk? state;
+  final String stateName;
+  final int pairId;
   final int amount;
   final String makerPubkey;
   final String? takerPubkey;
@@ -237,7 +297,8 @@ class SwapStatusSdk {
   const SwapStatusSdk({
     required this.swapId,
     required this.state,
-    required this.pair,
+    required this.stateName,
+    required this.pairId,
     required this.amount,
     required this.makerPubkey,
     this.takerPubkey,
@@ -247,8 +308,9 @@ class SwapStatusSdk {
 
   factory SwapStatusSdk.fromJson(Map<String, dynamic> j) => SwapStatusSdk(
     swapId: j['swapId'] as String? ?? j['swap_id'] as String? ?? '',
-    state: SwapStateSdk.fromString(j['state'] as String? ?? 'open'),
-    pair: SwapPairSdk.fromId(j['pair'] as int? ?? 0),
+    state: SwapStateSdk.tryFromString(j['state'] as String? ?? ''),
+    stateName: j['state'] as String? ?? '',
+    pairId: (j['pair'] as num?)?.toInt() ?? 0,
     amount: j['amount'] as int? ?? 0,
     makerPubkey:
         j['makerPubkey'] as String? ?? j['maker_pubkey'] as String? ?? '',
@@ -261,7 +323,7 @@ class SwapStatusSdk {
 /// Historical trade record.
 class SwapTradeSdk {
   final String tradeId;
-  final SwapPairSdk pair;
+  final int pairId;
   final bool sellXfg;
   final int amount;
   final int price;
@@ -269,7 +331,7 @@ class SwapTradeSdk {
 
   const SwapTradeSdk({
     required this.tradeId,
-    required this.pair,
+    required this.pairId,
     required this.sellXfg,
     required this.amount,
     required this.price,
@@ -278,7 +340,7 @@ class SwapTradeSdk {
 
   factory SwapTradeSdk.fromJson(Map<String, dynamic> j) => SwapTradeSdk(
     tradeId: j['tradeId'] as String? ?? j['trade_id'] as String? ?? '',
-    pair: SwapPairSdk.fromId(j['pair'] as int? ?? 0),
+    pairId: (j['pair'] as num?)?.toInt() ?? 0,
     sellXfg: j['sellXfg'] as bool? ?? j['sell_xfg'] as bool? ?? true,
     amount: j['amount'] as int? ?? 0,
     price: j['price'] as int? ?? 0,
@@ -288,7 +350,7 @@ class SwapTradeSdk {
 
 /// Price data for a trading pair.
 class SwapPriceSdk {
-  final SwapPairSdk pair;
+  final SwapPairSdk? pair;
   final String bid;
   final String ask;
   final String last;
@@ -310,7 +372,7 @@ class SwapPriceSdk {
     Map<String, dynamic> j, {
     SwapPairSdk? pairOverride,
   }) => SwapPriceSdk(
-    pair: pairOverride ?? SwapPairSdk.fromId(_intValue(j['pair'])),
+    pair: pairOverride ?? SwapPairSdk.tryFromId(_intValue(j['pair'])),
     bid: _firstString(j, const ['bid', 'compositeRate', 'twap']),
     ask: _firstString(j, const ['ask', 'compositeRate', 'twap']),
     last: _firstString(j, const ['last', 'compositeRate', 'twap', 'seedRate']),
@@ -414,7 +476,8 @@ class HtlcScript {
 
 /// Payment proof for cross-chain SPV verification.
 class PaymentProofSdk {
-  final ChainTypeSdk chain;
+  final ChainTypeSdk? chain;
+  final int chainId;
   final String txHash;
   final int amount;
   final String fromAddress;
@@ -430,6 +493,7 @@ class PaymentProofSdk {
 
   const PaymentProofSdk({
     required this.chain,
+    required this.chainId,
     required this.txHash,
     required this.amount,
     required this.fromAddress,
@@ -445,7 +509,8 @@ class PaymentProofSdk {
   });
 
   factory PaymentProofSdk.fromJson(Map<String, dynamic> j) => PaymentProofSdk(
-    chain: ChainTypeSdk.fromId(j['chain_id'] as int? ?? 0),
+    chain: ChainTypeSdk.tryFromId(j['chain_id'] as int? ?? 0),
+    chainId: j['chain_id'] as int? ?? 0,
     txHash: j['tx_hash'] as String? ?? '',
     amount: j['amount'] as int? ?? 0,
     fromAddress: j['from_address'] as String? ?? '',
@@ -465,7 +530,7 @@ class PaymentProofSdk {
   );
 
   Map<String, dynamic> toJson() => {
-    'chain_id': chain.id,
+    'chain_id': chainId,
     'tx_hash': txHash,
     'amount': amount,
     'from_address': fromAddress,

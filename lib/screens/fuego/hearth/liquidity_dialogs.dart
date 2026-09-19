@@ -86,13 +86,32 @@ class _AddLiquidityDialogState extends State<AddLiquidityDialog> {
     final heat = _heatController.text.trim();
     if (xfg.isEmpty || heat.isEmpty) return;
     setState(() => _submitting = true);
-    try {
-      await context.read<HearthCubit>().addLiquidity(xfgAmount: xfg, heatAmount: heat);
-      if (mounted) Navigator.of(context).pop();
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
+    // No bare try/finally here: a failure used to close the spinner and show
+    // nothing, so a rejected deposit looked identical to a successful one.
+    final r = await context
+        .read<HearthCubit>()
+        .addLiquidity(xfgDisplay: xfg, heatDisplay: heat);
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    _reportHearth(context, r, 'Liquidity added');
+    if (r.ok) Navigator.of(context).pop();
   }
+}
+
+/// Shared result reporter — every Hearth write says what happened.
+void _reportHearth(BuildContext context, HearthResult r, String successLabel) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        r.ok
+            ? (r.txHash == null || r.txHash!.isEmpty
+                ? successLabel
+                : '$successLabel — ${r.txHash}')
+            : (r.error ?? 'Failed'),
+      ),
+      backgroundColor: r.ok ? HearthTheme.bidPrimary : HearthTheme.askPrimary,
+    ),
+  );
 }
 
 class RemoveLiquidityDialog extends StatefulWidget {
@@ -132,9 +151,15 @@ class _RemoveLiquidityDialogState extends State<RemoveLiquidityDialog> {
           const SizedBox(height: 12),
           _dialogInput(_sharesController, 'LP Shares to Burn'),
           const SizedBox(height: 12),
-          _dialogInput(_minXfgController, 'Min XFG (slippage)'),
+          _dialogInput(_minXfgController, 'Min XFG (required)'),
           const SizedBox(height: 12),
-          _dialogInput(_minHeatController, 'Min HΞΔŦ (slippage)'),
+          _dialogInput(_minHeatController, 'Min HΞΔŦ (required)'),
+          const SizedBox(height: 8),
+          Text(
+            'Both minimums are required. Leaving them blank sends a floor of '
+            'zero, which lets the withdrawal be sandwiched.',
+            style: HearthTheme.label(size: 10, color: HearthTheme.textMuted),
+          ),
         ],
         ),
       ),
@@ -185,15 +210,14 @@ class _RemoveLiquidityDialogState extends State<RemoveLiquidityDialog> {
     final minHeat = _minHeatController.text.trim();
     if (shares.isEmpty) return;
     setState(() => _submitting = true);
-    try {
-      await context.read<HearthCubit>().removeLiquidity(
-            shares: shares,
-            minXfg: minXfg,
-            minHeat: minHeat,
-          );
-      if (mounted) Navigator.of(context).pop();
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
+    final r = await context.read<HearthCubit>().removeLiquidity(
+          sharesDisplay: shares,
+          minXfgDisplay: minXfg,
+          minHeatDisplay: minHeat,
+        );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    _reportHearth(context, r, 'Liquidity withdrawn');
+    if (r.ok) Navigator.of(context).pop();
   }
 }

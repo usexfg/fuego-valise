@@ -471,13 +471,25 @@ class FuegoVaultService {
     await encFile.writeAsString(enc, flush: true);
     if (!Platform.isWindows) try { await Process.run('chmod', ['600', encFile.path]); } catch (_) {}
 
-    // Biometric re-entry envelope using a random device-bound key (never
-    // derived from the wallet password or the app PIN).
-    final bioKey = await _security.getOrCreateBioKey();
-    final bio = await _security.encryptBytesWithKey(plain, bioKey);
+    // Biometric re-entry envelope, ONLY when biometrics are enabled.
+    //
+    // This used to be unconditional. The envelope is encrypted with a
+    // device-bound key held in secure storage with no biometric binding
+    // (iOS accessibility is first_unlock_this_device; libsecret/DPAPI
+    // elsewhere), so writing it for every wallet meant the vault could be
+    // decrypted from disk + keychain without the PIN. The biometric prompt is
+    // an in-app check and does not gate reading that key.
     final bioFile = File('${dir.path}/$fileName.bio');
-    await bioFile.writeAsString(bio, flush: true);
-    if (!Platform.isWindows) try { await Process.run('chmod', ['600', bioFile.path]); } catch (_) {}
+    if (await _security.isBiometricEnabled()) {
+      final bioKey = await _security.getOrCreateBioKey();
+      final bio = await _security.encryptBytesWithKey(plain, bioKey);
+      await bioFile.writeAsString(bio, flush: true);
+      if (!Platform.isWindows) try { await Process.run('chmod', ['600', bioFile.path]); } catch (_) {}
+    } else if (await bioFile.exists()) {
+      // Biometrics were turned off after an envelope was written — remove the
+      // PIN-free copy rather than leaving it behind.
+      try { await bioFile.delete(); } catch (_) {}
+    }
   }
 
   Future<void> _loadInMemory(Uint8List bytes) async {
@@ -504,6 +516,22 @@ class FuegoVaultService {
       spendKey: spendSecret,
       pin: password,
     );
+  }
+
+  /// Delete every `.bio` envelope on disk.
+  ///
+  /// Call when biometrics are switched off: clearing the unwrap key alone
+  /// leaves a full PIN-free copy of each vault on disk.
+  Future<void> purgeBiometricEnvelopes() async {
+    final dir = await getApplicationDocumentsDirectory();
+    for (final w in _wallets) {
+      final f = File('${dir.path}/${w.file}.bio');
+      if (await f.exists()) {
+        try {
+          await f.delete();
+        } catch (_) {}
+      }
+    }
   }
 
   /// Ensure the device-bound biometric unwrap key exists and the active

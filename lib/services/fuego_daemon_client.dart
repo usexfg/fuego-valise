@@ -1,3 +1,11 @@
+// DEPRECATED — unused since Hearth moved onto the fuego_walletd proxy.
+//
+// This client spoke a contract fuegod does not implement: it GET-ed
+// `/amm_quote` and `/getorderbook` with query parameters (fuegod's
+// `jsonMethod` handler reads `request.getBody()`, so the parameters were
+// never seen), and it POSTed `swap` / `add_liq` / `remove_liq` /
+// `place_limit_order` / `mint_heat` to the daemon — all of which are wallet
+// methods. See FuegoRPCService for the replacement. Safe to delete.
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../models/network_config.dart';

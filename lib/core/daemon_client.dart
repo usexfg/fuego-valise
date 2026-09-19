@@ -226,7 +226,9 @@ class FuegoDaemonClient {
       for (final t in txList) {
         final map = Map<String, dynamic>.from(t as Map);
         final amountVal = map['amount'];
-        final amountNum = amountVal is num ? amountVal.toInt() : 0;
+        final amountNum = amountVal is num
+            ? amountVal.toInt()
+            : int.tryParse(amountVal?.toString() ?? '') ?? 0;
         map['direction'] = amountNum < 0 ? 'out' : 'in';
         txs.add(FuegoTransaction.fromJson(map));
       }

@@ -9,8 +9,10 @@ class SwapAmountRow extends StatelessWidget {
 
   final SwapInfo swap;
 
-  String _formatCtr(double amount, String ticker) {
-    final int dec = ChainInfo.decimals[ticker] ?? 7;
+  String _formatCtr(double? amount, String ticker) {
+    if (amount == null) return '—';
+    final int? dec = ChainInfo.decimals[ticker];
+    if (dec == null) return '—';
     final int frac;
     if (dec >= 18) {
       frac = 6;
@@ -53,7 +55,7 @@ class SwapAmountRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Protocol fee — 1%',
+                  'Hearth taker fee — 1%',
                   style: TextStyle(
                     color: AppTheme.textPrimary,
                     fontSize: 14,
@@ -62,7 +64,8 @@ class SwapAmountRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Every atomic swap pays a flat 1% protocol fee, split transparently:',
+                  'HEARTH_FEE_BPS = 100 (1.0%), split as HEARTH_CD_SHARE_PCT '
+                  'and HEARTH_MAKER_REBATE_BPS in the chain parameters:',
                   style: TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 11,
@@ -70,14 +73,15 @@ class SwapAmountRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _feeSplitRow('69%', 'CD yield', AppTheme.primaryColor),
+                _feeSplitRow('70%', 'CD yield pool', AppTheme.primaryColor),
                 const SizedBox(height: 6),
-                _feeSplitRow('11%', 'Bonus pool', AppTheme.successColor),
-                const SizedBox(height: 6),
-                _feeSplitRow('20%', 'Treasury', AppTheme.warningColor),
+                _feeSplitRow('30%', 'Maker rebate', AppTheme.successColor),
                 const SizedBox(height: 12),
                 const Text(
-                  'The fee is taken from the XFG leg. Counterparty-chain network fees are separate and shown when the daemon reports them.',
+                  'This is the Hearth AMM fee. A cross-chain atomic swap is not '
+                  'an Hearth trade and does not pay it; counterparty-chain '
+                  'network fees are separate and shown when the daemon reports '
+                  'them.',
                   style: TextStyle(
                     color: AppTheme.textMuted,
                     fontSize: 10,
@@ -111,7 +115,7 @@ class SwapAmountRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final String pairName = swap.pairName;
     final double xfgDec = swap.xfgAmountDecimal;
-    final double ctrDec = swap.ctrAmountDecimal;
+    final double? ctrDec = swap.ctrAmountDecimal;
     final String xfgStr = xfgDec.toStringAsFixed(2);
     final String ctrStr = _formatCtr(ctrDec, pairName);
     return Column(

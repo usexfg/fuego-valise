@@ -60,6 +60,9 @@ class ChainInfo {
     'TEMPO': 'Tempo',
     'SEI': 'Sei',
     'GLEEC': 'Gleec Chain',
+    'SIA': 'Sia',
+    'TON': 'TON',
+    'DOT': 'Polkadot',
   };
 
   static const Map<String, String> desc = {
@@ -273,6 +276,8 @@ class ChainInfo {
     'FLR': 18, 'KAIA': 18, 'SCR': 18, 'ABS': 18, 'PLUME': 18, 'SONEIUM': 18, 'DOMA': 18,
     'BEAM': 18, 'MOVR': 18, 'PEAQ': 18, 'TEMPO': 18, 'SEI': 18,
     'SOL': 9, 'XMR': 12, 'ZANO': 12, 'XFG': 7,
+    // Remaining daemon pairs (fuego-suite SwapPair 17-28).
+    'SIA': 24, 'TON': 9, 'DOT': 10,
   };
 
   static const Map<String, String> explorerTx = {
@@ -304,10 +309,21 @@ class ChainInfo {
     return tmpl.replaceAll('{txid}', txid);
   }
 
-  static double amountToDecimal(String ticker, int atomic) {
-    final d = decimals[ticker] ?? 7;
+  /// Null when [ticker] has no decimals entry. The old `?? 7` fallback
+  /// rendered 18-decimal amounts 10^11 too large.
+  static double? tryAmountToDecimal(String ticker, int atomic) {
+    final d = decimals[ticker];
+    if (d == null) return null;
     return atomic / _pow10(d);
   }
+
+  static double amountToDecimalWith(int decimalPlaces, int atomic) =>
+      atomic / _pow10(decimalPlaces);
+
+  /// XFG-only convenience; every other asset must go through
+  /// [tryAmountToDecimal] so an unknown ticker cannot be mis-scaled.
+  static double amountToDecimal(String ticker, int atomic) =>
+      tryAmountToDecimal(ticker, atomic) ?? (atomic / _pow10(7));
 
   static double _pow10(int n) {
     double r = 1;
@@ -420,14 +436,18 @@ class ChainInfo {
     'GLEEC': 'assets/coin-icons/gleec.png',
   };
 
-  /// Chains a direct peer swap can actually run on (the ones the local
-  /// xfg-swapd has chain clients for). Everything else is display-only.
+  /// Pairs `xfg-swapd` registers a chain client for, verified against
+  /// `registerChain(SwapPair::…)` in fuego-suite
+  /// `src/SwapDaemon/SwapDaemon.cpp`. 25 of the 29 `SwapPair` ids are live.
   static const List<String> swapableChains = [
     'BTC',
     'LTC',
     'BCH',
     'KMD',
     'DCR',
+    'DOGE',
+    'DASH',
+    'ZEC',
     'ETH',
     'ARB',
     'BASE',
@@ -446,6 +466,15 @@ class ChainInfo {
     'SOL',
     'XMR',
   ];
+
+  /// Pairs that exist in the C++ `SwapPair` enum but whose chain client is
+  /// staged and never registered — the daemon logs
+  /// "… is staged — not yet registered" and the swap cannot run. Kept
+  /// separate so the UI can show them as not-yet-available instead of
+  /// offering a swap that will fail.
+  static const Set<String> stagedChains = {'SIA', 'ZANO', 'TON', 'DOT'};
+
+  static bool isSwapable(String ticker) => swapableChains.contains(ticker);
 
   /// DeXFG 33-chain EVM expansion: live in the wallet's ERC20 layer
   /// (Erc20Service / EvmChainKey — balances, send, approve via Tokens tab)

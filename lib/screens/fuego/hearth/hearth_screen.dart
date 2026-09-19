@@ -4,6 +4,7 @@ import '../../../bloc/hearth/hearth_cubit.dart';
 import '../../../models/candlestick.dart';
 import '../../../models/heat_amm.dart';
 import '../../../services/price_history_service.dart';
+import '../../../core/constants.dart';
 import '../../../utils/hearth_theme.dart';
 import '../../../widgets/fuego_chart.dart';
 import 'liquidity_dialogs.dart';
@@ -58,18 +59,20 @@ class _HearthScreenState extends State<HearthScreen>
       if (_amountUsd.isNotEmpty) setState(() => _amountUsd = '');
       return;
     }
-    const heatPegUsd = 1.58;
     if (_sellXfg) {
-      final spot =
-          double.tryParse(
-            context.read<HearthCubit>().state.pool?.price ?? '',
-          ) ??
-          0;
+      // XFG has no USD quote of its own — it is valued through HEAT. With no
+      // seeded pool there is no rate, so show nothing rather than invent one.
+      final pool = context.read<HearthCubit>().state.pool;
+      if (pool == null || !pool.isSeeded) {
+        setState(() => _amountUsd = '');
+        return;
+      }
       setState(
-        () => _amountUsd = '\$${(val * spot * heatPegUsd).toStringAsFixed(2)}',
+        () => _amountUsd =
+            '\$${(val * pool.heatPerXfg * kHeatPegUsd).toStringAsFixed(2)}',
       );
     } else {
-      setState(() => _amountUsd = '\$${(val * heatPegUsd).toStringAsFixed(2)}');
+      setState(() => _amountUsd = '\$${(val * kHeatPegUsd).toStringAsFixed(2)}');
     }
   }
 
@@ -99,6 +102,7 @@ class _HearthScreenState extends State<HearthScreen>
               : Column(
                   children: [
                     _buildHeader(state),
+                    if (state.error != null) _errorBanner(state.error!),
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
@@ -143,21 +147,18 @@ children: [
   }
 
   Widget _buildHeader(HearthState state) {
-    const heatPegUsd = 1.58;
-    const xfgHeatRatio = 0.1;
-    final heatUsd = heatPegUsd;
-    final spot = state.pool?.price;
-    final spotNum =
-        (spot != null &&
-            double.tryParse(spot) != null &&
-            double.parse(spot) > 0)
-        ? double.parse(spot)
-        : xfgHeatRatio;
-    final xfgUsd = spotNum * heatUsd;
+    const heatUsd = kHeatPegUsd;
+    final pool = state.pool;
+    final bool seeded = pool != null && pool.isSeeded;
+    // Null, not a stand-in ratio: with no pool there is no XFG price.
+    final double? spotNum = seeded ? pool.heatPerXfg : null;
+    final double? xfgUsd = spotNum == null ? null : spotNum * heatUsd;
 
-    if (xfgUsd > _lastXfgUsd && _lastXfgUsd > 0) _priceUp = true;
-    if (xfgUsd < _lastXfgUsd && _lastXfgUsd > 0) _priceUp = false;
-    _lastXfgUsd = xfgUsd;
+    if (xfgUsd != null) {
+      if (xfgUsd > _lastXfgUsd && _lastXfgUsd > 0) _priceUp = true;
+      if (xfgUsd < _lastXfgUsd && _lastXfgUsd > 0) _priceUp = false;
+      _lastXfgUsd = xfgUsd;
+    }
 
     // Candle law: rising = Champagne Gold, falling = Midnight Blue.
     return Container(
@@ -202,7 +203,9 @@ children: [
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
-                '1 XFG ≈ ${spotNum.toStringAsFixed(1)} HΞ∆T',
+                spotNum == null
+                    ? '1 XFG ≈ — HΞ∆T'
+                    : '1 XFG ≈ ${spotNum.toStringAsFixed(4)} HΞ∆T',
                 style: HearthTheme.mono(
                   size: 13,
                   weight: FontWeight.w700,
@@ -212,7 +215,12 @@ children: [
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(child: _metricChip(_formatVol(state.pool?.epochSwapFees.toString()), HearthTheme.textSecondary)),
+          Flexible(
+            child: _metricChip(
+              _formatVol(state.pool?.epochSwapFeesDisplay),
+              HearthTheme.textSecondary,
+            ),
+          ),
           const SizedBox(width: 6),
           Flexible(
             flex: 2,
@@ -294,25 +302,24 @@ children: [
   }
 
   Widget _buildHeatPriceBar(HearthState state) {
-    const xfgHeatRatio = 0.1;
-    final spot = state.pool?.price;
-    final spotNum =
-        (spot != null &&
-            double.tryParse(spot) != null &&
-            double.parse(spot) > 0)
-        ? double.parse(spot)
-        : xfgHeatRatio;
-
-    const heatPegUsd = 1.58;
-
-    final mintRate = (spotNum > 0) ? 1 / spotNum : 10.0;
-    final leftLabel = mintRate >= 1
-        ? '␉${mintRate.toStringAsFixed(2)}'
-        : '${mintRate.toStringAsFixed(2)}𐅪';
-    final xfgUsd = spotNum * heatPegUsd;
-    final rightLabel = xfgUsd >= 1
-        ? '␉${xfgUsd.toStringAsFixed(2)}'
-        : '${xfgUsd.toStringAsFixed(2)}𐅪';
+    final pool = state.pool;
+    // No pool, no rate. The previous code substituted a hardcoded 0.1 ratio
+    // and rendered it as the live mint rate, which is a fabricated price.
+    final bool seeded = pool != null && pool.isSeeded;
+    final double? heatPerXfg = seeded ? pool.heatPerXfg : null;
+    final double? mintRate = seeded ? pool.xfgPerHeat : null;
+    final String leftLabel = mintRate == null
+        ? '—'
+        : (mintRate >= 1
+            ? '␉${mintRate.toStringAsFixed(2)}'
+            : '${mintRate.toStringAsFixed(2)}𐅪');
+    final double? xfgUsd =
+        heatPerXfg == null ? null : heatPerXfg * kHeatPegUsd;
+    final String rightLabel = xfgUsd == null
+        ? '—'
+        : (xfgUsd >= 1
+            ? '␉${xfgUsd.toStringAsFixed(2)}'
+            : '${xfgUsd.toStringAsFixed(2)}𐅪');
 
     return Container(
       color: HearthTheme.bgDeep,
@@ -858,24 +865,29 @@ children: [
     return SizedBox(
       height: 44,
       child: ElevatedButton(
-        onPressed: () {
-          final amount = _amountController.text.trim();
-          if (amount.isEmpty) return;
-          if (isLimit) {
-            final price = _priceController.text.trim();
-            if (price.isEmpty) return;
-            context.read<HearthCubit>().placeLimitOrder(
-              sellXfg: _sellXfg,
-              amount: amount,
-              price: price,
-            );
-          } else {
-            context.read<HearthCubit>().getQuote(
-              sellXfg: _sellXfg,
-              amount: amount,
-            );
-          }
-        },
+        onPressed: state.isSubmitting
+            ? null
+            : () async {
+                final amount = _amountController.text.trim();
+                if (amount.isEmpty) return;
+                if (isLimit) {
+                  final price = _priceController.text.trim();
+                  if (price.isEmpty) return;
+                  final r = await context
+                      .read<HearthCubit>()
+                      .placeLimitOrder(
+                        sellXfg: _sellXfg,
+                        amountDisplay: amount,
+                        priceDisplay: price,
+                      );
+                  if (mounted) _report(r, 'Limit order placed');
+                } else {
+                  await context.read<HearthCubit>().getQuote(
+                        sellXfg: _sellXfg,
+                        amountDisplay: amount,
+                      );
+                }
+              },
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: HearthTheme.textWhite,
@@ -896,17 +908,13 @@ children: [
     return SizedBox(
       height: 42,
       child: ElevatedButton(
-        onPressed: () {
-          final cubit = context.read<HearthCubit>();
-          final q = cubit.state.quote!;
-          final input = _amountController.text.trim();
-          if (input.isEmpty) return;
-          cubit.executeSwap(
-            sellXfg: _sellXfg,
-            inputAmount: input,
-            minOutput: q.outputAmount,
-          );
-        },
+        onPressed: state.isSubmitting
+            ? null
+            : () async {
+                final r =
+                    await context.read<HearthCubit>().executeQuotedSwap();
+                if (mounted) _report(r, 'Swap submitted');
+              },
         style: ElevatedButton.styleFrom(
           backgroundColor: HearthTheme.bidPrimary,
           foregroundColor: HearthTheme.textWhite,
@@ -922,10 +930,13 @@ children: [
   }
 
   Widget _quoteDisplay(AmmQuote quote, HearthState state) {
-    final heatAmount = _sellXfg ? quote.outputAmount : _amountController.text.trim();
-    final heatVal = double.tryParse(heatAmount) ?? 0;
-    const heatPegUsd = 1.58;
-    final usd = heatVal * heatPegUsd;
+    // HEAT side of the trade in display units: the quote output when selling
+    // XFG, otherwise what the user typed.
+    final heatDisplay =
+        _sellXfg ? quote.outputAmount : _amountController.text.trim();
+    final heatVal = double.tryParse(heatDisplay) ?? 0;
+    final usd = heatVal * kHeatPegUsd;
+    final minOut = state.minOutputAtomic;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -965,7 +976,7 @@ children: [
                 ),
               ),
               Text(
-                'Fee: ${quote.fee}',
+                'Fee: ${quote.feeDisplay}',
                 style: HearthTheme.mono(size: 10, color: HearthTheme.textMuted),
               ),
             ],
@@ -976,7 +987,24 @@ children: [
             children: [
               Text('Price Impact', style: HearthTheme.label(size: 9)),
               Text(
-                '${(int.tryParse(quote.priceImpactBps) ?? 0) / 100}%',
+                quote.priceImpact,
+                style: HearthTheme.mono(
+                  size: 10,
+                  color: HearthTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Min received (${(state.slippageBps / 100).toStringAsFixed(2)}% slippage)',
+                style: HearthTheme.label(size: 9),
+              ),
+              Text(
+                minOut == null ? '—' : atomicToDisplay(minOut),
                 style: HearthTheme.mono(
                   size: 10,
                   color: HearthTheme.textSecondary,
@@ -985,6 +1013,51 @@ children: [
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Read failures were silent too — the screen simply showed an empty pool.
+  Widget _errorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      color: HearthTheme.askPrimary.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline,
+              size: 14, color: HearthTheme.askPrimary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: HearthTheme.mono(size: 10, color: HearthTheme.askPrimary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => context.read<HearthCubit>().loadPool(),
+            child: Text('Retry',
+                style: HearthTheme.mono(size: 10, color: HearthTheme.askPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Surface a write result. Hearth actions used to drop their futures, so a
+  /// failure and a success looked identical: nothing happened on screen.
+  void _report(HearthResult r, String successLabel) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          r.ok
+              ? (r.txHash == null || r.txHash!.isEmpty
+                  ? successLabel
+                  : '$successLabel — ${r.txHash}')
+              : (r.error ?? 'Failed'),
+        ),
+        backgroundColor:
+            r.ok ? HearthTheme.bidPrimary : HearthTheme.askPrimary,
       ),
     );
   }

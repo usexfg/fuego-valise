@@ -27,14 +27,26 @@ class FuegoTransaction {
     this.destinations = const [],
   });
 
+  /// Tolerant numeric read. A hard `as int` threw on any daemon that emits
+  /// `1.0e7`, and the only caller wraps this in `catch (_) {}` — so one float
+  /// made the entire transaction history disappear with no message.
+  static int _intOf(Object? v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) {
+      return int.tryParse(v) ?? double.tryParse(v)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
   factory FuegoTransaction.fromJson(Map<String, dynamic> json) {
-    final amountAtom = (json['amount'] ?? json['total_received'] ?? 0) as int;
-    final feeAtom = (json['fee'] as int? ?? 0);
+    final amountAtom = _intOf(json['amount'] ?? json['total_received']);
+    final feeAtom = _intOf(json['fee']);
     return FuegoTransaction(
       txHash: json['transactionHash']?.toString() ?? json['tx_hash']?.toString() ?? json['hash']?.toString() ?? '',
-      blockHeight: json['blockIndex'] as int? ?? json['block_height'] as int? ?? 0,
-      timestamp: json['timestamp'] as int? ?? 0,
-      confirmations: json['confirmations'] as int? ?? 0,
+      blockHeight: _intOf(json['blockIndex'] ?? json['block_height']),
+      timestamp: _intOf(json['timestamp']),
+      confirmations: _intOf(json['confirmations']),
       amount: amountAtom / atomicPerCoin,
       fee: feeAtom / atomicPerCoin,
       amountAtomic: amountAtom,

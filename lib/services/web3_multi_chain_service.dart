@@ -209,11 +209,19 @@ class Web3MultiChainService {
     return 0.0;
   }
 
-  Future<String> sendEth(String privateKey, String toAddress, double amount, {String chain = 'eth'}) async {
+  /// [amountDisplay] is a decimal string. Taking a double and doing
+  /// `BigInt.from(amount * 1e18)` is wrong for ~99.9% of decimal inputs (up to
+  /// thousands of wei, in either direction) because the product is rounded to
+  /// the nearest double before truncation. [Erc20Amount.toBaseUnits] does the
+  /// same conversion exactly on the digits.
+  Future<String> sendEth(String privateKey, String toAddress, String amountDisplay, {String chain = 'eth'}) async {
     try {
       final credentials = EthPrivateKey.fromHex(privateKey);
       final receiver = EthereumAddress.fromHex(toAddress);
-      final weiAmount = BigInt.from(amount * 1e18);
+      final weiAmount = Erc20Amount.toBaseUnits(amountDisplay, 18);
+      if (weiAmount <= BigInt.zero) {
+        throw ArgumentError('amount must be > 0');
+      }
       final txHash = await _evmClientFor(chain).sendTransaction(
         credentials,
         Transaction(to: receiver, value: EtherAmount.inWei(weiAmount)),
@@ -225,15 +233,20 @@ class Web3MultiChainService {
     }
   }
 
+  /// [amountDisplay] is a decimal string — an HTLC lock is checked for an
+  /// exact amount by the counterparty, so the value must be exact.
   Future<String> lockHtlc({
     required String privateKey, required String htlcAddress,
     required String hashlock, required int timelock,
-    required double amount, String chain = 'eth',
+    required String amountDisplay, String chain = 'eth',
   }) async {
     try {
       final credentials = EthPrivateKey.fromHex(privateKey);
       final receiver = EthereumAddress.fromHex(htlcAddress);
-      final weiAmount = BigInt.from(amount * 1e18);
+      final weiAmount = Erc20Amount.toBaseUnits(amountDisplay, 18);
+      if (weiAmount <= BigInt.zero) {
+        throw ArgumentError('amount must be > 0');
+      }
       final txHash = await _evmClientFor(chain).sendTransaction(
         credentials,
         Transaction(
@@ -288,11 +301,15 @@ class Web3MultiChainService {
     }
   }
 
-  Future<String> sendSol(String privateKeyBase58, String toAddress, double amountSol) async {
+  Future<String> sendSol(String privateKeyBase58, String toAddress, String amountSolDisplay) async {
     try {
       final keyBytes = base58decode(privateKeyBase58);
       final sender = await solana.Ed25519HDKeyPair.fromPrivateKeyBytes(privateKey: keyBytes.toList());
-      final lamports = (amountSol * 1000000000).toInt();
+      // Same exact-digits conversion as the EVM path; SOL is 9 decimals.
+      final lamports = Erc20Amount.toBaseUnits(amountSolDisplay, 9).toInt();
+      if (lamports <= 0) {
+        throw ArgumentError('amount must be > 0');
+      }
       final message = solana.Message(instructions: [
         solana.SystemInstruction.transfer(
           fundingAccount: sender.publicKey,

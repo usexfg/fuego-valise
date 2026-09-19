@@ -201,7 +201,9 @@ class SwapCard extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    '${swap.ctrAmountDecimal.toStringAsFixed(4)} $pairName',
+                    swap.ctrAmountDecimal == null
+                        ? '— $pairName'
+                        : '${swap.ctrAmountDecimal!.toStringAsFixed(4)} $pairName',
                     style: const TextStyle(
                       color: AppTheme.textPrimary,
                       fontSize: 13,

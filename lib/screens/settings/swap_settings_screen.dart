@@ -150,15 +150,25 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       chains['sol'] = SwapChainConfig(wif: solWif, rpcUrl: rpcUrl.isNotEmpty ? rpcUrl : null);
     }
 
-    // Monero
+    // Monero — now actually reaches the daemon config.
+    XmrChainConfig? xmrConfig;
     final xmrSpendKey = _wifControllers['xmr']!.text.trim();
     if (xmrSpendKey.isNotEmpty) {
       if (xmrSpendKey.length != 64 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(xmrSpendKey)) { _showError('XMR spend key must be 64 hex chars'); return; }
       await _secureStorage.write(key: 'swap_wif_xmr', value: xmrSpendKey);
-      final daemonHost = _rpcControllers['xmr_daemon']?.text.trim() ?? '127.0.0.1';
-      final walletHost = _rpcControllers['xmr_wallet']?.text.trim() ?? '127.0.0.1';
+      final daemonHost = _rpcControllers['xmr_daemon']?.text.trim().isNotEmpty == true
+          ? _rpcControllers['xmr_daemon']!.text.trim()
+          : '127.0.0.1';
+      final walletHost = _rpcControllers['xmr_wallet']?.text.trim().isNotEmpty == true
+          ? _rpcControllers['xmr_wallet']!.text.trim()
+          : '127.0.0.1';
       await _secureStorage.write(key: 'swap_xmr_daemon_host', value: daemonHost);
       await _secureStorage.write(key: 'swap_xmr_wallet_host', value: walletHost);
+      xmrConfig = XmrChainConfig(
+        spendKey: xmrSpendKey,
+        daemonHost: daemonHost,
+        walletHost: walletHost,
+      );
     }
 
     final xfgKey = _xfgSecretController.text.trim();
@@ -166,7 +176,20 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
 
     if (chains.isEmpty && xmrSpendKey.isEmpty) { _showError('No chains configured — add a key for at least one chain'); return; }
 
-    final configPath = await _swapService.generateConfig(chains: chains, xfgSecretKey: xfgKey.isNotEmpty ? xfgKey : null);
+    final configPath = await _swapService.generateConfig(
+      chains: chains,
+      xfgSecretKey: xfgKey.isNotEmpty ? xfgKey : null,
+      xmr: xmrConfig,
+    );
+    final skipped = SwapConfigService.lastSkippedChains;
+    if (skipped.isNotEmpty) {
+      _showError(
+        'Saved, but ${skipped.join(', ')} '
+        '${skipped.length == 1 ? 'was' : 'were'} left out — an RPC URL is '
+        'required for those chains.',
+      );
+      return;
+    }
     _showSuccess('Config saved to $configPath');
   }
 

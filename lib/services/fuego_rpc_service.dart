@@ -256,6 +256,10 @@ class FuegoRPCService {
 
   // ── ΗΞΔŦ Methods ──
 
+  /// DEPRECATED — naming the HEAT side client-side is what consensus
+  /// rejects. Use [mintHeat], which sends only the burn amount and lets
+  /// walletd derive the HEAT side from the pool.
+  @Deprecated('Use mintHeat(xfgBurnedAtomic:) — see HeatMintEngine::validateMint')
   Future<Map<String, dynamic>> heatMint({
     required int xfgBurned,
     required int heatMinted,
@@ -406,7 +410,102 @@ class FuegoRPCService {
     return CdApyResult.fromJson(response);
   }
 
+
+  // ── Hearth AMM / orderbook ──────────────────────────────────────────
+  //
+  // Everything here goes through the local fuego_walletd proxy on
+  // `walletRpcPort`, never straight at a remote fuegod:
+  //   * reads  — the proxy re-POSTs `heat_metrics` / `amm_quote` /
+  //              `amm_pool_info` / `get_orderbook_state` to fuegod with a
+  //              JSON *body* (core/src/server.rs `is_fuegod_method`).
+  //              fuegod's `jsonMethod` handler calls `loadFromJson(req,
+  //              request.getBody())`, so query parameters are never read.
+  //   * writes — `mint_heat` / `swap` / `add_liq` / `remove_liq` /
+  //              `place_limit_order` are wallet methods and need the wallet's
+  //              keys (core/src/server.rs `is_wallet_method`). fuegod does not
+  //              implement them at all.
+  //
+  // All amounts crossing this boundary are atomic units (HEAT and XFG both
+  // use COIN = 10^7 — see fuego-suite CryptoNoteConfig.h).
+
+  Future<Map<String, dynamic>> heatMetrics() => _makeRPCCall('heat_metrics', {});
+
+  Future<Map<String, dynamic>> ammPoolInfo() => _makeRPCCall('amm_pool_info', {});
+
+  /// [inputAmountAtomic] is atomic units; [direction] is 0 = XFG→HEAT,
+  /// 1 = HEAT→XFG, matching `COMMAND_RPC_AMM_QUOTE::request`.
+  Future<Map<String, dynamic>> ammQuote({
+    required int inputAmountAtomic,
+    required bool sellXfg,
+  }) =>
+      _makeRPCCall('amm_quote', {
+        'input_amount': inputAmountAtomic,
+        'direction': sellXfg ? 0 : 1,
+      });
+
+  Future<Map<String, dynamic>> orderbookState({int pair = 0, int depth = 20}) =>
+      _makeRPCCall('get_orderbook_state', {'pair': pair, 'depth': depth});
+
+  /// Burn [xfgBurnedAtomic] XFG to mint HEAT.
+  ///
+  /// Only the burn amount is sent. walletd derives the HEAT side as
+  /// `xfg_burned * spot_price / COIN` from the live pool, which is the same
+  /// rule consensus enforces in `HeatMintEngine::validateMint`
+  /// (`heatOutputs > expectedHeatFor(xfgBurned, price)` is rejected).
+  /// Naming the HEAT amount client-side is how a mint gets rejected or
+  /// silently under-mints.
+  Future<Map<String, dynamic>> mintHeat({required int xfgBurnedAtomic}) =>
+      _makeRPCCall('mint_heat', {'xfg_burned': xfgBurnedAtomic});
+
+  Future<Map<String, dynamic>> ammSwap({
+    required bool sellXfg,
+    required int inputAmountAtomic,
+    required int minOutputAtomic,
+  }) =>
+      _makeRPCCall('swap', {
+        'direction': sellXfg ? 'xfg_to_heat' : 'heat_to_xfg',
+        'input_amount': inputAmountAtomic.toString(),
+        'min_output': minOutputAtomic.toString(),
+      });
+
+  Future<Map<String, dynamic>> ammAddLiquidity({
+    required int xfgAmountAtomic,
+    required int heatAmountAtomic,
+  }) =>
+      _makeRPCCall('add_liq', {
+        'xfg_amount': xfgAmountAtomic.toString(),
+        'heat_amount': heatAmountAtomic.toString(),
+      });
+
+  Future<Map<String, dynamic>> ammRemoveLiquidity({
+    required int shares,
+    required int minXfgAtomic,
+    required int minHeatAtomic,
+  }) =>
+      _makeRPCCall('remove_liq', {
+        'shares': shares.toString(),
+        'min_xfg': minXfgAtomic.toString(),
+        'min_heat': minHeatAtomic.toString(),
+      });
+
+  /// [amountAtomic] is atomic units. [priceDisplay] is a human HEAT-per-XFG
+  /// decimal — walletd multiplies it by COIN itself, so pre-scaling it here
+  /// would square the scale.
+  Future<Map<String, dynamic>> placeLimitOrder({
+    required bool sellXfg,
+    required int amountAtomic,
+    required String priceDisplay,
+    int ttlBlocks = 8640,
+  }) =>
+      _makeRPCCall('place_limit_order', {
+        'side': sellXfg ? 'sell' : 'buy',
+        'amount': amountAtomic.toString(),
+        'price': priceDisplay,
+        'ttlBlocks': ttlBlocks,
+      });
+
   // ── Private helpers ──
+
 
   Future<Map<String, dynamic>> _makeDaemonRPCCall(
     String method,

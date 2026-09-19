@@ -5,7 +5,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../bloc/dex/dex_cubit.dart';
 import '../../main.dart';
+import '../../core/constants.dart';
 import '../../models/chain_info.dart';
+import '../../models/swap_models.dart';
 import '../../services/swap_daemon_client.dart';
 import '../../services/swap_notification_service.dart';
 import '../../utils/theme.dart';
@@ -33,6 +35,7 @@ class PeerSwapScreen extends StatefulWidget {
 
 class _PeerSwapScreenState extends State<PeerSwapScreen> {
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _ctrAmountController = TextEditingController();
   final TextEditingController _peerController = TextEditingController();
   String _activeFilter = 'All';
   String? _chainFilter;
@@ -59,27 +62,60 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
   void dispose() {
     SwapNotificationService.dispose();
     _amountController.dispose();
+    _ctrAmountController.dispose();
     _peerController.dispose();
     super.dispose();
   }
 
+  void _warn(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.warningColor,
+      ),
+    );
+  }
+
   void _initiateSwap(DexState state, String ticker) {
-    final String amountStr = _amountController.text.trim();
-    if (amountStr.isEmpty) {
+    final SwapPairSdk pair = state.selectedPair;
+    final int? xfgAtomic = parseAtomic(_amountController.text.trim());
+    if (xfgAtomic == null || xfgAtomic <= 0) {
+      _warn('Enter the XFG amount (up to 7 decimals).');
       return;
     }
-    final double? amountXfg = double.tryParse(amountStr);
-    if (amountXfg == null || amountXfg <= 0) {
+    // Both legs are explicit. Previously the counterparty amount was set to
+    // the XFG atomic amount, which is a 1:1 raw-unit swap, not a priced one:
+    // 1 XFG became 1e7 of the counterparty base unit (0.1 BTC).
+    final int? ctrDecimals = ChainInfo.decimals[pair.ticker];
+    if (ctrDecimals == null) {
+      _warn('No decimals known for ${pair.ticker} — cannot size its leg.');
+      return;
+    }
+    final int? ctrAtomic = parseAtomic(
+      _ctrAmountController.text.trim(),
+      decimals: ctrDecimals,
+    );
+    if (ctrAtomic == null || ctrAtomic <= 0) {
+      // The daemon carries ctr_amount as a uint64, which on an 18-decimal
+      // chain tops out around 9.22 tokens.
+      final ceiling = ctrDecimals >= 18 ? ' and below 9.22' : '';
+      _warn(
+        'Enter the ${pair.ticker} amount you agreed with your counterparty '
+        '(up to $ctrDecimals decimals$ceiling).',
+      );
       return;
     }
     final String peer = _peerController.text.trim();
     if (peer.isEmpty) {
+      _warn('Enter the peer endpoint your counterparty gave you.');
       return;
     }
     context.read<DexCubit>().initiateCrossChainSwap(
-          pair: ticker,
-          xfgAmount: (amountXfg * 1e7).toInt(),
-          ctrAmount: (amountXfg * 1e7).toInt(),
+          // Daemon name, not the display ticker — swapPairFromString() does
+          // not accept RHC/UNI/XPL/PLS/MON.
+          pair: pair.daemonName,
+          xfgAmount: xfgAtomic,
+          ctrAmount: ctrAtomic,
           peer: peer,
         );
   }
@@ -356,6 +392,28 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
             labelText: 'XFG Amount',
             labelStyle: const TextStyle(color: AppTheme.textSecondary),
             hintText: '100.00',
+            hintStyle: TextStyle(
+              color: AppTheme.textSecondary.withValues(alpha: 0.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: AppTheme.textSecondary.withValues(alpha: 0.3),
+              ),
+            ),
+            focusedBorder: const OutlineInputBorder(
+              borderSide: BorderSide(color: AppTheme.primaryColor),
+            ),
+          ),
+          style: const TextStyle(color: AppTheme.textPrimary),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _ctrAmountController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: '$ticker Amount (agreed with your counterparty)',
+            labelStyle: const TextStyle(color: AppTheme.textSecondary),
+            hintText: '0.00',
             hintStyle: TextStyle(
               color: AppTheme.textSecondary.withValues(alpha: 0.5),
             ),
@@ -951,7 +1009,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Pair: ${swap.pairName}  •  XFG ${swap.xfgAmountDecimal.toStringAsFixed(2)} → ${swap.ctrAmountDecimal.toStringAsFixed(4)} ${swap.pairName}',
+                          'Pair: ${swap.pairName}  •  XFG ${swap.xfgAmountDecimal.toStringAsFixed(2)} → ${swap.ctrAmountDecimal?.toStringAsFixed(4) ?? '—'} ${swap.pairName}',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 11,

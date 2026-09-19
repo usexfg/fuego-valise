@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/chain_info.dart';
+import '../models/swap_models.dart';
 
 class SwapDaemonClient {
   final String host;
@@ -272,23 +273,17 @@ class SwapInfo {
     );
   }
 
-  String get pairName {
-    const names = {
-      0: 'SOL',
-      1: 'ETH',
-      2: 'XMR',
-      3: 'BCH',
-      4: 'ARB',
-      5: 'BASE',
-      6: 'KMD',
-      7: 'BNB',
-      8: 'DCR',
-      9: 'BTC',
-      10: 'LTC',
-      11: 'POLYGON',
-    };
-    return names[pair] ?? 'PAIR_$pair';
-  }
+  /// Display ticker for this swap's pair. Single source of truth is
+  /// [SwapPairSdk]; the old inline table stopped at id 11, so every pair added
+  /// after it fell back to 7 decimals in [ctrAmountDecimal] (an error of 10^11
+  /// for the 18-decimal EVM chains).
+  SwapPairSdk? get pairSdk => SwapPairSdk.tryFromId(pair);
+
+  String get pairName => pairSdk?.ticker ?? 'PAIR_$pair';
+
+  /// True when the counterparty amount can be scaled correctly.
+  bool get hasKnownDecimals =>
+      pairSdk != null && ChainInfo.decimals.containsKey(pairSdk!.ticker);
 
   String get lockTypeLabel => lockTypeName;
   bool get isPtlc => lockType == 1;
@@ -337,7 +332,16 @@ class SwapInfo {
   }
 
   double get xfgAmountDecimal => ChainInfo.amountToDecimal('XFG', xfgAmount);
-  double get ctrAmountDecimal => ChainInfo.amountToDecimal(pairName, ctrAmount);
+
+  /// Null when the pair's decimals are unknown — render "—", never a number
+  /// scaled by the wrong power of ten.
+  double? get ctrAmountDecimal {
+    final t = pairSdk?.ticker;
+    if (t == null) return null;
+    final d = ChainInfo.decimals[t];
+    if (d == null) return null;
+    return ChainInfo.amountToDecimalWith(d, ctrAmount);
+  }
 
   bool get isCommitSeen => ctrLockTxId != null && ctrLockTxId!.isNotEmpty;
   bool get isLanded => spvVerified && confirmations >= requiredConfirmations && requiredConfirmations > 0;

@@ -407,7 +407,7 @@ class WalletCubit extends Cubit<WalletState> {
     if (fee < 0) {
       throw ArgumentError('Fee cannot be negative');
     }
-    final totalAtomic = ((amount + fee) * atomicPerCoin).round();
+    final totalAtomic = xfgToAtomic(amount) + xfgToAtomic(fee);
     if (totalAtomic > state.unlockedBalance) {
       throw StateError('Insufficient unlocked balance (including fee)');
     }
@@ -447,7 +447,7 @@ class WalletCubit extends Cubit<WalletState> {
     if (fee < 0) {
       throw ArgumentError('Fee cannot be negative');
     }
-    final totalAtomic = ((amount + fee) * atomicPerCoin).round();
+    final totalAtomic = xfgToAtomic(amount) + xfgToAtomic(fee);
     if (totalAtomic > state.unlockedHeatBalance) {
       throw StateError('Insufficient unlocked ΗΞΔŦ balance (including fee)');
     }
@@ -457,8 +457,8 @@ class WalletCubit extends Cubit<WalletState> {
     }
     final txHash = await _rpcService!.sendHeat(
       address: address,
-      amount: (amount * atomicPerCoin).round(),
-      fee: (fee * atomicPerCoin).round(),
+      amount: xfgToAtomic(amount),
+      fee: xfgToAtomic(fee),
       mixin: mixin,
     );
     if (txHash.isEmpty) {
@@ -468,9 +468,19 @@ class WalletCubit extends Cubit<WalletState> {
     return txHash;
   }
 
-  /// Mint ΗΞΔŦ by burning XFG. Amount in display units.
+  /// Burn [xfgDisplay] XFG to mint ΗΞΔŦ. Requires a verified PIN.
+  ///
+  /// Only the burn amount is sent. walletd derives the ΗΞΔŦ side from the
+  /// live pool (`xfg_burned * spot_price / COIN`), which is the rule
+  /// consensus enforces: `HeatMintEngine::validateMint` rejects a mint whose
+  /// HEAT outputs exceed `expectedHeatFor(xfgBurned, price)`.
+  ///
+  /// The wallet previously asked for `heat_minted = xfg_burned`. At the
+  /// genesis pool ratio (10,000 XFG : 1,000 HEAT, i.e. 10 XFG per HEAT) that
+  /// is ten times the permitted amount, so the transaction is rejected; above
+  /// parity it would instead under-mint and silently cost the minter.
   Future<Map<String, dynamic>> mintHeat({
-    required double xfgAmount,
+    required String xfgDisplay,
     required String pin,
   }) async {
     if (!state.isUnlocked && !(_vault?.isUnlocked ?? false)) {
@@ -480,30 +490,36 @@ class WalletCubit extends Cubit<WalletState> {
     if (!pinOk) {
       throw StateError('Invalid PIN');
     }
-    if (xfgAmount <= 0) {
-      throw ArgumentError('Amount must be positive');
+    final burnAtomic = parseAtomic(xfgDisplay);
+    if (burnAtomic == null || burnAtomic <= 0) {
+      throw ArgumentError('Amount must be positive with at most 7 decimals');
     }
-    final totalAtomic = (xfgAmount * atomicPerCoin).round();
-    if (totalAtomic > state.unlockedBalance) {
-      throw StateError('Insufficient unlocked XFG balance');
+    if (burnAtomic + txFee > state.unlockedBalance) {
+      throw StateError('Insufficient unlocked XFG balance (including fee)');
     }
     if (_rpcService == null) {
       throw StateError('Wallet RPC service not available');
     }
-    // heat_minted = xfg_burned (1:1 at launch, server validates ratio)
-    final result = await _rpcService!.heatMint(
-      xfgBurned: totalAtomic,
-      heatMinted: totalAtomic,
-      fee: 0,
-      mixin: 4,
-    );
+    final result = await _rpcService!.mintHeat(xfgBurnedAtomic: burnAtomic);
     unawaited(refreshWallet());
     return result;
   }
 
-  /// Fetch ΗΞΔŦ metrics: supply, redemption price (TWAP), treasury, CD yield
+  /// Live pool state — the source of the mint rate.
+  Future<PoolInfo> getPoolInfo() async =>
+      PoolInfo.fromJson(await _requireRpc().ammPoolInfo());
+
+  /// Fetch ΗΞΔŦ metrics: supply, redemption price (TWAP), treasury, CD yield.
+  /// Goes through the wallet proxy — fuegod's `/heat_metrics` handler reads a
+  /// JSON body, which a REST GET never sends.
   Future<HeatMetrics> getHeatMetrics() async =>
-      HeatMetrics.fromJson(await _daemon.getHeatMetricsRaw());
+      HeatMetrics.fromJson(await _requireRpc().heatMetrics());
+
+  FuegoRPCService _requireRpc() {
+    final rpc = _rpcService;
+    if (rpc == null) throw StateError('Wallet RPC service not available');
+    return rpc;
+  }
 
   Future<void> refreshTransactions() async {
     try {

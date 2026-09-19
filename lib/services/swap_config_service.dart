@@ -66,10 +66,12 @@ class SwapConfigService {
   Future<String> generateConfig({
     required Map<String, SwapChainConfig> chains,
     String? xfgSecretKey,
+    XmrChainConfig? xmr,
   }) async {
     final config = buildConfig(
       chains: chains,
       xfgSecretKey: xfgSecretKey,
+      xmr: xmr,
     );
 
     final path = await configPath();
@@ -88,11 +90,18 @@ class SwapConfigService {
     return path;
   }
 
+  /// Chains configured with a key but no usable transport, populated by the
+  /// last [buildConfig] call. The loader silently produced a config that
+  /// omitted them entirely; callers surface this instead.
+  static final List<String> lastSkippedChains = <String>[];
+
   static Map<String, dynamic> buildConfig({
     required Map<String, SwapChainConfig> chains,
     String? xfgSecretKey,
+    XmrChainConfig? xmr,
   }) {
     final config = <String, dynamic>{};
+    lastSkippedChains.clear();
 
     for (final entry in chains.entries) {
       final chain = entry.key.toLowerCase();
@@ -102,6 +111,13 @@ class SwapConfigService {
       final isSol = chain == 'sol';
       final isEvm = _evmSwapChains.contains(chain);
       final daemonPrefix = _daemonConfigPrefixes[chain] ?? chain;
+
+      if ((isEvm || isSol) && (cfg.rpcUrl == null || cfg.rpcUrl!.isEmpty)) {
+        // An RPC-mode chain with a key but no endpoint used to fall through
+        // both branches and vanish from the config with no error.
+        lastSkippedChains.add(chain.toUpperCase());
+        continue;
+      }
 
       if ((isEvm || isSol) && cfg.rpcUrl != null && cfg.rpcUrl!.isNotEmpty) {
         config['${daemonPrefix}_mode'] = 'rpc';
@@ -132,6 +148,21 @@ class SwapConfigService {
           config['${chain}_spv_checkpoint_hash'] = cfg.checkpointHash!;
         }
       }
+    }
+
+    // Monero. Keys match ChainClientConfig.cpp exactly: xmr_spend_key,
+    // xmr_view_key, xmr_daemon_host/port, xmr_wallet_host/port. These were
+    // collected by the settings screen, written to secure storage, and then
+    // never placed in the config at all — xfg-swapd had no XMR configuration.
+    if (xmr != null && xmr.spendKey.isNotEmpty) {
+      config['xmr_spend_key'] = xmr.spendKey;
+      if (xmr.viewKey != null && xmr.viewKey!.isNotEmpty) {
+        config['xmr_view_key'] = xmr.viewKey;
+      }
+      config['xmr_daemon_host'] = xmr.daemonHost;
+      config['xmr_daemon_port'] = xmr.daemonPort;
+      config['xmr_wallet_host'] = xmr.walletHost;
+      config['xmr_wallet_port'] = xmr.walletPort;
     }
 
     if (xfgSecretKey != null && xfgSecretKey.isNotEmpty) {
@@ -195,6 +226,26 @@ class SwapConfigService {
   bool get isRunning => _swapDaemon != null && _swapDaemon!.pid > 0;
 
   static String addressFromWif(String wif, String chain) => '(derive from $chain WIF)';
+}
+
+/// Monero transport + keys. XMR is not a WIF chain, so it does not fit
+/// [SwapChainConfig].
+class XmrChainConfig {
+  final String spendKey;
+  final String? viewKey;
+  final String daemonHost;
+  final int daemonPort;
+  final String walletHost;
+  final int walletPort;
+
+  const XmrChainConfig({
+    required this.spendKey,
+    this.viewKey,
+    this.daemonHost = '127.0.0.1',
+    this.daemonPort = 18081,
+    this.walletHost = '127.0.0.1',
+    this.walletPort = 18083,
+  });
 }
 
 class SwapChainConfig {

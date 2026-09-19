@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../services/fuego_rpc_service.dart';
+import '../../../bloc/wallet/wallet_cubit.dart';
+import '../../../core/constants.dart';
 import '../../../utils/theme.dart';
 import '../../../utils/xfg_ticker.dart';
 
@@ -18,8 +19,6 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
   String? _error;
   String? _txHash;
   String? _heatReceived;
-
-  static const xfgAtomic = 10000000;
 
   @override
   void dispose() {
@@ -69,7 +68,7 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Burn XFG to mint ΗΞΔŦ at the PI redemption price.',
+          Text('Burn XFG to mint ΗΞΔŦ at the live Hearth pool rate.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
           const SizedBox(height: 12),
           TextField(
@@ -90,7 +89,9 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text('ΗΞΔŦ received depends on PI redemption price',
+          const Text(
+              'The daemon sizes the ΗΞΔŦ side from the pool when it builds the '
+              'transaction. This action cannot be undone.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
           if (_error != null)
             Padding(
@@ -112,7 +113,7 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
             color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         if (_heatReceived != null)
-          Text('$_heatReceived ΗΞΔŦ received',
+          Text('$_heatReceived ΗΞΔŦ minted',
               style: TextStyle(
                   color: AppTheme.successColor,
                   fontSize: 18,
@@ -124,34 +125,76 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
     );
   }
 
+  /// Same PIN gate as [MintHeatScreen]. This dialog previously called the RPC
+  /// service directly, so one of the two mint entry points burned XFG with no
+  /// authorization at all.
+  Future<String?> _promptPin() async {
+    final controller = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardColor,
+        title: const Text('Enter PIN to mint',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          maxLength: 12,
+          decoration:
+              const InputDecoration(labelText: 'PIN', counterText: ''),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('Authorize'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return pin;
+  }
+
   Future<void> _submit() async {
     final text = _amountController.text.trim();
     if (text.isEmpty) {
       setState(() => _error = 'Enter an amount');
       return;
     }
-    final xfg = double.tryParse(text);
-    if (xfg == null || xfg <= 0) {
-      setState(() => _error = 'Invalid amount');
+    final burnAtomic = parseAtomic(text);
+    if (burnAtomic == null || burnAtomic <= 0) {
+      setState(() => _error = 'Enter an amount with at most 7 decimals');
       return;
     }
+    final pin = await _promptPin();
+    if (pin == null || pin.isEmpty) return;
+    if (!mounted) return;
     setState(() { _submitting = true; _error = null; });
     try {
-      final rpc = context.read<FuegoRPCService>();
-      final xfgAtomicAmt = (xfg * xfgAtomic).round();
-      // heat_minted = xfg_burned (1:1 at launch, server validates ratio)
-      final result = await rpc.heatMint(
-        xfgBurned: xfgAtomicAmt,
-        heatMinted: xfgAtomicAmt,
-        fee: 0,
-        mixin: 4,
-      );
+      // Only the burn amount is sent; walletd derives the ΗΞΔŦ side from the
+      // pool, matching what consensus will accept.
+      final result = await context
+          .read<WalletCubit>()
+          .mintHeat(xfgDisplay: text, pin: pin);
+      if (!mounted) return;
+      final minted = result['heat_minted'] ?? result['heatMinted'];
       setState(() {
-        _txHash = result['tx_hash'] as String?;
-        _heatReceived = (xfgAtomicAmt / xfgAtomic).toStringAsFixed(7);
+        _txHash = (result['transactionHash'] ??
+            result['txHash'] ??
+            result['tx_hash']) as String?;
+        _heatReceived =
+            minted is num ? atomicToDisplay(minted.toInt()) : null;
         _submitting = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _submitting = false; _error = e.toString(); });
     }
   }

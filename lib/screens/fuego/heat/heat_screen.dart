@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../services/fuego_daemon_client.dart';
+import '../../../bloc/wallet/wallet_cubit.dart';
 import '../../../models/heat_amm.dart';
 import '../../../utils/theme.dart';
 import 'mint_heat_dialog.dart';
@@ -26,10 +26,15 @@ class _HeatScreenState extends State<HeatScreen> {
   Future<void> _loadMetrics() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final daemon = context.read<FuegoDaemonClient>();
-      final metrics = await daemon.getHeatMetrics();
+      // Was `context.read<FuegoDaemonClient>()` against
+      // services/fuego_daemon_client.dart, but main.dart registers the
+      // core/daemon_client.dart class of the same name — the lookup could
+      // never resolve. Goes through the wallet proxy now.
+      final metrics = await context.read<WalletCubit>().getHeatMetrics();
+      if (!mounted) return;
       setState(() { _metrics = metrics; _loading = false; });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _error = e.toString(); _loading = false; });
     }
   }
@@ -98,7 +103,7 @@ class _HeatScreenState extends State<HeatScreen> {
               children: [
                 _metricColumn('Target', m.piTarget, AppTheme.textMuted),
                 _metricColumn('Price', m.redemptionPrice, AppTheme.primaryColor),
-                _metricColumn('APY', '${m.currentApy.toStringAsFixed(1)}%', AppTheme.successColor),
+                _metricColumn('APY', m.cdYield, AppTheme.successColor),
               ],
             ),
           ],
@@ -175,10 +180,13 @@ class _HeatScreenState extends State<HeatScreen> {
       height: 52,
       child: ElevatedButton.icon(
         onPressed: () {
-          showDialog(
+          // The dialog reads WalletCubit, which is already above this route
+          // in the tree — no local provider needed (and the one that used to
+          // be here re-provided a type nothing resolved).
+          showDialog<void>(
             context: context,
-            builder: (_) => RepositoryProvider.value(
-              value: context.read<FuegoDaemonClient>(),
+            builder: (_) => BlocProvider.value(
+              value: context.read<WalletCubit>(),
               child: const MintHeatDialog(),
             ),
           ).then((_) => _loadMetrics());

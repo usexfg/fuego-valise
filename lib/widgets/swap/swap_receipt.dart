@@ -32,7 +32,7 @@ class SwapReceipt {
   final String state;
   final String displayState;
   final double xfgAmountDecimal;
-  final double ctrAmountDecimal;
+  final double? ctrAmountDecimal;
   final String lockTypeName;
   final String ptlcPoint;
   final String? ctrLockTxId;

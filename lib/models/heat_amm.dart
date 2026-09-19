@@ -1,3 +1,5 @@
+import '../core/constants.dart';
+
 /// Models for the Hearth AMM / orderbook subsystem.
 ///
 /// Field names and types match the fuego-suite C++ response structs exactly.
@@ -68,7 +70,9 @@ class HeatMetrics {
       treasuryBalance: _u64(json['treasury_balance']),
       treasuryCounterXfg: _u64(json['treasury_counter_xfg']),
       swfBurnedXfgPendingHeat: _u64(json['swf_burned_xfg_pending_heat']),
-      swfHeatBalance: _u64(json['swf_heat_balance']),
+      // fuegod's COMMAND_RPC_GET_HEAT_METRICS has no `swf_heat_balance`
+      // member; the SWF balance it does report is `vault_heat_swf`.
+      swfHeatBalance: _u64(json['vault_heat_swf'] ?? json['swf_heat_balance']),
       epochSwapFees: _u64(json['epoch_swap_fees']),
       vaultHeatCdFeePool: _u64(json['vault_heat_cd_fee_pool']),
       vaultHeatLpReserve: _u64(json['vault_heat_lp_reserve']),
@@ -99,24 +103,31 @@ class HeatMetrics {
     return '${(redemptionPriceNum / redemptionPriceDenom).toStringAsFixed(6)} HEAT/XFG';
   }
 
-  /// CD yield (APY) as a percent double. C++ does not populate
-  /// redemption_rate_* yet, so this is 0 until the daemon fills it.
-  double get currentApy => redemptionRate * 100;
+  /// CD yield (APY) as a percent, or null.
+  ///
+  /// `on_get_heat_metrics` in fuego-suite assigns every response field except
+  /// `redemption_rate_num` / `redemption_rate_denom`, so a zero denominator
+  /// means "the daemon did not report a rate" — not "the rate is zero".
+  double? get currentApy =>
+      redemptionRateDenom > 0 ? redemptionRate * 100 : null;
 
-  /// HEAT in circulation (atomic units) as a display string.
-  String get supply => heatSupply.toString();
+  /// HEAT in circulation, display units.
+  String get supply => atomicToDisplay(heatSupply);
 
-  /// Treasury balance (atomic units) as a display string.
-  String get treasury => treasuryBalance.toString();
+  /// Treasury balance, display units.
+  String get treasury => atomicToDisplay(treasuryBalance);
 
-  /// CD yield as a display string.
-  String get cdYield => '${currentApy.toStringAsFixed(2)}%';
+  /// CD yield as a display string, or '—' when unreported.
+  String get cdYield {
+    final apy = currentApy;
+    return apy == null ? '—' : '${apy.toStringAsFixed(2)}%';
+  }
 
-  /// XFG LP reserve (atomic units) as a display string.
-  String get poolXfg => vaultXfgLpReserve.toString();
+  /// XFG LP reserve, display units.
+  String get poolXfg => atomicToDisplay(vaultXfgLpReserve);
 
-  /// HEAT LP reserve (atomic units) as a display string.
-  String get poolHeat => vaultHeatLpReserve.toString();
+  /// HEAT LP reserve, display units.
+  String get poolHeat => atomicToDisplay(vaultHeatLpReserve);
 
   /// De-facto mint target: the current redemption price.
   String get piTarget => formattedRedemptionPrice;
@@ -216,11 +227,26 @@ class AmmQuote {
     );
   }
 
-  /// Output amount (atomic units) as a display string.
-  String get outputAmount => expectedOutput;
+  /// Output in atomic units, or null when the daemon returned nothing usable.
+  int? get outputAtomic {
+    final v = int.tryParse(expectedOutput);
+    return (v != null && v > 0) ? v : null;
+  }
 
-  /// Price impact in basis points (1/100th of a percent).
-  String get priceImpact => priceImpactBps;
+  int get feeAtomic => int.tryParse(fee) ?? 0;
+
+  /// Output in display units, or '—'.
+  String get outputAmount {
+    final v = outputAtomic;
+    return v == null ? '—' : atomicToDisplay(v);
+  }
+
+  String get feeDisplay => atomicToDisplay(feeAtomic);
+
+  /// Price impact as a percent, from the daemon's basis points.
+  double get priceImpactPercent => (int.tryParse(priceImpactBps) ?? 0) / 100;
+
+  String get priceImpact => '${priceImpactPercent.toStringAsFixed(2)}%';
 }
 
 /// Response to `/amm_pool_info`
@@ -256,20 +282,44 @@ class PoolInfo {
     );
   }
 
-  /// Spot price (HEAT per XFG, atomic units) as a display string.
-  String get price => spotPrice.toString();
+  /// HEAT per XFG.
+  ///
+  /// fuego-suite defines `spot_price` as "HEAT atomics per XFG atomic * COIN"
+  /// (`COMMAND_RPC_GET_FUEGO_PRICE` comment), so the human ratio is
+  /// `spot_price / COIN`. At the genesis seed (10,000 XFG : 1,000 HEAT) that
+  /// is 0.1 — ten XFG to one HEAT.
+  double get heatPerXfg => spotPrice / atomicPerCoin;
 
-  /// XFG reserve (atomic units) as a display string.
-  String get xfgBalance => reserveXfg.toString();
+  /// XFG per HEAT — the number the mint screen quotes.
+  double? get xfgPerHeat => heatPerXfg > 0 ? 1 / heatPerXfg : null;
 
-  /// HEAT reserve (atomic units) as a display string.
-  String get heatBalance => reserveHeat.toString();
+  /// True when the daemon returned a usable pool. Reserves of zero mean the
+  /// pool is not seeded yet and no rate should be displayed.
+  bool get isSeeded => reserveXfg > 0 && reserveHeat > 0 && spotPrice > 0;
 
-  /// Total LP shares as a display string.
+  /// Pool ratio straight from the reserves — this is the rule walletd and
+  /// SimpleWallet both use to size a mint.
+  double? get reserveHeatPerXfg =>
+      reserveXfg > 0 ? reserveHeat / reserveXfg : null;
+
+  /// Spot price as a display string, or '—' when the pool is not seeded.
+  String get price => isSeeded ? heatPerXfg.toStringAsFixed(7) : '—';
+
+  /// XFG reserve in display units.
+  String get xfgBalance => atomicToDisplay(reserveXfg);
+
+  /// HEAT reserve in display units.
+  String get heatBalance => atomicToDisplay(reserveHeat);
+
+  /// Total LP shares (a raw count, not an atomic amount).
   String get heatTotalSupply => totalLpShares.toString();
 
-  /// Total liquidity value in HEAT units.
-  String get totalLiquidity => totalLpShares.toString();
+  /// Epoch swap fees in display HEAT.
+  String get epochSwapFeesDisplay => atomicToDisplay(epochSwapFees);
+
+  /// TWAP as HEAT per XFG, or null when the daemon has not filled it.
+  double? get twapHeatPerXfg =>
+      hearthTwap > 0 ? hearthTwap / atomicPerCoin : null;
 }
 
 int _u64(Object? value) {

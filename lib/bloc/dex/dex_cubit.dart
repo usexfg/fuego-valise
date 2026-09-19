@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import '../../ffi/fuego_native.dart';
+import '../../models/chain_info.dart';
 import '../../models/swap_models.dart';
 import '../../services/bitcoin_reserve_proof.dart';
 import '../../services/reserve_proof_service.dart';
@@ -317,6 +318,9 @@ class DexCubit extends Cubit<DexState> {
     }
   }
 
+  /// Exhaustive by construction — no `default:`, so adding a pair to
+  /// [SwapPairSdk] is a compile error here until it is mapped. The previous
+  /// `default: return 'SOL'` silently routed ten pairs to Solana.
   ChainTypeSdk _chainForPair(SwapPairSdk pair) {
     switch (pair) {
       case SwapPairSdk.sol:
@@ -353,22 +357,40 @@ class DexCubit extends Cubit<DexState> {
         return ChainTypeSdk.cro;
       case SwapPairSdk.bob:
         return ChainTypeSdk.bob;
+      case SwapPairSdk.sia:
+        return ChainTypeSdk.sia;
       case SwapPairSdk.unichain:
         return ChainTypeSdk.unichain;
       case SwapPairSdk.plasma:
         return ChainTypeSdk.plasma;
+      case SwapPairSdk.doge:
+        return ChainTypeSdk.doge;
+      case SwapPairSdk.dash:
+        return ChainTypeSdk.dash;
+      case SwapPairSdk.zec:
+        return ChainTypeSdk.zec;
       case SwapPairSdk.pulsex:
         return ChainTypeSdk.pulsex;
+      case SwapPairSdk.zano:
+        return ChainTypeSdk.zano;
       case SwapPairSdk.monad:
         return ChainTypeSdk.monad;
       case SwapPairSdk.optimism:
         return ChainTypeSdk.optimism;
+      case SwapPairSdk.ton:
+        return ChainTypeSdk.ton;
+      case SwapPairSdk.dot:
+        return ChainTypeSdk.dot;
     }
   }
 
   Future<List<SwapOfferSdk>> _loadOffersFromFuegod() async {
+    // Only pairs the daemon registers a client for — querying the four
+    // staged pairs is four guaranteed-empty round trips per refresh.
     final results = await Future.wait(
-      SwapPairSdk.values.map((pair) async {
+      SwapPairSdk.values
+          .where((p) => ChainInfo.isSwapable(p.ticker))
+          .map((pair) async {
         try {
           return await _rpc('getswapoffers', {'pair': pair.id});
         } catch (e) {
@@ -449,11 +471,19 @@ class DexCubit extends Cubit<DexState> {
   /// Remember the offer the user tapped FILL on; /requestswap must target
   /// exactly this offer (H11: `offers.first` was orderbook-order dependent).
   void selectOffer(SwapOfferSdk offer) {
+    final pair = offer.pair;
+    if (pair == null) {
+      emit(state.copyWith(
+        selectedOffer: offer,
+        error: 'Offer pair id ${offer.pairId} is not supported by this build.',
+      ));
+      return;
+    }
     emit(
       state.copyWith(
         selectedOffer: offer,
-        selectedPair: offer.pair,
-        selectedChain: _chainForPair(offer.pair),
+        selectedPair: pair,
+        selectedChain: _chainForPair(pair),
       ),
     );
   }
@@ -628,13 +658,52 @@ class DexCubit extends Cubit<DexState> {
     }
   }
 
+  /// Fill [offer] for [amount] XFG atomic units.
+  ///
+  /// The offer carries the pair and the rate, so both the daemon pair name and
+  /// the counterparty leg are derived from it. If either cannot be resolved the
+  /// request is refused — a swap whose counterparty amount is a guess is worse
+  /// than no swap.
   Future<void> requestSwap({
-    required String offerId,
+    required SwapOfferSdk offer,
     required int amount,
     required String takerPubKey,
     required String proofOfFunds,
     String? takerChainKey,
   }) async {
+    final offerId = offer.offerId;
+    final pair = offer.pair;
+    if (pair == null) {
+      emit(state.copyWith(
+        isLoading: false,
+        error:
+            'This offer is for pair id ${offer.pairId}, which this wallet build '
+            'does not support. Update the wallet before filling it.',
+      ));
+      return;
+    }
+    if (amount > offer.amount) {
+      emit(state.copyWith(
+        isLoading: false,
+        error:
+            'Amount exceeds the offer (${offer.amount} atomic XFG available).',
+      ));
+      return;
+    }
+    final ctrAmount = counterpartyAmountFor(
+      xfgAtomic: amount,
+      rateNum: offer.rateNum,
+      pair: pair,
+    );
+    if (ctrAmount == null) {
+      emit(state.copyWith(
+        isLoading: false,
+        error:
+            'Cannot price the ${pair.ticker} leg of this offer (rate '
+            '${offer.rateNum}). Refusing to initiate.',
+      ));
+      return;
+    }
     // The taker identity (Ed25519 keypair from the native crypto lib) and the
     // chain reserve proof are required; the maker verifies both before locking.
     var pubKey = takerPubKey;
@@ -657,11 +726,21 @@ class DexCubit extends Cubit<DexState> {
         );
       } else if (chain.isBtcFamily) {
         // Bitcoin signmessage proof from the taker's WIF key.
+        final version = _btcP2pkhVersion(chain);
+        if (version == null) {
+          emit(state.copyWith(
+            isLoading: false,
+            error:
+                'No verified address prefix for ${chain.symbol} — refusing to '
+                'build a reserve proof that could name the wrong address.',
+          ));
+          return;
+        }
         proof = BitcoinReserveProof.build(
           wif: takerChainKey,
           offerId: offerId,
-          p2pkhVersion: _btcP2pkhVersion(chain).$1,
-          p2pkhVersion2: _btcP2pkhVersion(chain).$2,
+          p2pkhVersion: version.$1,
+          p2pkhVersion2: version.$2,
         );
       } else if (chain == ChainTypeSdk.monero) {
         // XMR reserve proofs are produced by monero-wallet-rpc. Bridge via
@@ -715,6 +794,8 @@ class DexCubit extends Cubit<DexState> {
         offerId: offerId,
         takerPubKey: pubKey,
         amount: amount,
+        pair: pair,
+        ctrAmount: ctrAmount,
       );
     } catch (e) {
       emit(state.copyWith(isLoading: false, error: 'Swap failed: $e'));
@@ -729,6 +810,8 @@ class DexCubit extends Cubit<DexState> {
     required String offerId,
     required String takerPubKey,
     required int amount,
+    required SwapPairSdk pair,
+    required int ctrAmount,
   }) async {
     for (var attempt = 0; attempt < _fillResultMaxAttempts; ++attempt) {
       await Future<void>.delayed(
@@ -779,6 +862,8 @@ class DexCubit extends Cubit<DexState> {
         lockId: lockId,
         makerEndpoint: makerEndpoint,
         amount: amount,
+        ctrAmount: ctrAmount,
+        pair: pair,
         adaptorPoint: adaptorPoint,
         hashLock: hashLock,
         preSig: preSig,
@@ -795,10 +880,37 @@ class DexCubit extends Cubit<DexState> {
     );
   }
 
+  /// Counterparty base units for [xfgAtomic] at an offer's `rateNum`.
+  ///
+  /// `rateNum` is XFG-atomic per 1e7 counterparty-atomic (the orderbook
+  /// convention `/getswapprice` uses), so
+  ///   ctr_atomic = xfg_atomic * 1e7 / rateNum
+  /// scaled from XFG's 7 decimals to the counterparty chain's own decimals.
+  /// Returns null when the rate or the pair's decimals are unknown — the
+  /// caller must refuse to initiate rather than guess.
+  static int? counterpartyAmountFor({
+    required int xfgAtomic,
+    required int rateNum,
+    required SwapPairSdk pair,
+  }) {
+    if (xfgAtomic <= 0 || rateNum <= 0) return null;
+    final ctrDecimals = ChainInfo.decimals[pair.ticker];
+    if (ctrDecimals == null) return null;
+    // Exact integer math — no double anywhere on the value path.
+    final xfgBig = BigInt.from(xfgAtomic);
+    final ctrUnitScale = BigInt.from(10).pow(ctrDecimals);
+    final value = xfgBig * ctrUnitScale ~/ BigInt.from(rateNum);
+    if (value <= BigInt.zero) return null;
+    if (value > BigInt.from(0x7FFFFFFFFFFFFFFF)) return null;
+    return value.toInt();
+  }
+
   Future<void> _initiateAfkSwap({
     required String lockId,
     required String makerEndpoint,
     required int amount,
+    required int ctrAmount,
+    required SwapPairSdk pair,
     String adaptorPoint = '',
     String hashLock = '',
     String preSig = '',
@@ -813,17 +925,18 @@ class DexCubit extends Cubit<DexState> {
       emit(state.copyWith(error: 'Taker identity missing — retry the request'));
       return;
     }
-    final pair = _pairNameForChain(state.selectedChain);
     try {
       // Bind this daemon's record to the maker's lock and sign with the exact
       // identity published in the request (the maker pre-bound it). The
       // pre-lock material lets the daemon lock the counterparty HTLC and
       // complete the maker's pre-sig after extracting t.
       final swapId = await _swapClient!.initiateSwap(
-        pair: pair,
+        // The daemon's own name for the pair the user picked. Never a chain
+        // lookup with a fallback — a wrong name here runs the swap on the
+        // wrong chain (C1).
+        pair: pair.daemonName,
         xfgAmount: amount,
-        ctrAmount:
-            amount, // approximate; the maker's offer terms govern the on-chain lock
+        ctrAmount: ctrAmount,
         peer: makerEndpoint,
         role: 'alice',
         swapId: lockId,
@@ -851,39 +964,13 @@ class DexCubit extends Cubit<DexState> {
     }
   }
 
-  static String _pairNameForChain(ChainTypeSdk chain) {
-    switch (chain) {
-      case ChainTypeSdk.solana:
-        return 'SOL';
-      case ChainTypeSdk.ethereum:
-        return 'ETH';
-      case ChainTypeSdk.monero:
-        return 'XMR';
-      case ChainTypeSdk.bitcoinCash:
-        return 'BCH';
-      case ChainTypeSdk.arbitrum:
-        return 'ARB';
-      case ChainTypeSdk.base:
-        return 'BASE';
-      case ChainTypeSdk.komodo:
-        return 'KMD';
-      case ChainTypeSdk.bnb:
-        return 'BNB';
-      case ChainTypeSdk.decred:
-        return 'DCR';
-      case ChainTypeSdk.bitcoin:
-        return 'BTC';
-      case ChainTypeSdk.litecoin:
-        return 'LTC';
-      case ChainTypeSdk.polygon:
-        return 'POLYGON';
-      default:
-        return 'SOL';
-    }
-  }
-
   /// (prefix byte, optional second prefix byte) for P2PKH addresses.
-  static (int, int?) _btcP2pkhVersion(ChainTypeSdk chain) {
+  ///
+  /// Null for a chain with no verified prefix here. The old `default:
+  /// (0x00, null)` produced a Bitcoin mainnet address for any unlisted
+  /// chain, so the reserve proof was signed for an address the maker would
+  /// never see funds at.
+  static (int, int?)? _btcP2pkhVersion(ChainTypeSdk chain) {
     switch (chain) {
       case ChainTypeSdk.bitcoin:
         return (0x00, null);
@@ -896,7 +983,7 @@ class DexCubit extends Cubit<DexState> {
       case ChainTypeSdk.decred:
         return (0x3f, 0x07); // two-byte prefix 0x073f
       default:
-        return (0x00, null);
+        return null;
     }
   }
 
@@ -1255,7 +1342,7 @@ class DexCubit extends Cubit<DexState> {
     required String htlcAddress,
     required String hashlock,
     required int timelock,
-    required double amount,
+    required String amountDisplay,
     String chain = 'eth',
   }) async {
     if (_web3 == null) {
@@ -1270,7 +1357,7 @@ class DexCubit extends Cubit<DexState> {
         htlcAddress: htlcAddress,
         hashlock: hashlock,
         timelock: timelock,
-        amount: amount,
+        amountDisplay: amountDisplay,
         chain: chain,
       );
       emit(
