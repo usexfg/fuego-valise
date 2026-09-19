@@ -21,6 +21,7 @@ import 'core/core.dart';
 import 'models/network_config.dart';
 import 'providers/wallet_provider.dart';
 import 'screens/splash_screen.dart';
+import 'services/cd_auto_renew_store.dart';
 import 'services/daemon_manager.dart';
 import 'services/evm_account_service.dart';
 import 'services/fuego_daemon_client.dart' as hearth;
@@ -267,8 +268,11 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
               ),
             ),
             BlocProvider<CdCubit>(
-              create: (_) =>
-                  CdCubit(rpcService, backendReady: widget.backendReady),
+              create: (_) => CdCubit(
+                rpcService,
+                autoRenewStore: CdAutoRenewStore(),
+                backendReady: widget.backendReady,
+              ),
             ),
             BlocProvider<HearthCubit>(
               create: (_) => HearthCubit(

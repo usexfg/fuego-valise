@@ -45,8 +45,7 @@ fn is_fuegod_method(method: &str) -> bool {
         "getrandom_outs_json" | "get_outputs_heights" |
         "check_tx_proof" | "check_reserve_proof" |
         "start_mining" | "stop_mining" |
-        "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
+        "estimate_cd_yield" |
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_state" | "get_orderbook_info" | "get_orderbook_estimates" |
         "get_fuego_price" | "getswapoffers" | "getswapprice" | "getswaptrades" |
@@ -56,8 +55,7 @@ fn is_fuegod_method(method: &str) -> bool {
         "getdeposits" | "get_block_range" | "get_maturing_deposits" |
         "rollover_deposit" | "get_fee_pool_info" | "get_epoch_history" |
         "get_treasury_info" | "get_alias" | "get_alias_by_address" | "get_all_aliases" |
-        "mint_heat" |
-        "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit"
+        "mint_heat"
     )
 }
 
@@ -191,8 +189,7 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
                 .json(&serde_json::json!({})).send().await
                 .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
         }
-        "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
+        "estimate_cd_yield" |
         "getswapoffers" | "getswapprice" | "getswaptrades" |
         "submitswap" | "cancelswap" | "requestswap" |
         "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
@@ -203,11 +200,6 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_info" | "get_orderbook_estimates" |
         "get_fuego_price" |
-        "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit" => {
-            client.post(format!("{}/{}", fuegod_url, method))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
         // fuegod exposes the orderbook at /getorderbook (pair + depth);
         // the walletd method name is get_orderbook_state.
         "get_orderbook_state" => {
@@ -348,27 +340,47 @@ async fn handle_wallet_method(
             }))
         }
         "cd::config" | "get_cd_config" => {
-            // Single source of truth for CD ladder tiers — GUI and AI agents
-            // fetch this to build amount/term selection and ladder configs.
+            // Single source of truth for CD tiers — the GUI fetches this
+            // rather than hardcoding tiers, so the two cannot drift.
+            //
+            // No term bonus is advertised. CryptoNoteConfig.h still defines
+            // LOYALTY_BONUS_*_PCT and Currency::loyaltyTierWeightPct still
+            // returns those weights, but calculateCdBonus no longer calls
+            // either: the pro-rata tier bonus was replaced by a flat
+            // CD_YIELD_FLOOR_RATE top-up that is deliberately term-blind
+            // ("base interest compounds, so duration is already rewarded
+            // once"). Quoting a multiplier here would promise a rule
+            // consensus stopped applying.
+            //
+            // No rolling term either. Consensus admits only the HEAT, LP and
+            // pool sentinels outside [DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM];
+            // renewal is a wallet feature (cd::rollover), not a chain one.
+            let (epoch_blocks, min_term, max_term) = {
+                let wallet = wallet.lock().await;
+                let (min_term, max_term) = wallet.deposit_term_bounds();
+                (wallet.epoch_blocks(), min_term, max_term)
+            };
             Ok(serde_json::json!({
-                "epoch_blocks": 900,
-                "testnet_epoch_blocks": 10,
-                "amount_tiers": [80000000, 10000000000_u64, 100000000000_u64, 1000000000000_u64, 10000000000000_u64],
+                "epoch_blocks": epoch_blocks,
+                "blocks_per_day": 180,
+                "block_seconds": 480,
+                "amount_tiers": [80000000_u64, 10000000000_u64, 100000000000_u64, 1000000000000_u64, 10000000000000_u64],
                 "amount_tiers_display": ["8", "1,000", "10,000", "100,000", "1M"],
                 "term_tiers": [6, 18, 36, 72],
                 "products": [
-                    {"amount": 80000000, "term_epochs": 1,  "rollover": "AUTO",   "bonus_x": 1.00, "label": "Epoch-to-epoch (8 HEAT)"},
-                    {"amount": null,     "term_epochs": 6,  "rollover": "MANUAL", "bonus_x": 1.25, "label": "6 epochs"},
-                    {"amount": null,     "term_epochs": 18, "rollover": "MANUAL", "bonus_x": 1.50, "label": "18 epochs"},
-                    {"amount": null,     "term_epochs": 36, "rollover": "MANUAL", "bonus_x": 2.00, "label": "36 epochs"},
-                    {"amount": null,     "term_epochs": 72, "rollover": "MANUAL", "bonus_x": 2.50, "label": "72 epochs"}
+                    {"term_epochs": 6,  "rollover": "MANUAL", "label": "6 epochs (~1 month)"},
+                    {"term_epochs": 18, "rollover": "MANUAL", "label": "18 epochs (~3 months)"},
+                    {"term_epochs": 36, "rollover": "MANUAL", "label": "36 epochs (~6 months)"},
+                    {"term_epochs": 72, "rollover": "MANUAL", "label": "72 epochs (~1 year)"}
                 ],
-                "rolling_term": 4294967294_u32,
                 "deposit_min_amount": 80000000_u64,
-                "deposit_min_term": 5400,
-                "deposit_max_term": 64800,
+                "deposit_min_term": min_term,
+                "deposit_max_term": max_term,
+                "creation_fee_bps": 10,
+                "yield_source": "Realized swap fees distributed per epoch. There is no fixed or \
+                                 annualized rate, and interest stops accruing at maturity.",
                 "ladder_example": {
-                    "description": "Example 4-rung ladder: split 111,108 HEAT across 4 terms",
+                    "description": "Example 4-rung ladder: 1,111,000 HEAT split across 4 terms",
                     "rungs": [
                         {"amount": 10000000000_u64, "term_epochs": 6},
                         {"amount": 100000000000_u64, "term_epochs": 18},
@@ -378,17 +390,32 @@ async fn handle_wallet_method(
                 }
             }))
         }
-        // CD market / APY — proxied to daemon (is_fuegod_method). Kept as wallet
-        // fallback only if daemon unavailable: return empty to keep GUI loadAll from failing.
-        "cd::apy" | "estimate_cd_yield" => {
+        // CD yield pool state. There is no APY to report: yield is realized
+        // swap fees distributed per epoch, so the honest figures are the
+        // backing available to pay claims. Returning a fabricated 0.0% APY
+        // here is what let the GUI render "0.0% APY" beside its own
+        // hardcoded percentages.
+        "cd::apy" | "cd::yield_pool" => {
+            let (pool, vault, present) = {
+                let wallet = wallet.lock().await;
+                // DEPOSIT_MIN_AMOUNT at DEPOSIT_MIN_TERM is a valid probe:
+                // the response's pool and vault balances are global.
+                match wallet.probe_cd_yield().await {
+                    Ok(y) => (y.fee_pool_balance, y.cd_apy_vault_balance, y.pool_info_present),
+                    Err(_) => (0, 0, false),
+                }
+            };
             Ok(serde_json::json!({
                 "coin": "HEAT",
-                "current_apy": 0.0,
-                "average_apy": 0.0,
-                "epoch": 0
+                "fee_pool_balance": WalletService::display_heat(pool),
+                "cd_apy_vault_balance": WalletService::display_heat(vault),
+                "pool_info_present": present,
+                "note": "CD yield is realized swap-fee revenue distributed per epoch, \
+                         not a fixed or annualized rate. Claims are capped by the pool \
+                         and vault balances at claim time.",
             }))
         }
-        "cd::create_ladder" => {
+        "cd::create_ladder" | "create_ladder" => {
             let ladder = params.get("rungs")
                 .or_else(|| params.get("ladder"))
                 .and_then(|v| v.as_array())
@@ -403,10 +430,17 @@ async fn handle_wallet_method(
                     .or_else(|| rung.get("term"))
                     .and_then(|v| v.as_u64())
                     .unwrap_or(6);
-                let blocks = term_epochs * 900;
                 let wallet = wallet.lock().await;
+                let blocks = term_epochs
+                    .checked_mul(wallet.epoch_blocks() as u64)
+                    .ok_or("rung term too large")?;
                 let tx = wallet.create_cd(amount, blocks as u32).await
-                    .map_err(|e| format!("ladder rung failed: {}", e))?;
+                    // Rungs broadcast one at a time and cannot be rolled
+                    // back, so name which ones already went out.
+                    .map_err(|e| format!(
+                        "ladder rung {} failed: {} (rungs already broadcast: {})",
+                        tx_hashes.len() + 1, e, tx_hashes.join(", ")
+                    ))?;
                 tx_hashes.push(tx);
             }
             Ok(serde_json::json!({"tx_hashes": tx_hashes, "created": tx_hashes.len()}))
@@ -423,13 +457,18 @@ async fn handle_wallet_method(
                 .and_then(|a| a.as_u64())
                 .or_else(|| params.get("amount").and_then(|a| a.as_str()).and_then(|s| s.parse().ok()))
                 .ok_or("missing amount")?;
+            let wallet = wallet.lock().await;
             let duration_blocks = params.get("duration_blocks")
                 .and_then(|d| d.as_u64())
                 .or_else(|| params.get("term").and_then(|d| d.as_u64()))
-                .or_else(|| params.get("epochs").and_then(|d| d.as_u64()).map(|e| e * 900))
+                .or_else(|| params.get("epochs").and_then(|d| d.as_u64())
+                    .and_then(|e| e.checked_mul(wallet.epoch_blocks() as u64)))
                 .ok_or("missing duration_blocks")?;
-            let wallet = wallet.lock().await;
-            let tx_hash = wallet.create_cd(amount, duration_blocks as u32).await
+            // Reject out-of-range terms here rather than truncating into it:
+            // `as u32` on 2^32 + 5400 wraps to a term create_cd would accept.
+            let duration_blocks = u32::try_from(duration_blocks)
+                .map_err(|_| "duration_blocks out of range".to_string())?;
+            let tx_hash = wallet.create_cd(amount, duration_blocks).await
                 .map_err(|e| format!("create_cd failed: {}", e))?;
             let height = wallet.height().await;
             Ok(serde_json::json!({
@@ -438,27 +477,32 @@ async fn handle_wallet_method(
                 "transactionHash": tx_hash,
                 "txHash": tx_hash,
                 "coin": "HEAT",
-                "amount": (amount as f64 / 10_000_000.0).to_string(),
-                "maturity_at": (height + duration_blocks).to_string(),
+                "amount": WalletService::display_heat(amount),
+                "term_blocks": duration_blocks,
+                "maturity_at": (height + duration_blocks as u64).to_string(),
             }))
         }
         "cd::claim" | "claim_cd" => {
+            // An explicit cd_id claims that CD alone. Omitting it claims
+            // every mature CD — the caller has to ask for that.
             let cd_id = params.get("cd_id")
                 .and_then(|a| a.as_str())
-                .unwrap_or("")
-                .to_string();
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.claim_cd().await
+            let outcome = wallet.claim_cd(cd_id.as_deref()).await
                 .map_err(|e| format!("claim_cd failed: {}", e))?;
             Ok(serde_json::json!({
-                "cd_id": cd_id,
-                "tx_hash": tx_hash,
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
+                "cd_id": cd_id.unwrap_or_default(),
+                "tx_hash": outcome.tx_hash,
+                "transactionHash": outcome.tx_hash,
+                "txHash": outcome.tx_hash,
                 "coin": "HEAT",
-                "principal": "0",
-                "interest": "0",
-                "total": "0",
+                "principal": WalletService::display_heat(outcome.principal),
+                "interest": WalletService::display_heat(outcome.interest),
+                "total": WalletService::display_heat(outcome.total),
+                "fee": WalletService::display_heat(outcome.fee),
+                "cds_claimed": outcome.claimed,
             }))
         }
         "rollover_cd" | "cd::rollover" => {

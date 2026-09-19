@@ -46,7 +46,10 @@ fn remap_to_walletd(method: &str) -> String {
         "list_cds" => "list_cds",
         "cd::list" => "list_cds",
         "cd::create" => "create_cd",
-        "cd::claim" => "withdraw_cd",
+        "cd::claim" => "claim_cd",
+        "cd::rollover" => "rollover_cd",
+        "cd::config" => "get_cd_config",
+        "cd::create_ladder" => "create_ladder",
         "create_integrated" => "create_integrated",
         _ => method,
     }.to_string()
@@ -79,14 +82,19 @@ fn remap_params(method: &str, params: &serde_json::Value) -> serde_json::Value {
         "cd::create" => {
             let amount = params.get("amount").cloned()
                 .unwrap_or(serde_json::json!("0"));
-            let term = params.get("duration_blocks").cloned()
-                .unwrap_or(serde_json::json!(1440));
-            serde_json::json!({"amount": amount, "term": term})
+            // No default term. 1440 was never valid — it is below
+            // DEPOSIT_MIN_TERM (5400) and not an epoch multiple, so it
+            // produced a commitment consensus rejects. A missing term is an
+            // error for create_cd to report, not something to guess at.
+            match params.get("duration_blocks").or_else(|| params.get("term")) {
+                Some(term) => serde_json::json!({"amount": amount, "term": term}),
+                None => serde_json::json!({"amount": amount}),
+            }
         }
         "cd::claim" => {
-            let deposit_id = params.get("cd_id").cloned()
+            let cd_id = params.get("cd_id").cloned()
                 .unwrap_or(serde_json::json!(""));
-            serde_json::json!({"deposit_id": deposit_id})
+            serde_json::json!({"cd_id": cd_id})
         }
         _ => params.clone(),
     }
@@ -98,7 +106,12 @@ fn needs_walletd(method: &str) -> bool {
         "getBalance" | "getAddresses" | "getAddress" | "getTransactions" |
         "sendTransaction" | "getStatus" |
         "create_integrated" |
-        "list_cds" | "cd::list" | "cd::create" | "cd::claim"
+        // Every CD operation is wallet state. Omitting claim/rollover/config
+        // from this list sent them to is_fuegod_method, which does not list
+        // them either — so they failed as "unknown method".
+        "list_cds" | "cd::list" | "cd::create" | "cd::claim" |
+        "create_cd" | "claim_cd" | "rollover_cd" | "cd::rollover" |
+        "cd::config" | "get_cd_config" | "cd::create_ladder" | "create_ladder"
     )
 }
 
@@ -115,8 +128,7 @@ fn is_fuegod_method(method: &str) -> bool {
         // Mining
         "start_mining" | "stop_mining" |
         // CD market operations (fuego RPC, not walletd)
-        "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
+        "estimate_cd_yield" |
         // AMM / HEAT
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_state" | "get_orderbook_info" | "get_orderbook_estimates" |
@@ -128,8 +140,7 @@ fn is_fuegod_method(method: &str) -> bool {
         "getdeposits" | "get_block_range" | "get_maturing_deposits" |
         "rollover_deposit" | "get_fee_pool_info" | "get_epoch_history" |
         "get_treasury_info" | "get_alias" | "get_alias_by_address" | "get_all_aliases" |
-        "mint_heat" | "swap" | "add_liq" | "remove_liq" | "place_limit_order" |
-        "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit"
+        "mint_heat" | "swap" | "add_liq" | "remove_liq" | "place_limit_order"
     )
 }
 
@@ -269,8 +280,7 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
                 .json(&serde_json::json!({})).send().await
                 .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
         }
-        "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
+        "estimate_cd_yield" |
         "getswapoffers" | "getswapprice" | "getswaptrades" |
         "submitswap" | "cancelswap" | "requestswap" |
         "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
@@ -282,11 +292,6 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
         "get_orderbook_state" | "get_orderbook_info" | "get_orderbook_estimates" |
         "get_fuego_price" |
         "mint_heat" | "swap" | "add_liq" | "remove_liq" | "place_limit_order" |
-        "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit" => {
-            client.post(format!("{}/{}", fuegod_url, method))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
         _ => {
             return Err(format!("unknown fuegod method: {}", method));
         }

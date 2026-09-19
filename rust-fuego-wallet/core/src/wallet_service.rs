@@ -20,10 +20,45 @@ const SWAP_FEE_RATE_DIVISOR: u64 = 10000;
 /// Atomic units per coin (CryptoNoteConfig.h COIN).
 const COIN: u64 = 10_000_000;
 /// CryptoNoteConfig.h DEPOSIT_MIN_TERM / DEPOSIT_MAX_TERM (blocks).
+/// CD_MIN_EPOCHS(6) * EPOCH_DURATION_BLOCKS(900) .. CD_MAX_EPOCHS(72) * 900.
 const DEPOSIT_MIN_TERM: u32 = 5400;
 const DEPOSIT_MAX_TERM: u32 = 64800;
+/// Testnet equivalents. Currency::depositMinTerm/depositMaxTerm select these
+/// when testnet is set (Currency.h CurrencyBuilder::testnet), so the wallet
+/// has to switch with it or it rejects terms the chain accepts.
+/// TESTNET_CD_MIN_EPOCHS(1) * TESTNET_EPOCH_DURATION_BLOCKS(10) .. 72 * 10.
+const TESTNET_DEPOSIT_MIN_TERM: u32 = 10;
+const TESTNET_DEPOSIT_MAX_TERM: u32 = 720;
+/// CryptoNoteConfig.h DEPOSIT_MIN_AMOUNT (= AMOUNT_TIER_0, 8 HEAT).
+const DEPOSIT_MIN_AMOUNT: u64 = 8 * COIN;
+/// CryptoNoteConfig.h EPOCH_DURATION_BLOCKS / TESTNET_EPOCH_DURATION_BLOCKS.
+const EPOCH_DURATION_BLOCKS: u32 = 900;
+const TESTNET_EPOCH_DURATION_BLOCKS: u32 = 10;
 /// CryptoNoteConfig.h HEAT_MINT_MIN_HEAT (0.1 HEAT).
 const HEAT_MINT_MIN_HEAT: u64 = 1_000_000;
+
+/// A CD is identified by its deposit transaction hash, hex-encoded.
+fn parse_cd_id(cd_id: &str) -> std::result::Result<[u8; 32], String> {
+    let bytes = hex::decode(cd_id).map_err(|_| "invalid cd_id".to_string())?;
+    if bytes.len() != 32 {
+        return Err("invalid cd_id length".into());
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes);
+    Ok(out)
+}
+
+/// What a CD claim actually paid, so the RPC layer can report it instead of
+/// echoing zeros back at the caller.
+#[derive(Debug, Clone)]
+pub struct ClaimOutcome {
+    pub tx_hash: String,
+    pub principal: u64,
+    pub interest: u64,
+    pub total: u64,
+    pub fee: u64,
+    pub claimed: usize,
+}
 
 /// Integer square root (AmmPool.cpp isqrt128).
 fn isqrt128(n: u128) -> u64 {
@@ -1244,12 +1279,19 @@ impl WalletService {
             .filter(|d| d.global_index != 0)
             .collect();
         // The fee is the difference between inputs and outputs, so the
-        // selection must cover amount + banking_fee + fee.
-        let needed = amount + banking_fee + MINIMUM_FEE;
+        // selection must cover amount + banking_fee + fee. Checked: an
+        // unchecked sum wraps in release builds, which would let `found >=
+        // needed` pass and then underflow heat_change below.
+        let needed = amount
+            .checked_add(banking_fee)
+            .and_then(|v| v.checked_add(MINIMUM_FEE))
+            .ok_or_else(|| "amount too large".to_string())?;
         let mut selected = Vec::new();
         let mut found = 0u64;
         for entry in heat {
-            found += entry.amount;
+            found = found
+                .checked_add(entry.amount)
+                .ok_or_else(|| "HEAT balance overflow".to_string())?;
             selected.push(entry);
             if found >= needed {
                 break;
@@ -1317,30 +1359,67 @@ impl WalletService {
     }
 
     /// create_cd: HEAT CD with an explicit block term (the GUI passes
-    /// duration_blocks directly). The 8 HEAT tier (80,000,000 atomic) is
-    /// epoch-to-epoch only: a single 1-epoch (EPOCH_DURATION_BLOCKS) term
-    /// that auto-rolls at each epoch boundary until the user withdraws.
+    /// duration_blocks directly).
+    ///
+    /// Every tier — 8 HEAT included — is an ordinary finite-term CD. The 8
+    /// HEAT tier is the DEPOSIT_MIN_AMOUNT entry point at the minimum term
+    /// (6 epochs, ~1 month), not a special product: consensus admits no term
+    /// below DEPOSIT_MIN_TERM outside the HEAT/LP/pool sentinels
+    /// (CryptoNoteFormatUtils.cpp validate_commitment_output and
+    /// Blockchain.cpp validTerm), so a 1-epoch commitment is rejected
+    /// outright. Renewal is a wallet feature (see rollover_cd), not a chain
+    /// one — chain auto-roll is gated behind a v13 TODO and its index is
+    /// never populated.
     pub async fn create_cd(
         &self,
         amount: u64,
         term_blocks: u32,
     ) -> std::result::Result<String, String> {
-        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
-        // 8 HEAT tier: epoch-to-epoch auto-rollover CD (1 epoch term).
-        if amount == 8 * COIN {
-            if term_blocks != epoch_blocks as u32 {
-                return Err(format!(
-                    "8 HEAT CDs are epoch-to-epoch only (term must be {} blocks)",
-                    epoch_blocks
-                ));
-            }
-        } else if term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM {
+        if amount < DEPOSIT_MIN_AMOUNT {
+            return Err(format!(
+                "amount must be at least {} HEAT",
+                DEPOSIT_MIN_AMOUNT / COIN
+            ));
+        }
+        let (min_term, max_term) = self.deposit_term_bounds();
+        if term_blocks < min_term || term_blocks > max_term {
             return Err(format!(
                 "term must be in {}..={} blocks",
-                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
+                min_term, max_term
             ));
         }
         self.heat_cd_core(amount, term_blocks, 0).await
+    }
+
+    /// Global CD yield-pool state, via a minimum-tier probe. The pool and
+    /// vault balances in an /estimate_cd_yield response are chain-wide, so
+    /// any valid amount/term pair surfaces them.
+    pub async fn probe_cd_yield(&self) -> std::result::Result<crate::daemon::CdYield, String> {
+        let height = self.wallet.lock().unwrap().height() as u32;
+        let (min_term, _) = self.deposit_term_bounds();
+        self.daemon
+            .estimate_cd_yield(DEPOSIT_MIN_AMOUNT, height, min_term)
+            .await
+    }
+
+    /// Blocks per epoch for this network (CryptoNoteConfig.h
+    /// EPOCH_DURATION_BLOCKS / TESTNET_EPOCH_DURATION_BLOCKS).
+    pub fn epoch_blocks(&self) -> u32 {
+        if self.testnet {
+            TESTNET_EPOCH_DURATION_BLOCKS
+        } else {
+            EPOCH_DURATION_BLOCKS
+        }
+    }
+
+    /// CD term bounds in blocks for this network, matching
+    /// Currency::depositMinTerm/depositMaxTerm.
+    pub fn deposit_term_bounds(&self) -> (u32, u32) {
+        if self.testnet {
+            (TESTNET_DEPOSIT_MIN_TERM, TESTNET_DEPOSIT_MAX_TERM)
+        } else {
+            (DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM)
+        }
     }
 
     /// heat_cd: HEAT CD with the term expressed in epochs (CLI-style).
@@ -1353,19 +1432,33 @@ impl WalletService {
         if epochs == 0 {
             return Err("epochs must be > 0".into());
         }
-        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
-        let term_blocks = (epochs as u64 * epoch_blocks) as u32;
-        if term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM {
+        let term_blocks = epochs
+            .checked_mul(self.epoch_blocks())
+            .ok_or_else(|| "term too large".to_string())?;
+        let (min_term, max_term) = self.deposit_term_bounds();
+        if term_blocks < min_term || term_blocks > max_term {
             return Err(format!(
                 "term must be in {}..={} blocks",
-                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
+                min_term, max_term
             ));
         }
         self.heat_cd_core(amount, term_blocks, banking_fee).await
     }
 
-    /// claim_cd: spend all mature finite-term deposits back to ourselves.
-    pub async fn claim_cd(&self) -> std::result::Result<String, String> {
+    /// claim_cd: spend mature finite-term deposits back to ourselves.
+    ///
+    /// `cd_id` (a deposit tx hash) claims that one CD; None claims every
+    /// mature one. The GUI claims per-card, so passing the id matters —
+    /// claiming the whole book from a single card's button spends deposits
+    /// the user did not select.
+    pub async fn claim_cd(
+        &self,
+        cd_id: Option<&str>,
+    ) -> std::result::Result<ClaimOutcome, String> {
+        let want = match cd_id {
+            Some(id) => Some(parse_cd_id(id)?),
+            None => None,
+        };
         let height = self.wallet.lock().unwrap().height();
         let deposits: Vec<fuego_sdk::scanner::CommitmentEntry> = self
             .wallet
@@ -1374,31 +1467,53 @@ impl WalletService {
             .deposits()
             .into_iter()
             .filter(|d| d.block_height + d.term as u64 <= height && d.global_index != 0)
+            .filter(|d| want.map_or(true, |w| d.tx_hash == w))
             .collect();
         if deposits.is_empty() {
-            return Err("no mature deposits to claim".into());
+            return Err(match cd_id {
+                Some(_) => "CD not found, not mature, or already spent".into(),
+                None => "no mature deposits to claim".to_string(),
+            });
         }
 
         let fee = MINIMUM_FEE;
 
         // Interest per deposit via /estimate_cd_yield (the daemon's
-        // calculateCdInterest). Fall back to 0 if the endpoint is
-        // unavailable; the daemon caps per-tx claims against the fee pool.
+        // calculateCdInterest), using each deposit's real term so the
+        // estimate is clamped at maturity the same way
+        // checkCommitmentSpendInput clamps its cap. Claim the pool-capped
+        // `claimable`, never the raw formula value: consensus rejects a
+        // claimedInterest the fee pool and CD_APY vault cannot back.
+        //
+        // A failed lookup is fatal. Defaulting to zero would burn the CD's
+        // entire accrued interest in an irreversible spend without telling
+        // the user.
         let mut interests = Vec::with_capacity(deposits.len());
         for deposit in &deposits {
-            let interest = self
+            let yield_info = self
                 .daemon
-                .estimate_cd_yield(deposit.amount, deposit.block_height as u32)
+                .estimate_cd_yield(deposit.amount, deposit.block_height as u32, deposit.term)
                 .await
-                .unwrap_or(0);
-            interests.push(interest);
+                .map_err(|e| {
+                    format!(
+                        "cannot determine claimable interest ({e}); \
+                         refusing to claim and forfeit accrued yield"
+                    )
+                })?;
+            interests.push(yield_info.claimable);
         }
 
-        let total: u64 = deposits
+        let principal = deposits
             .iter()
-            .zip(interests.iter())
-            .map(|(d, i)| d.amount + i)
-            .sum();
+            .try_fold(0u64, |acc, d| acc.checked_add(d.amount))
+            .ok_or_else(|| "deposit total overflow".to_string())?;
+        let interest = interests
+            .iter()
+            .try_fold(0u64, |acc, i| acc.checked_add(*i))
+            .ok_or_else(|| "interest total overflow".to_string())?;
+        let total = principal
+            .checked_add(interest)
+            .ok_or_else(|| "claim total overflow".to_string())?;
         if total <= fee {
             return Err("deposit total below fee".into());
         }
@@ -1454,7 +1569,15 @@ impl WalletService {
         .map_err(|e| format!("build: {e}"))?;
 
         let key_images: Vec<[u8; 32]> = deposits.iter().map(|d| d.key_image).collect();
-        self.broadcast_built(built, key_images).await
+        let tx_hash = self.broadcast_built(built, key_images).await?;
+        Ok(ClaimOutcome {
+            tx_hash,
+            principal,
+            interest,
+            total,
+            fee,
+            claimed: deposits.len(),
+        })
     }
 
     /// rollover_cd: reinvest a single matured CD (principal + accrued
@@ -1466,12 +1589,7 @@ impl WalletService {
         cd_id: &str,
         new_term: u32,
     ) -> std::result::Result<String, String> {
-        let id_bytes = hex::decode(cd_id).map_err(|_| "invalid cd_id".to_string())?;
-        if id_bytes.len() != 32 {
-            return Err("invalid cd_id length".into());
-        }
-        let mut want = [0u8; 32];
-        want.copy_from_slice(&id_bytes);
+        let want = parse_cd_id(cd_id)?;
 
         let height = self.wallet.lock().unwrap().height();
         let deposits: Vec<fuego_sdk::scanner::CommitmentEntry> = self
@@ -1489,32 +1607,49 @@ impl WalletService {
             return Err("deposit is not yet mature".into());
         }
 
+        // Same contract as claim_cd: the real term so the estimate is
+        // clamped at maturity, the pool-capped figure so consensus accepts
+        // it, and a hard error rather than a silent zero.
         let interest = self
             .daemon
-            .estimate_cd_yield(deposit.amount, deposit.block_height as u32)
+            .estimate_cd_yield(deposit.amount, deposit.block_height as u32, deposit.term)
             .await
-            .unwrap_or(0);
-        let rolled_amount = deposit.amount.saturating_add(interest);
+            .map_err(|e| {
+                format!(
+                    "cannot determine claimable interest ({e}); \
+                     refusing to roll over and forfeit accrued yield"
+                )
+            })?
+            .claimable;
 
-        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
-        // 8 HEAT tier is epoch-to-epoch only; keep one epoch on rollover.
-        let term_blocks: u32 = if deposit.amount == 8 * COIN {
-            epoch_blocks as u32
-        } else if new_term == 0 {
-            deposit.term
-        } else {
-            new_term
-        };
-        if deposit.amount != 8 * COIN
-            && (term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM)
-        {
+        let fee = MINIMUM_FEE;
+        // A commitment spend's input value is amount + claimedInterest
+        // (Currency::getTransactionInputAmount), and the fee is inputs minus
+        // outputs. Reinvesting the full principal + interest leaves nothing
+        // for the fee, so the transaction is unbalanced and rejected — the
+        // new commitment has to be that much smaller.
+        let rolled_amount = deposit
+            .amount
+            .checked_add(interest)
+            .ok_or_else(|| "rollover amount overflow".to_string())?
+            .checked_sub(fee)
+            .ok_or_else(|| "CD value below network fee".to_string())?;
+        if rolled_amount < DEPOSIT_MIN_AMOUNT {
             return Err(format!(
-                "new term must be in {}..={} blocks",
-                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
+                "rollover amount after fee is below the {} HEAT minimum",
+                DEPOSIT_MIN_AMOUNT / COIN
             ));
         }
 
-        let fee = MINIMUM_FEE;
+        let term_blocks: u32 = if new_term == 0 { deposit.term } else { new_term };
+        let (min_term, max_term) = self.deposit_term_bounds();
+        if term_blocks < min_term || term_blocks > max_term {
+            return Err(format!(
+                "new term must be in {}..={} blocks",
+                min_term, max_term
+            ));
+        }
+
         let mixin = DEFAULT_MIXIN;
         let decoys = self.commitment_decoys(deposit, mixin).await?;
         let keys = self.wallet.lock().unwrap().wallet_keys();
@@ -1797,18 +1932,27 @@ impl WalletService {
             .filter(|d| d.global_index != 0)
             .collect();
 
+        let epoch_blocks = self.epoch_blocks() as u64;
         let mut out = Vec::with_capacity(deposits.len());
         for d in deposits {
             let maturity_height = d.block_height.saturating_add(d.term as u64);
             let blocks_to_maturity = maturity_height.saturating_sub(height);
-            let matured = blocks_to_maturity == 0 && height >= maturity_height;
-            let interest = self
+            let matured = height >= maturity_height;
+            // Pass the real term so accrual is clamped at maturity, and
+            // report the pool-capped figure — `estimated` can exceed what a
+            // claim may actually take.
+            let yield_info = self
                 .daemon
-                .estimate_cd_yield(d.amount, d.block_height as u32)
+                .estimate_cd_yield(d.amount, d.block_height as u32, d.term)
                 .await
-                .unwrap_or(0);
+                .unwrap_or_default();
+            let interest = yield_info.claimable;
             let total = d.amount.saturating_add(interest);
-            let rate_pct = if d.amount > 0 {
+            // Interest accrued so far as a percentage of principal. This is
+            // NOT an APY: yield comes from realized swap fees per epoch, so
+            // there is no annualized rate to quote. Clients must not label
+            // it as one.
+            let accrued_pct = if d.amount > 0 {
                 interest as f64 / d.amount as f64 * 100.0
             } else {
                 0.0
@@ -1818,21 +1962,27 @@ impl WalletService {
                 "owner": owner,
                 "coin": "HEAT",
                 "amount": Self::display_heat(d.amount),
-                "interest_rate": format!("{:.2}", rate_pct),
+                "accrued_pct": format!("{:.4}", accrued_pct),
+                "term_blocks": d.term,
+                "term_epochs": if epoch_blocks > 0 { d.term as u64 / epoch_blocks } else { 0 },
                 "maturity_height": maturity_height,
                 "deposit_height": d.block_height,
                 "accrued_interest": Self::display_heat(interest),
+                "uncapped_interest": Self::display_heat(yield_info.estimated),
+                "interest_is_capped": yield_info.claimable < yield_info.estimated,
+                "fee_pool_balance": Self::display_heat(yield_info.fee_pool_balance),
+                "cd_apy_vault_balance": Self::display_heat(yield_info.cd_apy_vault_balance),
+                "effective_epochs": yield_info.effective_epochs,
                 "total_value": Self::display_heat(total),
                 "blocks_to_maturity": blocks_to_maturity,
                 "matured": matured,
-                "for_sale": false,
             }));
         }
         out
     }
 
     /// Format an atomic HEAT amount as a human HEAT decimal (max 7 dp).
-    fn display_heat(atomic: u64) -> String {
+    pub fn display_heat(atomic: u64) -> String {
         let whole = atomic / COIN;
         let frac = atomic % COIN;
         if frac == 0 {
@@ -1891,5 +2041,99 @@ mod tests {
         assert_ne!(lock_sha, h_point_sha);
         assert_ne!(lock_keccak, h_point_keccak);
         assert_ne!(lock_sha, lock_keccak);
+    }
+}
+
+#[cfg(test)]
+mod cd_tests {
+    use super::*;
+
+    /// Constants pinned to fuego-suite src/CryptoNoteConfig.h.
+    #[test]
+    fn term_and_amount_bounds_match_consensus() {
+        // CD_MIN_EPOCHS(6) * EPOCH_DURATION_BLOCKS(900).
+        assert_eq!(DEPOSIT_MIN_TERM, 6 * EPOCH_DURATION_BLOCKS);
+        // CD_MAX_EPOCHS(72) * EPOCH_DURATION_BLOCKS(900).
+        assert_eq!(DEPOSIT_MAX_TERM, 72 * EPOCH_DURATION_BLOCKS);
+        // DEPOSIT_MIN_AMOUNT = AMOUNT_TIER_0 = 8 HEAT.
+        assert_eq!(DEPOSIT_MIN_AMOUNT, 80_000_000);
+        // One epoch is NOT a legal term: validate_commitment_output rejects
+        // anything below DEPOSIT_MIN_TERM outside the HEAT/LP/pool sentinels,
+        // which is why the 8 HEAT tier is a 6-epoch CD and not a 1-epoch one.
+        assert!(EPOCH_DURATION_BLOCKS < DEPOSIT_MIN_TERM);
+        // Testnet bounds mirror Currency::depositMinTerm/depositMaxTerm.
+        assert_eq!(TESTNET_DEPOSIT_MIN_TERM, 1 * TESTNET_EPOCH_DURATION_BLOCKS);
+        assert_eq!(TESTNET_DEPOSIT_MAX_TERM, 72 * TESTNET_EPOCH_DURATION_BLOCKS);
+    }
+
+    #[test]
+    fn every_allowed_tier_is_in_range() {
+        for epochs in [6u32, 18, 36, 72] {
+            let blocks = epochs * EPOCH_DURATION_BLOCKS;
+            assert!(blocks >= DEPOSIT_MIN_TERM, "{epochs} epochs below min term");
+            assert!(blocks <= DEPOSIT_MAX_TERM, "{epochs} epochs above max term");
+        }
+    }
+
+    #[test]
+    fn cd_id_must_be_a_32_byte_hex_hash() {
+        let hash = "a".repeat(64);
+        assert_eq!(parse_cd_id(&hash).unwrap(), [0xaa; 32]);
+        assert!(parse_cd_id("").is_err());
+        assert!(parse_cd_id("not-hex").is_err());
+        // 31 bytes and 33 bytes both rejected.
+        assert!(parse_cd_id(&"a".repeat(62)).is_err());
+        assert!(parse_cd_id(&"a".repeat(66)).is_err());
+    }
+
+    /// A commitment spend's input value is amount + claimedInterest
+    /// (Currency::getTransactionInputAmount) and the fee is inputs minus
+    /// outputs, so a rollover must reinvest strictly less than it spends.
+    #[test]
+    fn rollover_deducts_the_fee_from_the_reinvested_amount() {
+        let principal = 8 * COIN;
+        let interest = 11_000u64;
+        let inputs = principal + interest;
+        let rolled = inputs.checked_sub(MINIMUM_FEE).unwrap();
+        assert_eq!(inputs - rolled, MINIMUM_FEE, "inputs - outputs must equal the fee");
+        assert!(rolled < inputs);
+    }
+
+    #[test]
+    fn rollover_below_the_fee_is_rejected_not_wrapped() {
+        // A deposit worth less than the fee must error rather than underflow
+        // into a huge output.
+        let tiny = MINIMUM_FEE - 1;
+        assert!(tiny.checked_add(0).unwrap().checked_sub(MINIMUM_FEE).is_none());
+    }
+
+    /// heat_cd_core selects inputs covering amount + banking_fee + fee. An
+    /// unchecked sum wraps in release builds, which would pass the coverage
+    /// check and then underflow the change output.
+    #[test]
+    fn selection_total_overflow_is_caught() {
+        let amount = u64::MAX - 100;
+        let banking_fee = (amount / 1000).max(1);
+        let needed = amount
+            .checked_add(banking_fee)
+            .and_then(|v| v.checked_add(MINIMUM_FEE));
+        assert!(needed.is_none(), "overflow must be rejected, not wrapped");
+    }
+
+    #[test]
+    fn banking_fee_is_ten_basis_points() {
+        // heat_cd_core: (amount / 1000).max(1) = 0.1%.
+        assert_eq!((8 * COIN / 1000).max(1), 80_000);
+        assert_eq!((1000 * COIN / 1000).max(1), 10_000_000);
+        // Never zero, even for a dust amount.
+        assert_eq!((1u64 / 1000).max(1), 1);
+    }
+
+    #[test]
+    fn display_heat_renders_coin_decimals() {
+        assert_eq!(WalletService::display_heat(80_000_000), "8");
+        assert_eq!(WalletService::display_heat(8_000), "0.0008");
+        assert_eq!(WalletService::display_heat(10_000_001), "1.0000001");
+        assert_eq!(WalletService::display_heat(0), "0");
     }
 }

@@ -39,7 +39,7 @@ class _HeatScreenState extends State<HeatScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text('ΗΞΔŦ Stablecoin'),
+        title: const Text('ΗΞΔŦ'),
         backgroundColor: AppTheme.surfaceColor,
         actions: [
           IconButton(
@@ -91,14 +91,13 @@ class _HeatScreenState extends State<HeatScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const Text('PI Controller', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            const Text('Redemption', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _metricColumn('Target', m.piTarget, AppTheme.textMuted),
-                _metricColumn('Price', m.redemptionPrice, AppTheme.primaryColor),
-                _metricColumn('APY', '${m.currentApy.toStringAsFixed(1)}%', AppTheme.successColor),
+                _metricColumn('XFG per ΗΞΔŦ', m.formattedRedemptionPrice, AppTheme.primaryColor),
+                _metricColumn('On deposit', m.onDeposit, AppTheme.accentColor),
               ],
             ),
           ],
@@ -134,12 +133,12 @@ class _HeatScreenState extends State<HeatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Treasury & Yield', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+            const Text('Treasury & CD Yield Pool', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(child: _metricColumn('Treasury', _metrics!.treasury, AppTheme.accentColor)),
-                Expanded(child: _metricColumn('CD Yield', _metrics!.cdYield, AppTheme.successColor)),
+                Expanded(child: _metricColumn('CD Yield Pool', _metrics!.cdYieldPool, AppTheme.successColor)),
               ],
             ),
           ],

@@ -24,6 +24,25 @@ pub struct DaemonInfo {
     pub version: String,
 }
 
+/// /estimate_cd_yield response. `claimable` is the number a CD spend may put
+/// in `claimedInterest`; `estimated` is the uncapped formula value and is for
+/// display only — claiming it when the pool or vault is thinner gets the
+/// transaction rejected.
+#[derive(Debug, Clone, Default)]
+pub struct CdYield {
+    pub claimable: u64,
+    pub estimated: u64,
+    pub base: u64,
+    pub bonus: u64,
+    pub claimable_bonus: u64,
+    pub fee_pool_balance: u64,
+    pub cd_apy_vault_balance: u64,
+    pub bonus_vault_balance: u64,
+    pub effective_epochs: u64,
+    pub pool_info_present: bool,
+    pub note: String,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonRpcRequest {
     jsonrpc: String,
@@ -174,23 +193,67 @@ impl DaemonClient {
     }
 
     /// /estimate_cd_yield — interest a CD would pay today.
+    ///
+    /// `term` is load-bearing and must be the CD's real term in blocks.
+    /// Currency::calculateCdInterest only clamps accrual at maturity when
+    /// term > 0 (Currency.cpp: `if (term > 0) { expiryEpoch … }`), so a
+    /// request that omits it keeps accruing past maturity and returns more
+    /// than consensus will accept. checkCommitmentSpendInput validates
+    /// against the youngest ring member's real term, so an unclamped
+    /// estimate makes every post-maturity claim exceed `maxInterest` and be
+    /// rejected.
     pub async fn estimate_cd_yield(
         &self,
         amount: u64,
         creation_height: u32,
-    ) -> Result<u64, String> {
+        term: u32,
+    ) -> Result<CdYield, String> {
         let val = self
             .json_rpc::<serde_json::Value>(
                 "estimate_cd_yield",
                 serde_json::json!({
                     "amount": amount,
                     "creation_height": creation_height,
+                    "term": term,
                 }),
             )
             .await?;
-        val.get("estimated_interest")
+        let field = |key: &str| val.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+        // estimated_interest is the only field every daemon version returns;
+        // its absence means the response is not an estimate at all.
+        let estimated = val
+            .get("estimated_interest")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| format!("bad estimate_cd_yield response: {}", val))
+            .ok_or_else(|| format!("bad estimate_cd_yield response: {}", val))?;
+        let pool_info_present = val
+            .get("pool_info_present")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        Ok(CdYield {
+            // claimable_interest is what consensus accepts: min(estimated,
+            // fee pool, CD_APY vault) plus the vault-capped bonus. Only a
+            // daemon predating pool-aware estimates leaves it unset, and
+            // there the formula value is the best available bound.
+            claimable: if pool_info_present {
+                field("claimable_interest")
+            } else {
+                estimated
+            },
+            estimated,
+            base: field("base_interest"),
+            bonus: field("bonus_interest"),
+            claimable_bonus: field("claimable_bonus"),
+            fee_pool_balance: field("fee_pool_balance"),
+            cd_apy_vault_balance: field("cd_apy_vault_balance"),
+            bonus_vault_balance: field("bonus_vault_balance"),
+            effective_epochs: field("effective_epochs"),
+            pool_info_present,
+            note: val
+                .get("note")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        })
     }
 
     /// /is_key_image_spent (JSON-RPC). Returns an error if the daemon does

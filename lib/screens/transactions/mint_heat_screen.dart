@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
 import '../../models/heat_amm.dart';
+import '../../core/constants.dart';
 import '../../utils/theme.dart';
 import '../../utils/xfg_ticker.dart' as xt;
 
@@ -60,14 +61,20 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
     }
   }
 
-  double get _twapRate {
-    if (_metrics == null) return 0;
-    return double.tryParse(_metrics!.redemptionPrice) ?? 0;
-  }
+  /// HEAT received per XFG burned. Null when the redemption price is
+  /// undefined (empty HEAT reserve), in which case consensus rejects the
+  /// mint outright and there is nothing to quote.
+  double? get _heatPerXfg => _metrics?.heatPerXfg;
 
-  double get _estimatedHeat {
+  /// Consensus mints `xfgBurned / redemptionPrice` where redemptionPrice is
+  /// XFG per HEAT (HeatMintEngine::validateMint), so the quote multiplies by
+  /// the inverse. Multiplying by the price itself was wrong by a factor of
+  /// the price squared.
+  double? get _estimatedHeat {
+    final rate = _heatPerXfg;
+    if (rate == null) return null;
     final xfg = double.tryParse(_amountController.text) ?? 0;
-    return xfg * _twapRate;
+    return xfg * rate;
   }
 
   void _onAmountChanged() {
@@ -87,7 +94,18 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       return;
     }
 
-    const fee = 0.008; // XFG network fee for burn transaction
+    // Without a redemption price there is no valid mint: consensus rejects
+    // on `redemptionPrice.isZero()`. Quoting zero HEAT and submitting anyway
+    // burns XFG for a transaction that cannot be accepted.
+    if (estimatedHeat == null) {
+      setState(() => _errorMessage =
+          'Redemption price unavailable — the Hearth pool has no ΗΞΔŦ '
+          'reserve. Minting is not possible until it does.');
+      return;
+    }
+
+    // txFee atomic units (8000) expressed in XFG.
+    const fee = txFee / atomicPerCoin;
     final totalXfg = xfgAmount + fee;
 
     if (totalXfg > cubit.state.unlockedBalanceXfg) {
@@ -147,7 +165,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Rate: 1 XFG = ${_twapRate.toStringAsFixed(4)} ΗΞΔŦ (TWAP)',
+                    'Rate: 1 XFG = ${(_heatPerXfg ?? 0).toStringAsFixed(4)} ΗΞΔŦ (TWAP)',
                     style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -250,12 +268,23 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       final cubit = context.read<WalletCubit>();
       final amountStr = _amountController.text.trim();
       final xfgAmount = double.tryParse(amountStr) ?? 0;
+      final rate = _heatPerXfg;
+      if (rate == null) {
+        throw StateError('Redemption price unavailable');
+      }
+      // Snapshot the quote: the field stays editable during the await, and
+      // the success dialog must report what was actually minted.
+      final quotedHeat = xfgAmount * rate;
 
-      final result = await cubit.mintHeat(xfgAmount: xfgAmount, pin: pin);
+      final result = await cubit.mintHeat(
+        xfgAmount: xfgAmount,
+        heatPerXfg: rate,
+        pin: pin,
+      );
 
       if (mounted) {
         final txHash = result['tx_hash'] as String? ?? '';
-        _showSuccessDialog(txHash, xfgAmount);
+        _showSuccessDialog(txHash, xfgAmount, quotedHeat);
       }
     } catch (e) {
       if (!mounted) return;
@@ -271,8 +300,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
     }
   }
 
-  void _showSuccessDialog(String txHash, double xfgAmount) {
-    final estimatedHeat = _estimatedHeat;
+  void _showSuccessDialog(String txHash, double xfgAmount, double estimatedHeat) {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -516,7 +544,9 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                                   ),
                                   Flexible(
                                     child: Text(
-                                      '1 XFG = ${_twapRate.toStringAsFixed(4)} ΗΞΔŦ',
+                                      _heatPerXfg == null
+                                          ? 'Unavailable'
+                                          : '1 XFG = ${_heatPerXfg!.toStringAsFixed(4)} ΗΞΔŦ',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: TextAlign.right,
@@ -585,7 +615,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                   const SizedBox(height: 16),
 
                   // Estimated ΗΞΔŦ output
-                  if (_twapRate > 0 && _amountController.text.isNotEmpty) ...[
+                  if (_estimatedHeat != null && _amountController.text.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
@@ -608,7 +638,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${_estimatedHeat.toStringAsFixed(7)} ΗΞΔŦ',
+                            '${_estimatedHeat!.toStringAsFixed(7)} ΗΞΔŦ',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w600,
@@ -663,7 +693,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ||
                               availableXfg <= 0 ||
-                              _twapRate <= 0
+                              _heatPerXfg == null
                           ? null
                           : _showConfirmDialog,
                       style: ElevatedButton.styleFrom(

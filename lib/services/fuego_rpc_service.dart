@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import '../models/wallet.dart';
 import '../models/network_config.dart';
+import '../core/constants.dart';
 import '../models/cd.dart';
 
 class FuegoRPCService {
@@ -259,13 +260,14 @@ class FuegoRPCService {
   Future<Map<String, dynamic>> heatMint({
     required int xfgBurned,
     required int heatMinted,
-    int fee = 0,
-    int mixin = 4,
+    int fee = txFee,
+    int mixin = defaultMixin,
   }) async {
     try {
       final response = await _makeRPCCall('heat_mint', {
         'xfg_burned': xfgBurned,
         'heat_minted': heatMinted,
+        'fee': fee,
         'mixin': mixin,
       });
       return response;
@@ -277,13 +279,14 @@ class FuegoRPCService {
   Future<String> sendHeat({
     required String address,
     required int amount,
-    int fee = 0,
-    int mixin = 4,
+    int fee = txFee,
+    int mixin = defaultMixin,
   }) async {
     try {
       final response = await _makeRPCCall('send_heat', {
         'address': address,
         'amount': amount,
+        'fee': fee,
         'mixin': mixin,
       });
       return response['tx_hash'] as String? ?? '';
@@ -304,106 +307,96 @@ class FuegoRPCService {
   }
 
   // ── CD Methods ──
-  // cd::list → proxy remaps to walletd "list_cds"
-  // cd::create → proxy remaps to walletd "create_cd"
-  // cd::claim → proxy remaps to walletd "withdraw_cd"
-  // cd::market_list → proxy remaps to fuegod "getcdoffers"
-  // cd::sell → proxy remaps to fuegod "submitcd"
-  // cd::buy → proxy remaps to fuegod "submitcd"
-  // cd::cancel_listing → proxy remaps to fuegod "cancelcd"
-  // cd::apy → proxy remaps to fuegod/walletd "estimate_cd_yield"
+  //
+  // All CD operations are wallet state and route to walletd. The only CD
+  // endpoint fuegod exposes is /estimate_cd_yield; there is no marketplace
+  // RPC, so no buy/sell/listing calls exist here.
 
   Future<CdListResult> cdList() async {
     final response = await _makeRPCCall('cd::list', {});
     return CdListResult.fromJson(response);
   }
 
+  /// Create a HEAT CD. [amount] is display HEAT, [durationBlocks] the term.
+  ///
+  /// Consensus requires amount >= DEPOSIT_MIN_AMOUNT (8 HEAT) and a term in
+  /// [DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM]; anything shorter is rejected as an
+  /// invalid commitment term.
   Future<CdCreateResult> cdCreate({
     required String coin,
     required String amount,
-    int? durationBlocks,
+    required int durationBlocks,
   }) async {
-    // The walletd expects atomic units (COIN = 10^7); convert display HEAT.
-    final atomic = (double.tryParse(amount) ?? 0) * 10000000;
-    final params = <String, dynamic>{
-      'coin': coin,
-      'amount': atomic.round().toString(),
-    };
-    if (durationBlocks != null) {
-      params['duration_blocks'] = durationBlocks;
+    final parsed = double.tryParse(amount);
+    if (parsed == null || parsed <= 0) {
+      throw FuegoRPCException('Invalid CD amount');
     }
-    final response = await _makeRPCCall('create_cd', params);
+    final atomic = (parsed * atomicPerCoin).round();
+    if (atomic < depositMinAmount) {
+      throw FuegoRPCException(
+          'CD amount must be at least ${depositMinAmount ~/ atomicPerCoin} HEAT');
+    }
+    final response = await _makeRPCCall('cd::create', {
+      'coin': coin,
+      'amount': atomic.toString(),
+      'duration_blocks': durationBlocks,
+    });
     return CdCreateResult.fromJson(response);
   }
 
-  Future<Map<String, dynamic>> cdConfig() async {
-    final response = await _makeRPCCall('cd::config', {});
-    return response;
+  Future<CdConfig> cdConfig() async {
+    try {
+      final response = await _makeRPCCall('cd::config', {});
+      return CdConfig.fromJson(response);
+    } catch (_) {
+      // The compiled-in constants mirror CryptoNoteConfig.h, so an older
+      // daemon degrades to correct defaults rather than to nothing.
+      return CdConfig.fallback;
+    }
   }
 
-  Future<CdCreateResult> cdCreateLadder(List<Map<String, dynamic>> rungs) async {
+  Future<List<String>> cdCreateLadder(List<Map<String, dynamic>> rungs) async {
     final response = await _makeRPCCall('cd::create_ladder', {'rungs': rungs});
-    // Return first tx as representative; ladder creates multiple
-    final hashes = response['tx_hashes'] as List<dynamic>?;
-    final tx = hashes != null && hashes.isNotEmpty ? hashes.first as String : '';
-    return CdCreateResult.fromJson({
-      'cd_id': tx,
-      'tx_hash': tx,
-      'coin': 'HEAT',
-      'amount': '',
-      'maturity_at': '',
-    });
+    return (response['tx_hashes'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const [];
   }
 
+  /// Claim a single matured CD. Omitting [cdId] claims every matured CD —
+  /// the caller must opt into that explicitly.
   Future<CdClaimResult> cdClaim(String cdId) async {
-    final response = await _makeRPCCall('claim_cd', {'cd_id': cdId});
+    if (cdId.isEmpty) {
+      throw FuegoRPCException('cd_id required to claim a single CD');
+    }
+    final response = await _makeRPCCall('cd::claim', {'cd_id': cdId});
     return CdClaimResult.fromJson(response);
   }
 
+  Future<CdClaimResult> cdClaimAllMatured() async {
+    final response = await _makeRPCCall('cd::claim', {});
+    return CdClaimResult.fromJson(response);
+  }
+
+  /// Roll a matured CD into a new term. [newTermBlocks] of null keeps the
+  /// original term.
   Future<CdRolloverResult> cdRollover({
     required String cdId,
-    int? newTerm,
+    int? newTermBlocks,
   }) async {
     final params = <String, dynamic>{'cd_id': cdId};
-    if (newTerm != null) {
-      params['new_term'] = newTerm;
+    if (newTermBlocks != null) {
+      params['new_term'] = newTermBlocks;
     }
-    final response = await _makeRPCCall('rollover_cd', params);
+    final response = await _makeRPCCall('cd::rollover', params);
     return CdRolloverResult.fromJson(response);
   }
 
-  Future<CdMarketListResult> cdMarketList() async {
-    final response = await _makeRPCCall('cd::market_list', {});
-    return CdMarketListResult.fromJson(response);
-  }
-
-  Future<CdSellResult> cdSell({
-    required String cdId,
-    required String price,
-  }) async {
-    final response = await _makeRPCCall('cd::sell', {
-      'cd_id': cdId,
-      'price': price,
-    });
-    return CdSellResult.fromJson(response);
-  }
-
-  Future<CdBuyResult> cdBuy(String listingId) async {
-    final response = await _makeRPCCall('cd::buy', {
-      'listing_id': listingId,
-    });
-    return CdBuyResult.fromJson(response);
-  }
-
-  Future<void> cdCancelListing(String listingId) async {
-    await _makeRPCCall('cd::cancel_listing', {
-      'listing_id': listingId,
-    });
-  }
-
-  Future<CdApyResult> cdApy() async {
+  /// CD yield pool backing. There is no APY: yield is realized swap-fee
+  /// revenue distributed per epoch, and claims are capped by these balances.
+  Future<CdYieldPool> cdYieldPool() async {
     final response = await _makeRPCCall('cd::apy', {});
-    return CdApyResult.fromJson(response);
+    return CdYieldPool.fromJson(response);
   }
 
   // ── Private helpers ──

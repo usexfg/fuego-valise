@@ -15,12 +15,9 @@ class HeatMetrics {
   final int totalBurnedXfg;
   final int redemptionPriceNum;
   final int redemptionPriceDenom;
-  final int redemptionRateNum;
-  final int redemptionRateDenom;
   final int treasuryBalance;
   final int treasuryCounterXfg;
   final int swfBurnedXfgPendingHeat;
-  final int swfHeatBalance;
   final int epochSwapFees;
   final int vaultHeatCdFeePool;
   final int vaultHeatLpReserve;
@@ -38,12 +35,9 @@ class HeatMetrics {
     required this.totalBurnedXfg,
     required this.redemptionPriceNum,
     required this.redemptionPriceDenom,
-    required this.redemptionRateNum,
-    required this.redemptionRateDenom,
     required this.treasuryBalance,
     required this.treasuryCounterXfg,
     required this.swfBurnedXfgPendingHeat,
-    required this.swfHeatBalance,
     required this.epochSwapFees,
     required this.vaultHeatCdFeePool,
     required this.vaultHeatLpReserve,
@@ -63,12 +57,9 @@ class HeatMetrics {
       totalBurnedXfg: _u64(json['total_burned_xfg']),
       redemptionPriceNum: _u64(json['redemption_price_num']),
       redemptionPriceDenom: _u64(json['redemption_price_denom']),
-      redemptionRateNum: _u64(json['redemption_rate_num']),
-      redemptionRateDenom: _u64(json['redemption_rate_denom']),
       treasuryBalance: _u64(json['treasury_balance']),
       treasuryCounterXfg: _u64(json['treasury_counter_xfg']),
       swfBurnedXfgPendingHeat: _u64(json['swf_burned_xfg_pending_heat']),
-      swfHeatBalance: _u64(json['swf_heat_balance']),
       epochSwapFees: _u64(json['epoch_swap_fees']),
       vaultHeatCdFeePool: _u64(json['vault_heat_cd_fee_pool']),
       vaultHeatLpReserve: _u64(json['vault_heat_lp_reserve']),
@@ -81,45 +72,71 @@ class HeatMetrics {
     );
   }
 
-  /// Redemption price as a human-readable double (num/denom).
-  double get redemptionPriceValue =>
-      redemptionPriceDenom != 0 ? redemptionPriceNum / redemptionPriceDenom : 0.0;
-
-  /// Redemption price as a display string (num/denom).
-  String get redemptionPrice => redemptionPriceValue.toStringAsFixed(6);
-
-  /// Redemption rate as a human-readable double.
-  double get redemptionRate =>
-      redemptionRateDenom != 0 ? redemptionRateNum / redemptionRateDenom : 0.0;
-
-  /// Price per XFG in HEAT (num/denom).
-  /// When denom == 0, price is undefined.
-  String get formattedRedemptionPrice {
-    if (redemptionPriceDenom == 0) return '—';
-    return '${(redemptionPriceNum / redemptionPriceDenom).toStringAsFixed(6)} HEAT/XFG';
+  /// Redemption price in **XFG per HEAT**.
+  ///
+  /// Core.cpp computes `redemptionPriceNum = reserveXfg * 1e6 / reserveHeat`
+  /// with `redemptionPriceDenom = 1e6`, so num/denom is XFG per HEAT — not
+  /// HEAT per XFG. Null when the pool has no HEAT reserve, in which case the
+  /// price is undefined and HeatMintEngine::validateMint rejects any mint
+  /// (`redemptionPrice.isZero()`).
+  double? get xfgPerHeat {
+    if (redemptionPriceDenom == 0 || redemptionPriceNum == 0) return null;
+    return redemptionPriceNum / redemptionPriceDenom;
   }
 
-  /// CD yield (APY) as a percent double. C++ does not populate
-  /// redemption_rate_* yet, so this is 0 until the daemon fills it.
-  double get currentApy => redemptionRate * 100;
+  /// HEAT received per XFG burned — the inverse of [xfgPerHeat].
+  /// Consensus mints `xfgBurned / redemptionPrice`
+  /// (HeatMintEngine::validateMint), so this is the factor a mint quote
+  /// multiplies by.
+  double? get heatPerXfg {
+    final price = xfgPerHeat;
+    if (price == null || price == 0) return null;
+    return 1.0 / price;
+  }
 
-  /// HEAT in circulation (atomic units) as a display string.
-  String get supply => heatSupply.toString();
+  /// Redemption price as a display string, or '—' when undefined.
+  String get formattedRedemptionPrice {
+    final price = xfgPerHeat;
+    if (price == null) return '—';
+    return '${price.toStringAsFixed(6)} XFG/HEAT';
+  }
 
-  /// Treasury balance (atomic units) as a display string.
-  String get treasury => treasuryBalance.toString();
+  /// HEAT in circulation, in HEAT.
+  String get supply => formatHeat(heatSupply);
 
-  /// CD yield as a display string.
-  String get cdYield => '${currentApy.toStringAsFixed(2)}%';
+  /// Treasury balance, in HEAT.
+  String get treasury => formatHeat(treasuryBalance);
 
-  /// XFG LP reserve (atomic units) as a display string.
-  String get poolXfg => vaultXfgLpReserve.toString();
+  /// HEAT locked in CDs — the denominator of the epoch yield rate
+  /// (Blockchain.cpp: `epochCdLocked = m_heatOnDeposit`).
+  String get onDeposit => formatHeat(heatOnDeposit);
 
-  /// HEAT LP reserve (atomic units) as a display string.
-  String get poolHeat => vaultHeatLpReserve.toString();
+  /// CD yield pool backing. This is what caps claims at claim time; there is
+  /// no APY to quote, because yield is realized swap-fee revenue distributed
+  /// per epoch rather than a fixed rate.
+  String get cdYieldPool => formatHeat(vaultHeatCdFeePool);
 
-  /// De-facto mint target: the current redemption price.
-  String get piTarget => formattedRedemptionPrice;
+  /// XFG LP reserve, in XFG.
+  String get poolXfg => formatHeat(reserveDisplayXfg);
+
+  /// HEAT LP reserve, in HEAT.
+  String get poolHeat => formatHeat(vaultHeatLpReserve);
+
+  int get reserveDisplayXfg => vaultXfgLpReserve;
+}
+
+/// Atomic units per coin (CryptoNoteConfig.h COIN). Both XFG and HEAT use 7
+/// decimal places.
+const int _atomicPerCoin = 10000000;
+
+/// Format an atomic amount as a coin decimal, trimming trailing zeros.
+String formatHeat(int atomic) {
+  final whole = atomic ~/ _atomicPerCoin;
+  final frac = atomic % _atomicPerCoin;
+  if (frac == 0) return whole.toString();
+  final fracStr =
+      frac.toString().padLeft(7, '0').replaceFirst(RegExp(r'0+$'), '');
+  return '$whole.$fracStr';
 }
 
 /// Single level in the orderbook.

@@ -469,8 +469,16 @@ class WalletCubit extends Cubit<WalletState> {
   }
 
   /// Mint ΗΞΔŦ by burning XFG. Amount in display units.
+  ///
+  /// [heatPerXfg] is the inverse of the redemption price, which the caller
+  /// reads from HeatMetrics. Consensus validates
+  /// `heatMinted <= xfgBurned / redemptionPrice`
+  /// (HeatMintEngine::validateMint), so the ratio is not ours to assume: a
+  /// hardcoded 1:1 is rejected above parity and silently shortchanges the
+  /// user below it, since the check is one-sided.
   Future<Map<String, dynamic>> mintHeat({
     required double xfgAmount,
+    required double heatPerXfg,
     required String pin,
   }) async {
     if (!state.isUnlocked && !(_vault?.isUnlocked ?? false)) {
@@ -483,19 +491,29 @@ class WalletCubit extends Cubit<WalletState> {
     if (xfgAmount <= 0) {
       throw ArgumentError('Amount must be positive');
     }
-    final totalAtomic = (xfgAmount * atomicPerCoin).round();
-    if (totalAtomic > state.unlockedBalance) {
+    if (heatPerXfg <= 0) {
+      throw ArgumentError('Redemption price unavailable');
+    }
+    final burnAtomic = (xfgAmount * atomicPerCoin).round();
+    // The burn transaction pays a network fee on top of the burned amount.
+    if (burnAtomic + txFee > state.unlockedBalance) {
       throw StateError('Insufficient unlocked XFG balance');
     }
     if (_rpcService == null) {
       throw StateError('Wallet RPC service not available');
     }
-    // heat_minted = xfg_burned (1:1 at launch, server validates ratio)
+    // Round the minted amount DOWN: consensus rejects
+    // `heatMinted > expectedHeat`, and expectedHeat is computed in
+    // fixed-point from the same price, so rounding up risks landing one
+    // atomic unit over the cap.
+    final heatAtomic = (burnAtomic * heatPerXfg).floor();
+    if (heatAtomic <= 0) {
+      throw StateError('Amount too small to mint any ΗΞΔŦ at the current price');
+    }
     final result = await _rpcService!.heatMint(
-      xfgBurned: totalAtomic,
-      heatMinted: totalAtomic,
-      fee: 0,
-      mixin: 4,
+      xfgBurned: burnAtomic,
+      heatMinted: heatAtomic,
+      fee: txFee,
     );
     unawaited(refreshWallet());
     return result;
