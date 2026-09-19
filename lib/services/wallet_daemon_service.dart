@@ -30,10 +30,10 @@ class WalletDaemonService {
     _daemonPort = daemonPort;
     _walletPath = walletPath;
     _networkConfig = networkConfig ?? NetworkConfig.mainnet;
-    
+
     // Extract walletd binary
     _walletdPath = await _extractWalletdBinary();
-    
+
     debugPrint('WalletDaemonService initialized');
     debugPrint('Network: ${_networkConfig.name}');
     debugPrint('Daemon: $_daemonAddress:$_daemonPort');
@@ -48,8 +48,8 @@ class WalletDaemonService {
     final String binaryName = Platform.isWindows
         ? 'fuego_walletd-windows.exe'
         : Platform.isMacOS
-            ? 'fuego_walletd-macos'
-            : 'fuego_walletd-linux';
+        ? 'fuego_walletd-macos'
+        : 'fuego_walletd-linux';
 
     final File binaryFile = File(path.join(supportDir.path, 'fuego_walletd'));
 
@@ -57,7 +57,9 @@ class WalletDaemonService {
     if (!await binaryFile.exists()) {
       await binaryFile.create(recursive: true);
       await binaryFile.writeAsBytes(
-        await rootBundle.load('assets/bin/$binaryName').then((data) => data.buffer.asUint8List())
+        await rootBundle
+            .load('assets/bin/$binaryName')
+            .then((data) => data.buffer.asUint8List()),
       );
     }
 
@@ -72,7 +74,12 @@ class WalletDaemonService {
   /// Write password to a 0600 temp file and return path. Caller must delete+zeroize after use.
   static Future<String> _writePasswordFile(String password) async {
     final dir = await getTemporaryDirectory();
-    final file = File(path.join(dir.path, '.wallethd_pw_${DateTime.now().microsecondsSinceEpoch}'));
+    final file = File(
+      path.join(
+        dir.path,
+        '.wallethd_pw_${DateTime.now().microsecondsSinceEpoch}',
+      ),
+    );
     await file.writeAsString(password, flush: true);
     if (!Platform.isWindows) {
       await Process.run('chmod', ['600', file.path]);
@@ -128,7 +135,11 @@ class WalletDaemonService {
       if (password != null && password.isNotEmpty) {
         env['WALLETD_PASSWORD'] = password;
       }
-      _walletdProcess = await Process.start(_walletdPath!, args, environment: env);
+      _walletdProcess = await Process.start(
+        _walletdPath!,
+        args,
+        environment: env,
+      );
 
       // Listen to stdout and stderr
       _walletdProcess!.stdout.transform(utf8.decoder).listen((data) {
@@ -146,7 +157,9 @@ class WalletDaemonService {
       // Use timeout to probe liveness without blocking; null = still running (avoids -1 sentinel collision)
       int? exit;
       try {
-        exit = await _walletdProcess!.exitCode.timeout(const Duration(milliseconds: 100));
+        exit = await _walletdProcess!.exitCode.timeout(
+          const Duration(milliseconds: 100),
+        );
       } on TimeoutException {
         exit = null;
       }
@@ -156,14 +169,18 @@ class WalletDaemonService {
           final f = File(pwFile);
           if (await f.exists()) {
             // Best-effort overwrite before delete (flash wear — not guaranteed)
-            try { await f.writeAsString('0' * password!.length, flush: true); } catch (_) {}
+            try {
+              await f.writeAsString('0' * password!.length, flush: true);
+            } catch (_) {}
             await f.delete();
           }
         } catch (_) {}
       }
       if (exit == null) {
         _isRunning = true;
-        debugPrint('Walletd started successfully on port ${_networkConfig.walletRpcPort}');
+        debugPrint(
+          'Walletd started successfully on port ${_networkConfig.walletRpcPort}',
+        );
         return true;
       } else {
         debugPrint('Walletd failed to start (exit $exit)');
@@ -172,7 +189,9 @@ class WalletDaemonService {
     } catch (e) {
       // Ensure pw file cleaned even on exception
       if (pwFile != null) {
-        try { await File(pwFile).delete(); } catch (_) {}
+        try {
+          await File(pwFile).delete();
+        } catch (_) {}
       }
       debugPrint('Error starting walletd: $e');
       return false;
@@ -231,10 +250,14 @@ class WalletDaemonService {
     try {
       pwFile = await _writePasswordFile(password);
       final List<String> args = [
-        '--daemon-address', '$_daemonAddress',
-        '--daemon-port', '${_daemonPort ?? _networkConfig.daemonRpcPort}',
-        '--wallet-file', walletPath,
-        '--password-file', pwFile,
+        '--daemon-address',
+        '$_daemonAddress',
+        '--daemon-port',
+        '${_daemonPort ?? _networkConfig.daemonRpcPort}',
+        '--wallet-file',
+        walletPath,
+        '--password-file',
+        pwFile,
         '--generate-new-wallet',
         '--non-interactive',
       ];
@@ -255,7 +278,9 @@ class WalletDaemonService {
       return false;
     } finally {
       if (pwFile != null) {
-        try { await File(pwFile).delete(); } catch (_) {}
+        try {
+          await File(pwFile).delete();
+        } catch (_) {}
       }
     }
   }
@@ -265,9 +290,6 @@ class WalletDaemonService {
     required String walletPath,
     required String password,
   }) async {
-    return await startWalletd(
-      walletPath: walletPath,
-      password: password,
-    );
+    return await startWalletd(walletPath: walletPath, password: password);
   }
 }

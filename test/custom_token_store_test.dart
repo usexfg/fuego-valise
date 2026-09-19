@@ -36,45 +36,59 @@ void main() {
     CustomTokenStore.instance.resetForTest();
   });
 
-  test('stored entries load as Erc20Kind.token whatever they call themselves',
-      () async {
-    final customs = await CustomTokenStore.instance.customsFor('base');
-    expect(customs, isNotEmpty);
-    for (final t in customs) {
-      expect(t.kind, Erc20Kind.token);
-      expect(t.isStable, isFalse);
-    }
-  });
+  test(
+    'stored entries load as Erc20Kind.token whatever they call themselves',
+    () async {
+      final customs = await CustomTokenStore.instance.customsFor('base');
+      expect(customs, isNotEmpty);
+      for (final t in customs) {
+        expect(t.kind, Erc20Kind.token);
+        expect(t.isStable, isFalse);
+      }
+    },
+  );
 
   test('the stable slice is registry-only', () async {
-    final stables = await CustomTokenStore.instance
-        .forChain('base', filter: Erc20Filter.stables);
+    final stables = await CustomTokenStore.instance.forChain(
+      'base',
+      filter: Erc20Filter.stables,
+    );
     expect(stables.every((t) => t.isStable), isTrue);
-    expect(stables.map((t) => t.lcAddress), isNot(contains(fake.toLowerCase())));
+    expect(
+      stables.map((t) => t.lcAddress),
+      isNot(contains(fake.toLowerCase())),
+    );
     // The three curated Base dollars, and nothing the user added.
     expect(stables.length, 3);
   });
 
-  test('a custom entry never shadows a registry entry at the same address',
-      () async {
-    final all = await CustomTokenStore.instance.forChain('base');
-    final atUsdc =
-        all.where((t) => t.lcAddress == usdcBase.toLowerCase()).toList();
-    expect(atUsdc.length, 1, reason: 'registry + custom both present');
-    expect(atUsdc.single.name, 'USD Coin (Base)');
-    expect(atUsdc.single.kind, Erc20Kind.nativeStable);
-  });
+  test(
+    'a custom entry never shadows a registry entry at the same address',
+    () async {
+      final all = await CustomTokenStore.instance.forChain('base');
+      final atUsdc = all
+          .where((t) => t.lcAddress == usdcBase.toLowerCase())
+          .toList();
+      expect(atUsdc.length, 1, reason: 'registry + custom both present');
+      expect(atUsdc.single.name, 'USD Coin (Base)');
+      expect(atUsdc.single.kind, Erc20Kind.nativeStable);
+    },
+  );
 
-  test('the token slice carries registry non-stables and user entries',
-      () async {
-    final tokens = await CustomTokenStore.instance
-        .forChain('base', filter: Erc20Filter.tokens);
-    final addrs = tokens.map((t) => t.lcAddress).toList();
-    expect(addrs, contains(vvv.toLowerCase())); // registry, not a stable
-    expect(addrs, contains(fake.toLowerCase())); // user-added
-    expect(addrs, isNot(contains(usdcBase.toLowerCase())));
-    expect(tokens.every((t) => !t.isStable), isTrue);
-  });
+  test(
+    'the token slice carries registry non-stables and user entries',
+    () async {
+      final tokens = await CustomTokenStore.instance.forChain(
+        'base',
+        filter: Erc20Filter.tokens,
+      );
+      final addrs = tokens.map((t) => t.lcAddress).toList();
+      expect(addrs, contains(vvv.toLowerCase())); // registry, not a stable
+      expect(addrs, contains(fake.toLowerCase())); // user-added
+      expect(addrs, isNot(contains(usdcBase.toLowerCase())));
+      expect(tokens.every((t) => !t.isStable), isTrue);
+    },
+  );
 
   test('slices partition the merged list', () async {
     final store = CustomTokenStore.instance;
@@ -88,8 +102,10 @@ void main() {
     expect(await CustomTokenStore.instance.exists('base', usdcBase), isTrue);
     expect(await CustomTokenStore.instance.exists('base', fake), isTrue);
     expect(
-      await CustomTokenStore.instance
-          .exists('base', '0x1111111111111111111111111111111111111111'),
+      await CustomTokenStore.instance.exists(
+        'base',
+        '0x1111111111111111111111111111111111111111',
+      ),
       isFalse,
     );
   });

@@ -18,50 +18,94 @@ class NativeCrypto {
   static bool _initialized = false;
 
   // FFI function signatures
-  static late final _GenerateKeys = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>)>('fuego_generate_keys');
+  static late final _GenerateKeys = _lib
+      .lookupFunction<
+        Int32 Function(
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+        ),
+        int Function(
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+        )
+      >('fuego_generate_keys');
 
-  static late final _PrivateToPublic = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, Pointer<Uint8>)>('fuego_private_to_public');
+  static late final _PrivateToPublic = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Uint8>),
+        int Function(Pointer<Uint8>, Pointer<Uint8>)
+      >('fuego_private_to_public');
 
-  static late final _GenerateAddress = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>, Pointer<Int8>, Size),
-      int Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>, Pointer<Int8>, int)>('fuego_generate_address');
+  static late final _GenerateAddress = _lib
+      .lookupFunction<
+        Int32 Function(
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Int8>,
+          Size,
+        ),
+        int Function(
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Uint8>,
+          Pointer<Int8>,
+          int,
+        )
+      >('fuego_generate_address');
 
-  static late final _ValidateAddress = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>),
-      int Function(Pointer<Uint8>)>('fuego_validate_address');
+  static late final _ValidateAddress = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>),
+        int Function(Pointer<Uint8>)
+      >('fuego_validate_address');
 
-  static late final _KeyToMnemonic = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Int8>, Size),
-      int Function(Pointer<Uint8>, Pointer<Int8>, int)>('fuego_key_to_mnemonic');
+  static late final _KeyToMnemonic = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Int8>, Size),
+        int Function(Pointer<Uint8>, Pointer<Int8>, int)
+      >('fuego_key_to_mnemonic');
 
-  static late final _MnemonicToKey = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, Pointer<Uint8>)>('fuego_mnemonic_to_key');
+  static late final _MnemonicToKey = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Uint8>),
+        int Function(Pointer<Uint8>, Pointer<Uint8>)
+      >('fuego_mnemonic_to_key');
 
-  static late final _ValidateMnemonic = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>),
-      int Function(Pointer<Uint8>)>('fuego_validate_mnemonic');
+  static late final _ValidateMnemonic = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>),
+        int Function(Pointer<Uint8>)
+      >('fuego_validate_mnemonic');
 
   // Add function signatures
-  static late final _Hash = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Size, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, int, Pointer<Uint8>)>('fuego_hash');
+  static late final _Hash = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Size, Pointer<Uint8>),
+        int Function(Pointer<Uint8>, int, Pointer<Uint8>)
+      >('fuego_hash');
 
-  static late final _Sign = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Size, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, Pointer<Uint8>, int, Pointer<Uint8>)>('fuego_sign');
+  static late final _Sign = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Size, Pointer<Uint8>),
+        int Function(Pointer<Uint8>, Pointer<Uint8>, int, Pointer<Uint8>)
+      >('fuego_sign');
 
-  static late final _VerifySignature = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Size, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, Pointer<Uint8>, int, Pointer<Uint8>)>('fuego_verify_signature');
+  static late final _VerifySignature = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Size, Pointer<Uint8>),
+        int Function(Pointer<Uint8>, Pointer<Uint8>, int, Pointer<Uint8>)
+      >('fuego_verify_signature');
 
-  static late final _GenerateKeyImage = _lib.lookupFunction<
-      Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>),
-      int Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>)>('fuego_generate_key_image');
+  static late final _GenerateKeyImage = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>),
+        int Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>)
+      >('fuego_generate_key_image');
 
   static late final DynamicLibrary _lib;
 
@@ -82,7 +126,9 @@ class NativeCrypto {
       } else if (Platform.isWindows) {
         libraryPath = 'fuego_crypto.dll';
       } else {
-        throw UnsupportedError('Platform not supported: ${Platform.operatingSystem}');
+        throw UnsupportedError(
+          'Platform not supported: ${Platform.operatingSystem}',
+        );
       }
 
       _library = DynamicLibrary.open(libraryPath);
@@ -153,7 +199,9 @@ class NativeCrypto {
     Uint8List publicViewKey,
     String addressPrefix,
   ) {
-    if (!isAvailable || publicSpendKey.length != 32 || publicViewKey.length != 32) {
+    if (!isAvailable ||
+        publicSpendKey.length != 32 ||
+        publicViewKey.length != 32) {
       return null;
     }
 
@@ -166,7 +214,13 @@ class NativeCrypto {
     viewPtr.asTypedList(32).setAll(0, publicViewKey);
 
     try {
-      final result = _GenerateAddress(spendPtr, viewPtr, addrPtr.cast(), prefixCStr.cast(), 200);
+      final result = _GenerateAddress(
+        spendPtr,
+        viewPtr,
+        addrPtr.cast(),
+        prefixCStr.cast(),
+        200,
+      );
       if (result != 0) return null;
 
       final address = addrPtr.cast<Utf8>().toDartString();
@@ -194,7 +248,10 @@ class NativeCrypto {
   }
 
   /// Generate seed phrase from private key
-  static String? keyToMnemonic(Uint8List privateKey, {String language = 'english'}) {
+  static String? keyToMnemonic(
+    Uint8List privateKey, {
+    String language = 'english',
+  }) {
     if (!isAvailable || privateKey.length != 32) return null;
 
     final privPtr = calloc<Uint8>(32);
@@ -245,8 +302,11 @@ class NativeCrypto {
     }
   }
 
-    /// Generate key image for ring signatures
-  static Uint8List? generateKeyImage(Uint8List publicKey, Uint8List privateKey) {
+  /// Generate key image for ring signatures
+  static Uint8List? generateKeyImage(
+    Uint8List publicKey,
+    Uint8List privateKey,
+  ) {
     if (!isAvailable) return null;
 
     // Validate input lengths (must be 32 bytes each)
@@ -273,7 +333,7 @@ class NativeCrypto {
     }
   }
 
-    /// Hash data using SHA512
+  /// Hash data using SHA512
   static Uint8List? hash(Uint8List data) {
     if (!isAvailable) return null;
 
@@ -293,7 +353,7 @@ class NativeCrypto {
     }
   }
 
-   /// Sign message with private key using Ed25519
+  /// Sign message with private key using Ed25519
   static Uint8List? signMessage(Uint8List privateKey, Uint8List message) {
     if (!isAvailable || privateKey.length != 32) return null;
 
@@ -305,7 +365,12 @@ class NativeCrypto {
     messagePtr.asTypedList(message.length).setAll(0, message);
 
     try {
-      final result = _Sign(privatePtr, messagePtr, message.length, signaturePtr);
+      final result = _Sign(
+        privatePtr,
+        messagePtr,
+        message.length,
+        signaturePtr,
+      );
       if (result != 0) return null;
 
       return Uint8List.fromList(signaturePtr.asTypedList(64));
@@ -316,8 +381,12 @@ class NativeCrypto {
     }
   }
 
-   /// Verify Ed25519 signature
-  static bool verifySignature(Uint8List publicKey, Uint8List message, Uint8List signature) {
+  /// Verify Ed25519 signature
+  static bool verifySignature(
+    Uint8List publicKey,
+    Uint8List message,
+    Uint8List signature,
+  ) {
     if (!isAvailable || publicKey.length != 32 || signature.length != 64) {
       return false;
     }
@@ -331,7 +400,12 @@ class NativeCrypto {
     signaturePtr.asTypedList(64).setAll(0, signature);
 
     try {
-      final result = _VerifySignature(publicPtr, messagePtr, message.length, signaturePtr);
+      final result = _VerifySignature(
+        publicPtr,
+        messagePtr,
+        message.length,
+        signaturePtr,
+      );
       return result == 1; // 1 = valid, 0 = invalid
     } finally {
       calloc.free(publicPtr);

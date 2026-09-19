@@ -269,11 +269,37 @@ class ChainInfo {
   static bool isPtlcSupported(String ticker) => supportsPtlc.contains(ticker);
 
   static const Map<String, int> decimals = {
-    'BTC': 8, 'LTC': 8, 'BCH': 8, 'KMD': 8, 'DCR': 8, 'DASH': 8, 'DOGE': 8, 'ZEC': 8,
-    'ETH': 18, 'ARB': 18, 'BASE': 18, 'BNB': 18, 'POLY': 18, 'AVAX': 18, 'GLEEC': 18,
-    'RHC': 18, 'CRO': 18, 'BOB': 18, 'UNI': 18, 'XPL': 18, 'PLS': 18, 'MON': 18, 'OP': 18,
+    'BTC': 8,
+    'LTC': 8,
+    'BCH': 8,
+    'KMD': 8,
+    'DCR': 8,
+    'DASH': 8,
+    'DOGE': 8,
+    'ZEC': 8,
+    'ETH': 18,
+    'ARB': 18,
+    'BASE': 18,
+    'BNB': 18,
+    'POLY': 18,
+    'AVAX': 18,
+    'GLEEC': 18,
+    'RHC': 18,
+    'CRO': 18,
+    'BOB': 18,
+    'UNI': 18,
+    'XPL': 18,
+    'PLS': 18,
+    'MON': 18,
+    'OP': 18,
     'LINEA': 18, 'ZKS': 18, 'HYPER': 18, 'INK': 18, 'RSK': 18, 'GNO': 18,
-    'FLR': 18, 'KAIA': 18, 'SCR': 18, 'ABS': 18, 'PLUME': 18, 'SONEIUM': 18, 'DOMA': 18,
+    'FLR': 18,
+    'KAIA': 18,
+    'SCR': 18,
+    'ABS': 18,
+    'PLUME': 18,
+    'SONEIUM': 18,
+    'DOMA': 18,
     'BEAM': 18, 'MOVR': 18, 'PEAQ': 18, 'TEMPO': 18, 'SEI': 18,
     'SOL': 9, 'XMR': 12, 'ZANO': 12, 'XFG': 7,
     // Remaining daemon pairs (fuego-suite SwapPair 17-28).
@@ -483,6 +509,7 @@ class ChainInfo {
   /// DERIVED from chains.yaml ([kWalletTierKeys]) — uppercased to match
   /// the ticker-keyed convention of this class. Icon files pending;
   /// UI falls back to [colors] letter-marks until real logos land.
-  static final Set<String> walletOnlyChains =
-      kWalletTierKeys.map((k) => k.toUpperCase()).toSet();
+  static final Set<String> walletOnlyChains = kWalletTierKeys
+      .map((k) => k.toUpperCase())
+      .toSet();
 }

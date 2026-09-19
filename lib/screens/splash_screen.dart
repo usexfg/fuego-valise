@@ -47,7 +47,8 @@ class _SplashScreenState extends State<SplashScreen>
       });
     } catch (_) {
       setState(() {
-        _versionString = 'Fuego Valise v5.11.0 • Privacy Bank & Purchasing Power Chain';
+        _versionString =
+            'Fuego Valise v5.11.0 • Privacy Bank & Purchasing Power Chain';
       });
     }
   }
@@ -63,21 +64,14 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeInOut,
-    ));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+    );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeOutBack,
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+          CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack),
+        );
 
     // Start animations
     _fadeController.forward();
@@ -104,7 +98,10 @@ class _SplashScreenState extends State<SplashScreen>
       }
 
       final securityService = SecurityService();
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
 
       // Do NOT clear lockout unconditionally — that bypasses brute-force protection.
       // isLockedOut() already clears only if expired; stale lockout must persist until expiry.
@@ -146,7 +143,8 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
 
       setState(() {
-        _initMessage = 'Unable to initialize securely. Please unlock or set up.';
+        _initMessage =
+            'Unable to initialize securely. Please unlock or set up.';
       });
 
       await Future.delayed(const Duration(milliseconds: 1500));
@@ -161,10 +159,7 @@ class _SplashScreenState extends State<SplashScreen>
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => screen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 800),
       ),
@@ -182,9 +177,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
+        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         child: SafeArea(
           child: Column(
             children: [
@@ -262,7 +255,10 @@ class _SplashScreenState extends State<SplashScreen>
                           const SizedBox(height: 12),
                           // Swap pair
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceColor,
                               borderRadius: BorderRadius.circular(20),
@@ -323,17 +319,26 @@ class _SplashScreenState extends State<SplashScreen>
                         decoration: BoxDecoration(
                           color: AppTheme.warningColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.warningColor.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: AppTheme.warningColor.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.warning_amber_rounded, color: AppTheme.warningColor, size: 16),
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              color: AppTheme.warningColor,
+                              size: 16,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 _daemonWarning!,
-                                style: const TextStyle(color: AppTheme.warningColor, fontSize: 12),
+                                style: const TextStyle(
+                                  color: AppTheme.warningColor,
+                                  fontSize: 12,
+                                ),
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -430,13 +435,9 @@ class _AnimatedFuegoLogoState extends State<AnimatedFuegoLogo>
       vsync: this,
     );
 
-    _pulseAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
 
     _rotateAnimation = Tween<double>(
       begin: 0,

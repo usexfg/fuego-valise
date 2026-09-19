@@ -43,7 +43,11 @@ class FuegoTransaction {
     final amountAtom = _intOf(json['amount'] ?? json['total_received']);
     final feeAtom = _intOf(json['fee']);
     return FuegoTransaction(
-      txHash: json['transactionHash']?.toString() ?? json['tx_hash']?.toString() ?? json['hash']?.toString() ?? '',
+      txHash:
+          json['transactionHash']?.toString() ??
+          json['tx_hash']?.toString() ??
+          json['hash']?.toString() ??
+          '',
       blockHeight: _intOf(json['blockIndex'] ?? json['block_height']),
       timestamp: _intOf(json['timestamp']),
       confirmations: _intOf(json['confirmations']),
@@ -51,10 +55,12 @@ class FuegoTransaction {
       fee: feeAtom / atomicPerCoin,
       amountAtomic: amountAtom,
       feeAtomic: feeAtom,
-      direction: json['direction']?.toString() ??
-          (amountAtom > 0 ? 'in' : 'out'),
-      paymentId: json['paymentId']?.toString() ?? json['payment_id']?.toString(),
-      destinations: (json['destinations'] as List<dynamic>?)
+      direction:
+          json['direction']?.toString() ?? (amountAtom > 0 ? 'in' : 'out'),
+      paymentId:
+          json['paymentId']?.toString() ?? json['payment_id']?.toString(),
+      destinations:
+          (json['destinations'] as List<dynamic>?)
               ?.map((d) => d.toString())
               .toList() ??
           [],
@@ -62,16 +68,16 @@ class FuegoTransaction {
   }
 
   Map<String, dynamic> toJson() => {
-        'tx_hash': txHash,
-        'block_height': blockHeight,
-        'timestamp': timestamp,
-        'confirmations': confirmations,
-        'amount': amountAtomic,
-        'fee': feeAtomic,
-        'direction': direction,
-        if (paymentId != null) 'payment_id': paymentId,
-        'destinations': destinations,
-      };
+    'tx_hash': txHash,
+    'block_height': blockHeight,
+    'timestamp': timestamp,
+    'confirmations': confirmations,
+    'amount': amountAtomic,
+    'fee': feeAtomic,
+    'direction': direction,
+    if (paymentId != null) 'payment_id': paymentId,
+    'destinations': destinations,
+  };
 
   bool get isIncoming => direction == 'in';
   bool get isOutgoing => direction == 'out';
@@ -82,8 +88,7 @@ class FuegoTransaction {
       DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
 
   @override
-  String toString() =>
-      'FuegoTransaction($txHash, $amount XFG, $direction)';
+  String toString() => 'FuegoTransaction($txHash, $amount XFG, $direction)';
 }
 
 class SendTransactionRequest {
@@ -102,14 +107,11 @@ class SendTransactionRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'destinations': [
-          {
-            'amount': (amount * atomicPerCoin).round(),
-            'address': address,
-          }
-        ],
-        'fee': (fee * atomicPerCoin).round(),
-        'mixin': mixin,
-        if (paymentId != null && paymentId!.isNotEmpty) 'payment_id': paymentId,
-      };
+    'destinations': [
+      {'amount': (amount * atomicPerCoin).round(), 'address': address},
+    ],
+    'fee': (fee * atomicPerCoin).round(),
+    'mixin': mixin,
+    if (paymentId != null && paymentId!.isNotEmpty) 'payment_id': paymentId,
+  };
 }

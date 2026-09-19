@@ -77,7 +77,7 @@ class FuegoVaultService {
   List<WalletEntry> _wallets = [];
 
   FuegoVaultService({SecurityService? security})
-      : _security = security ?? SecurityService();
+    : _security = security ?? SecurityService();
 
   FuegoNative get _ffi {
     _native ??= FuegoNative();
@@ -109,8 +109,8 @@ class FuegoVaultService {
     final regFile = File('${dir.path}/$_registryFileName');
     if (await regFile.exists()) {
       try {
-        final data = json.decode(await regFile.readAsString())
-            as Map<String, dynamic>;
+        final data =
+            json.decode(await regFile.readAsString()) as Map<String, dynamic>;
         _activeId = data['active'] as String?;
         _wallets = (data['wallets'] as List<dynamic>? ?? [])
             .map((e) => WalletEntry.fromJson(e as Map<String, dynamic>))
@@ -148,12 +148,17 @@ class FuegoVaultService {
 
   Future<void> _saveRegistry() async {
     final dir = await getApplicationDocumentsDirectory();
-    final data = {'active': _activeId, 'wallets': _wallets.map((w) => w.toJson()).toList()};
+    final data = {
+      'active': _activeId,
+      'wallets': _wallets.map((w) => w.toJson()).toList(),
+    };
     final tmp = File('${dir.path}/$_registryFileName.tmp');
     final dst = File('${dir.path}/$_registryFileName');
     await tmp.writeAsString(json.encode(data), flush: true);
     if (!Platform.isWindows) {
-      try { await Process.run('chmod', ['600', tmp.path]); } catch (_) {}
+      try {
+        await Process.run('chmod', ['600', tmp.path]);
+      } catch (_) {}
     }
     await tmp.rename(dst.path);
   }
@@ -333,17 +338,22 @@ class FuegoVaultService {
     // Fallback: unwrap key is the PIN-derived data key — re-decrypt pin payload
     try {
       final decoded =
-          json.decode(utf8.decode(base64Decode(payload))) as Map<String, dynamic>;
+          json.decode(utf8.decode(base64Decode(payload)))
+              as Map<String, dynamic>;
       // Reconstruct SecretKey path via raw AES with stored unwrap key
       final plain = await _security.decryptBytesWithKey(
         // rebuild rawkey-shaped blob from pin blob fields
-        base64Encode(utf8.encode(json.encode({
-          'v': 1,
-          'iv': decoded['iv'],
-          'data': decoded['data'],
-          'mac': decoded['mac'],
-          'mode': 'rawkey',
-        }))),
+        base64Encode(
+          utf8.encode(
+            json.encode({
+              'v': 1,
+              'iv': decoded['iv'],
+              'data': decoded['data'],
+              'mac': decoded['mac'],
+              'mode': 'rawkey',
+            }),
+          ),
+        ),
         key,
       );
       await _loadInMemory(plain);
@@ -356,7 +366,9 @@ class FuegoVaultService {
 
   /// Wipe secrets from memory (does not delete disk) — zeroizes before deref.
   void lock() {
-    try { _vaultBytes?.fillRange(0, _vaultBytes!.length, 0); } catch (_) {}
+    try {
+      _vaultBytes?.fillRange(0, _vaultBytes!.length, 0);
+    } catch (_) {}
     // Strings cannot be zeroized in Dart — drop references and hint GC
     _vaultBytes = null;
     _cachedAddress = null;
@@ -469,7 +481,10 @@ class FuegoVaultService {
     final enc = await _security.encryptBytesWithPin(plain, password);
     final encFile = File('${dir.path}/$fileName');
     await encFile.writeAsString(enc, flush: true);
-    if (!Platform.isWindows) try { await Process.run('chmod', ['600', encFile.path]); } catch (_) {}
+    if (!Platform.isWindows)
+      try {
+        await Process.run('chmod', ['600', encFile.path]);
+      } catch (_) {}
 
     // Biometric re-entry envelope, ONLY when biometrics are enabled.
     //
@@ -484,11 +499,16 @@ class FuegoVaultService {
       final bioKey = await _security.getOrCreateBioKey();
       final bio = await _security.encryptBytesWithKey(plain, bioKey);
       await bioFile.writeAsString(bio, flush: true);
-      if (!Platform.isWindows) try { await Process.run('chmod', ['600', bioFile.path]); } catch (_) {}
+      if (!Platform.isWindows)
+        try {
+          await Process.run('chmod', ['600', bioFile.path]);
+        } catch (_) {}
     } else if (await bioFile.exists()) {
       // Biometrics were turned off after an envelope was written — remove the
       // PIN-free copy rather than leaving it behind.
-      try { await bioFile.delete(); } catch (_) {}
+      try {
+        await bioFile.delete();
+      } catch (_) {}
     }
   }
 
@@ -547,8 +567,9 @@ class FuegoVaultService {
     if (entry != null && bytes != null) {
       final dir = await getApplicationDocumentsDirectory();
       final bio = await _security.encryptBytesWithKey(bytes, bioKey);
-      await File('${dir.path}/${entry.file}.bio')
-          .writeAsString(bio, flush: true);
+      await File(
+        '${dir.path}/${entry.file}.bio',
+      ).writeAsString(bio, flush: true);
     }
   }
 

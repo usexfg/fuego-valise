@@ -9,23 +9,18 @@ class AuthState extends Equatable {
   final String? error;
   final String? address;
 
-  const AuthState({
-    this.status = AuthStatus.initial,
-    this.error,
-    this.address,
-  });
+  const AuthState({this.status = AuthStatus.initial, this.error, this.address});
 
   AuthState copyWith({
     AuthStatus? status,
     String? error,
     bool clearError = false,
     String? address,
-  }) =>
-      AuthState(
-        status: status ?? this.status,
-        error: clearError ? null : (error ?? this.error),
-        address: address ?? this.address,
-      );
+  }) => AuthState(
+    status: status ?? this.status,
+    error: clearError ? null : (error ?? this.error),
+    address: address ?? this.address,
+  );
 
   @override
   List<Object?> get props => [status, error, address];
@@ -47,10 +42,7 @@ class AuthCubit extends Cubit<AuthState> {
       final address = await _storage.read(key: _kAddress);
       if (address != null && address.isNotEmpty) {
         // Address known does NOT mean vault is unlocked
-        emit(AuthState(
-          status: AuthStatus.unauthenticated,
-          address: address,
-        ));
+        emit(AuthState(status: AuthStatus.unauthenticated, address: address));
       } else {
         emit(const AuthState(status: AuthStatus.unauthenticated));
       }
@@ -65,7 +57,9 @@ class AuthCubit extends Cubit<AuthState> {
       await _storage.write(key: _kAddress, value: address);
       emit(AuthState(status: AuthStatus.authenticated, address: address));
     } catch (e) {
-      emit(AuthState(status: AuthStatus.error, error: 'Failed to persist session'));
+      emit(
+        AuthState(status: AuthStatus.error, error: 'Failed to persist session'),
+      );
     }
   }
 

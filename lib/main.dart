@@ -275,9 +275,7 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
             // HTTP, never re-pointed after `connect()` — and send `swap`,
             // `add_liq`, `remove_liq` and `place_limit_order` there. Those are
             // wallet methods; fuegod does not implement them.
-            BlocProvider<HearthCubit>(
-              create: (_) => HearthCubit(rpcService),
-            ),
+            BlocProvider<HearthCubit>(create: (_) => HearthCubit(rpcService)),
             BlocProvider<DexCubit>(
               create: (_) {
                 final dex = DexCubit();

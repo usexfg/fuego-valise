@@ -162,7 +162,9 @@ class PoolMiningService {
     }
     _recvBuffer += chunk;
     if (_recvBuffer.length > _kMaxRecvBuffer) {
-      debugPrint('[pool] recv buffer overflow (${_recvBuffer.length}) — closing');
+      debugPrint(
+        '[pool] recv buffer overflow (${_recvBuffer.length}) — closing',
+      );
       _recvBuffer = '';
       _socket?.destroy();
       _handleDisconnect();
@@ -379,7 +381,8 @@ class PoolMiningService {
 
   static Uint8List _hexToBytes(String hex) {
     if (hex.length % 2 != 0) throw FormatException('odd hex length');
-    if (!RegExp(r'^[0-9a-fA-F]*$').hasMatch(hex)) throw FormatException('non-hex char');
+    if (!RegExp(r'^[0-9a-fA-F]*$').hasMatch(hex))
+      throw FormatException('non-hex char');
     final bytes = Uint8List(hex.length ~/ 2);
     for (int i = 0; i < hex.length; i += 2) {
       bytes[i ~/ 2] = int.parse(hex.substring(i, i + 2), radix: 16);

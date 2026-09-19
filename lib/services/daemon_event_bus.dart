@@ -26,20 +26,18 @@ class DaemonEventBus {
   Stream<DaemonEvent> get stream => _controller.stream;
 
   /// Current health snapshot — always最新 state.
-  final ValueNotifier<DaemonHealthSnapshot> health =
-      ValueNotifier(const DaemonHealthSnapshot());
+  final ValueNotifier<DaemonHealthSnapshot> health = ValueNotifier(
+    const DaemonHealthSnapshot(),
+  );
 
   /// Latest block info from fuegod.
-  final ValueNotifier<Map<String, dynamic>?> blockInfo =
-      ValueNotifier(null);
+  final ValueNotifier<Map<String, dynamic>?> blockInfo = ValueNotifier(null);
 
   /// Latest HEAT metrics.
-  final ValueNotifier<Map<String, dynamic>?> heatMetrics =
-      ValueNotifier(null);
+  final ValueNotifier<Map<String, dynamic>?> heatMetrics = ValueNotifier(null);
 
   /// Latest pool info.
-  final ValueNotifier<Map<String, dynamic>?> poolInfo =
-      ValueNotifier(null);
+  final ValueNotifier<Map<String, dynamic>?> poolInfo = ValueNotifier(null);
 
   // ── Timers ───────────────────────────────────────────────────────
   Timer? _fuegodTimer;
@@ -77,11 +75,17 @@ class DaemonEventBus {
 
     // Then on timers (matches xfgo dashboard intervals)
     _fuegodTimer = Timer.periodic(
-        const Duration(seconds: 5), (_) => _pollFuegod());
+      const Duration(seconds: 5),
+      (_) => _pollFuegod(),
+    );
     _walletdTimer = Timer.periodic(
-        const Duration(seconds: 10), (_) => _pollWalletd());
+      const Duration(seconds: 10),
+      (_) => _pollWalletd(),
+    );
     _swapdTimer = Timer.periodic(
-        const Duration(seconds: 5), (_) => _pollSwapd());
+      const Duration(seconds: 5),
+      (_) => _pollSwapd(),
+    );
   }
 
   /// Stop all polling.
@@ -113,9 +117,11 @@ class DaemonEventBus {
       // Each branch creates its own HttpClient so a closed client
       // is never reused after an exception.
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3);
         final req = await client.getUrl(
-            Uri.parse('http://127.0.0.1:$walletdPort/health'));
+          Uri.parse('http://127.0.0.1:$walletdPort/health'),
+        );
         final resp = await req.close().timeout(const Duration(seconds: 3));
         final body = await resp.transform(utf8.decoder).join();
         client.close(force: true);
@@ -129,18 +135,24 @@ class DaemonEventBus {
           final daemonOk = data.containsKey('daemon')
               ? data['daemon'] as bool? ?? false
               : (data.containsKey('fuego')
-                  ? data['fuego'] as bool? ?? false
-                  : null);
+                    ? data['fuego'] as bool? ?? false
+                    : null);
           if (daemonOk != null) {
             if (daemonOk) {
               blockInfo.value = data;
               _emit(eventBlock, data);
             }
-            _updateHealth(fuegodOk: daemonOk,
-                fuegodError: daemonOk ? null : 'daemon embedded in unified: offline');
+            _updateHealth(
+              fuegodOk: daemonOk,
+              fuegodError: daemonOk
+                  ? null
+                  : 'daemon embedded in unified: offline',
+            );
             return;
           }
-          debugPrint('[EventBus] fuegod unified GET /health 200 but no daemon key');
+          debugPrint(
+            '[EventBus] fuegod unified GET /health 200 but no daemon key',
+          );
         }
       } catch (e) {
         debugPrint('[EventBus] fuegod unified GET /health failed: $e');
@@ -148,9 +160,9 @@ class DaemonEventBus {
 
       // ── Standalone architecture: direct getinfo on fuegod port ──
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
-        final req = await client.getUrl(
-            Uri.parse('$_fuegodBase/getinfo'));
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3);
+        final req = await client.getUrl(Uri.parse('$_fuegodBase/getinfo'));
         final resp = await req.close().timeout(const Duration(seconds: 3));
         final body = await resp.transform(utf8.decoder).join();
         client.close(force: true);
@@ -163,7 +175,10 @@ class DaemonEventBus {
           _emit(eventBlock, data);
           _updateHealth(fuegodOk: true);
         } else {
-          _updateHealth(fuegodOk: false, fuegodError: 'HTTP ${resp.statusCode}');
+          _updateHealth(
+            fuegodOk: false,
+            fuegodError: 'HTTP ${resp.statusCode}',
+          );
         }
       } catch (e) {
         debugPrint('[EventBus] fuegod standalone GET failed: $e');
@@ -175,7 +190,8 @@ class DaemonEventBus {
         final heatClient = HttpClient()
           ..connectionTimeout = const Duration(seconds: 3);
         final req = await heatClient.getUrl(
-            Uri.parse('$_fuegodBase/heat_metrics'));
+          Uri.parse('$_fuegodBase/heat_metrics'),
+        );
         final resp = await req.close().timeout(const Duration(seconds: 3));
         final body = await resp.transform(utf8.decoder).join();
         heatClient.close(force: true);
@@ -192,7 +208,8 @@ class DaemonEventBus {
         final poolClient = HttpClient()
           ..connectionTimeout = const Duration(seconds: 3);
         final req = await poolClient.getUrl(
-            Uri.parse('$_fuegodBase/amm_pool_info'));
+          Uri.parse('$_fuegodBase/amm_pool_info'),
+        );
         final resp = await req.close().timeout(const Duration(seconds: 3));
         final body = await resp.transform(utf8.decoder).join();
         poolClient.close(force: true);
@@ -210,9 +227,11 @@ class DaemonEventBus {
     try {
       // ── Direct HTTP GET /health (Rust proxy) ──
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3);
         final req = await client.getUrl(
-            Uri.parse('http://127.0.0.1:$walletdPort/health'));
+          Uri.parse('http://127.0.0.1:$walletdPort/health'),
+        );
         final resp = await req.close().timeout(const Duration(seconds: 3));
         final body = await resp.transform(utf8.decoder).join();
         client.close(force: true);
@@ -224,7 +243,10 @@ class DaemonEventBus {
           _updateHealth(walletdOk: true, walletdData: data);
           return;
         } else {
-          _updateHealth(walletdOk: false, walletdError: 'HTTP ${resp.statusCode}');
+          _updateHealth(
+            walletdOk: false,
+            walletdError: 'HTTP ${resp.statusCode}',
+          );
           return;
         }
       } catch (e) {
@@ -240,9 +262,11 @@ class DaemonEventBus {
       // ── Unified daemon: swapd health via GET /health on walletdPort ──
       bool healthHandled = false;
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3);
         final req = await client.getUrl(
-            Uri.parse('http://127.0.0.1:$walletdPort/health'));
+          Uri.parse('http://127.0.0.1:$walletdPort/health'),
+        );
         final resp = await req.close().timeout(const Duration(seconds: 3));
         final body = await resp.transform(utf8.decoder).join();
         client.close(force: true);
@@ -271,9 +295,11 @@ class DaemonEventBus {
         bool standaloneOk = false;
         for (final path in ['/health', '/status']) {
           try {
-            final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+            final client = HttpClient()
+              ..connectionTimeout = const Duration(seconds: 3);
             final req = await client.getUrl(
-                Uri.parse('http://127.0.0.1:$swapdPort$path'));
+              Uri.parse('http://127.0.0.1:$swapdPort$path'),
+            );
             final resp = await req.close().timeout(const Duration(seconds: 3));
             final body = await resp.transform(utf8.decoder).join();
             client.close(force: true);
@@ -322,10 +348,23 @@ class DaemonEventBus {
       if (txid == null || txid.isEmpty) {
         continue;
       }
-      final int confirmations = _extractInt(raw, ['confirmations', 'confirmations', 'confirmations']) ?? 0;
-      final int requiredConfirmations = _extractInt(raw, ['requiredConfirmations', 'required_confirmations']) ?? 6;
-      final int blockHeight = _extractInt(raw, ['blockHeight', 'block_height']) ?? 0;
-      final bool spvVerified = _extractBool(raw, ['spvVerified', 'spv_verified']) ?? false;
+      final int confirmations =
+          _extractInt(raw, [
+            'confirmations',
+            'confirmations',
+            'confirmations',
+          ]) ??
+          0;
+      final int requiredConfirmations =
+          _extractInt(raw, [
+            'requiredConfirmations',
+            'required_confirmations',
+          ]) ??
+          6;
+      final int blockHeight =
+          _extractInt(raw, ['blockHeight', 'block_height']) ?? 0;
+      final bool spvVerified =
+          _extractBool(raw, ['spvVerified', 'spv_verified']) ?? false;
       final String explorerUrl = _explorerUrlFor(raw, txid);
       final Map<String, dynamic> entry = <String, dynamic>{
         'swapId': _extractString(raw, ['swapId', 'swap_id']) ?? '',
@@ -361,7 +400,8 @@ class DaemonEventBus {
     ];
     for (final String url in endpoints) {
       try {
-        final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+        final HttpClient client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3);
         final HttpClientRequest req = await client.postUrl(Uri.parse(url));
         req.headers.set('Content-Type', 'application/json');
         final String body = jsonEncode(<String, dynamic>{
@@ -371,13 +411,16 @@ class DaemonEventBus {
           'params': <String, dynamic>{},
         });
         req.add(utf8.encode(body));
-        final HttpClientResponse resp = await req.close().timeout(const Duration(seconds: 3));
+        final HttpClientResponse resp = await req.close().timeout(
+          const Duration(seconds: 3),
+        );
         final String respBody = await resp.transform(utf8.decoder).join();
         client.close(force: true);
         if (resp.statusCode != 200) {
           continue;
         }
-        final Map<String, dynamic> decoded = jsonDecode(respBody) as Map<String, dynamic>;
+        final Map<String, dynamic> decoded =
+            jsonDecode(respBody) as Map<String, dynamic>;
         if (decoded.containsKey('error') && decoded['error'] != null) {
           continue;
         }
@@ -432,7 +475,12 @@ class DaemonEventBus {
   }
 
   String? _extractCtrLockTxId(Map<String, dynamic> raw) {
-    final List<String> keys = <String>['ctrLockTxId', 'ctr_lock_txid', 'ctrLockTxid', 'ctrLockTxId'];
+    final List<String> keys = <String>[
+      'ctrLockTxId',
+      'ctr_lock_txid',
+      'ctrLockTxid',
+      'ctrLockTxId',
+    ];
     final dynamic params = raw['params'];
     if (params is Map) {
       for (final String k in keys) {
@@ -623,11 +671,9 @@ class DaemonEventBus {
 
   void _emit(String type, Map<String, dynamic> payload) {
     if (_controller.isClosed) return;
-    _controller.add(DaemonEvent(
-      type: type,
-      payload: payload,
-      time: DateTime.now(),
-    ));
+    _controller.add(
+      DaemonEvent(type: type, payload: payload, time: DateTime.now()),
+    );
   }
 }
 
@@ -677,11 +723,11 @@ class DaemonHealthSnapshot {
   }
 
   Map<String, dynamic> toJson() => {
-        'daemon': fuegodRunning,
-        'wallet': walletdRunning,
-        'swapd': swapdRunning,
-        if (fuegodError != null) 'daemon_error': fuegodError,
-        if (walletdError != null) 'wallet_error': walletdError,
-        if (swapdError != null) 'swapd_error': swapdError,
-      };
+    'daemon': fuegodRunning,
+    'wallet': walletdRunning,
+    'swapd': swapdRunning,
+    if (fuegodError != null) 'daemon_error': fuegodError,
+    if (walletdError != null) 'wallet_error': walletdError,
+    if (swapdError != null) 'swapd_error': swapdError,
+  };
 }

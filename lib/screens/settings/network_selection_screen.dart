@@ -40,13 +40,10 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
             const SizedBox(height: 8),
             const Text(
               'Select the Fuego network you want to connect to:',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppTheme.textSecondary,
-              ),
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 24),
-            
+
             // Mainnet Option
             _buildNetworkCard(
               config: NetworkConfig.mainnet,
@@ -54,9 +51,9 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
               color: Colors.green,
               description: 'Production network with real XFG tokens',
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Testnet Option
             _buildNetworkCard(
               config: NetworkConfig.testnet,
@@ -64,9 +61,9 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
               color: Colors.orange,
               description: 'Testing network with test tokens',
             ),
-            
+
             const SizedBox(height: 32),
-            
+
             // Network Info Card
             if (_selectedNetwork.isTestnet) ...[
               Container(
@@ -115,12 +112,14 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            
+
             // Connect Button
             ElevatedButton(
               onPressed: _isLoading ? null : _connectToNetwork,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _selectedNetwork.isTestnet ? Colors.orange : AppTheme.primaryColor,
+                backgroundColor: _selectedNetwork.isTestnet
+                    ? Colors.orange
+                    : AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.all(16),
                 shape: RoundedRectangleBorder(
@@ -158,7 +157,7 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
     required String description,
   }) {
     final isSelected = _selectedNetwork == config;
-    
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -168,9 +167,7 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? color.withOpacity(0.1) 
-              : AppTheme.backgroundColor,
+          color: isSelected ? color.withOpacity(0.1) : AppTheme.backgroundColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? color : AppTheme.textSecondary.withOpacity(0.3),
@@ -219,8 +216,7 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
                 ],
               ),
             ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: color, size: 24),
+            if (isSelected) Icon(Icons.check_circle, color: color, size: 24),
           ],
         ),
       ),
@@ -236,10 +232,7 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
       ),
       child: Text(
         text,
-        style: const TextStyle(
-          fontSize: 12,
-          color: AppTheme.textSecondary,
-        ),
+        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
       ),
     );
   }
@@ -251,27 +244,32 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
 
     try {
       // Get wallet provider
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
-      
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
+
       // Update network configuration
       walletProvider.updateNetworkConfig(_selectedNetwork);
-      
+
       // Update wallet daemon service
       await WalletDaemonService.initialize(
         daemonAddress: _selectedNetwork.defaultSeedNode.split(':')[0],
         daemonPort: _selectedNetwork.daemonRpcPort,
         networkConfig: _selectedNetwork,
       );
-      
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Connected to ${_selectedNetwork.name}'),
-            backgroundColor: _selectedNetwork.isTestnet ? Colors.orange : Colors.green,
+            backgroundColor: _selectedNetwork.isTestnet
+                ? Colors.orange
+                : Colors.green,
           ),
         );
-        
+
         // Navigate back or to main screen
         Navigator.of(context).pop();
       }

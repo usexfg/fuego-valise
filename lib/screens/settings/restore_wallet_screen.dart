@@ -187,7 +187,10 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
     });
 
     try {
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
       final vault = context.read<FuegoVaultService>();
 
       final success = await walletProvider.restoreWallet(
@@ -264,9 +267,7 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
           ),
           Expanded(
             child: !_modeReady
-                ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                 : PageView(
                     controller: _pageController,
                     physics: const NeverScrollableScrollPhysics(),
@@ -367,12 +368,19 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 16,
+                  color: Colors.orange,
+                ),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Never enter your seed phrase on a device you do not trust.',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
                 ),
               ],
@@ -386,55 +394,55 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
   Widget _buildPasswordPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.key, size: 64, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          const Text(
-            'Wallet Password',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Choose a password for THIS wallet. It encrypts this wallet\'s '
-            'file only — other wallets keep their own passwords.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 32),
-          TextField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Wallet password',
-              errorText: _errorMessage,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _onPasswordContinue,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text(
-                'Continue',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(Icons.key, size: 64, color: AppTheme.primaryColor),
+            const SizedBox(height: 24),
+            const Text(
+              'Wallet Password',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
               ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 8),
+            const Text(
+              'Choose a password for THIS wallet. It encrypts this wallet\'s '
+              'file only — other wallets keep their own passwords.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Wallet password',
+                errorText: _errorMessage,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _onPasswordContinue,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -442,67 +450,71 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
   Widget _buildVerifyPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.lock_outline, size: 64, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          const Text(
-            'Confirm Your App PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Verify your app PIN to authorize importing a wallet',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 32),
-          TextField(
-            controller: _pinController,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 12,
-            decoration: InputDecoration(
-              labelText: 'App PIN',
-              counterText: '',
-              errorText: _errorMessage,
-              border: const OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _verifyPinAndRestore(),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _verifyPinAndRestore,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
+            const SizedBox(height: 24),
+            const Text(
+              'Confirm Your App PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
               ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text(
-                      'Import Wallet',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 8),
+            const Text(
+              'Verify your app PIN to authorize importing a wallet',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _pinController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 12,
+              decoration: InputDecoration(
+                labelText: 'App PIN',
+                counterText: '',
+                errorText: _errorMessage,
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _verifyPinAndRestore(),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _verifyPinAndRestore,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'Import Wallet',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -510,34 +522,38 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
   Widget _buildSetupPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.lock_outline, size: 64, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          const Text(
-            'Create Your App PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'This PIN locks the app. It does NOT decrypt your wallets — '
-            'each wallet keeps its own password.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 48),
-          PinInputWidget(
-            onComplete: _onFirstPinComplete,
-            errorMessage: _errorMessage,
-          ),
-        ],
-      ),
+            const SizedBox(height: 24),
+            const Text(
+              'Create Your App PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This PIN locks the app. It does NOT decrypt your wallets — '
+              'each wallet keeps its own password.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 48),
+            PinInputWidget(
+              onComplete: _onFirstPinComplete,
+              errorMessage: _errorMessage,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -545,64 +561,64 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
   Widget _buildConfirmPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(
-            Icons.verified_outlined,
-            size: 64,
-            color: AppTheme.primaryColor,
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Confirm Your App PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.verified_outlined,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Enter your PIN again to confirm',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 48),
-          PinInputWidget(
-            onComplete: _onConfirmPinComplete,
-            errorMessage: _errorMessage,
-          ),
-          const SizedBox(height: 24),
-          if (_isLoading) ...[
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
+            const SizedBox(height: 24),
+            const Text(
+              'Confirm Your App PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Importing wallet...',
-              style: TextStyle(color: AppTheme.textSecondary),
+              'Enter your PIN again to confirm',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
             ),
-          ],
-          if (_errorMessage != null && !_isLoading) ...[
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _firstPin = '';
-                  _errorMessage = null;
-                  _isLoading = false;
-                });
-                _previousPage();
-              },
-              child: const Text('Change PIN'),
+            const SizedBox(height: 48),
+            PinInputWidget(
+              onComplete: _onConfirmPinComplete,
+              errorMessage: _errorMessage,
             ),
+            const SizedBox(height: 24),
+            if (_isLoading) ...[
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Importing wallet...',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ],
+            if (_errorMessage != null && !_isLoading) ...[
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _firstPin = '';
+                    _errorMessage = null;
+                    _isLoading = false;
+                  });
+                  _previousPage();
+                },
+                child: const Text('Change PIN'),
+              ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -613,7 +629,11 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
       child: Column(
         children: [
           const SizedBox(height: 16),
-          const Icon(Icons.check_circle, size: 64, color: AppTheme.successColor),
+          const Icon(
+            Icons.check_circle,
+            size: 64,
+            color: AppTheme.successColor,
+          ),
           const SizedBox(height: 24),
           const Text(
             'Wallet Imported!',

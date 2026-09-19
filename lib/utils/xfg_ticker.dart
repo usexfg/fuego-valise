@@ -50,13 +50,13 @@ class XfgTicker {
   /// Optical size compensation — most glyph faces run small next to
   /// lining figures; Fahkwang is the odd one out (full x-height).
   static double glyphScale(String family) => switch (family) {
-        'Fahkwang' => 1.0,
-        'CormorantSC' => 1.22,
-        'UnicaOne' => 1.22,
-        'CrimsonPro' => 1.18,
-        'TiltPrism' => 1.15,
-        _ => 1.0,
-      };
+    'Fahkwang' => 1.0,
+    'CormorantSC' => 1.22,
+    'UnicaOne' => 1.22,
+    'CrimsonPro' => 1.18,
+    'TiltPrism' => 1.15,
+    _ => 1.0,
+  };
 
   /// Style applied to just the ₲ span when a glyph font is active.
   /// Scales fontSize per-family so every option sits optically level
@@ -96,10 +96,13 @@ Widget xfgAmount(
   }
   return Text.rich(
     key: key,
-    TextSpan(style: s, children: [
-      TextSpan(text: XfgTicker.glyph, style: XfgTicker.glyphStyle(s)),
-      TextSpan(text: amount),
-    ]),
+    TextSpan(
+      style: s,
+      children: [
+        TextSpan(text: XfgTicker.glyph, style: XfgTicker.glyphStyle(s)),
+        TextSpan(text: amount),
+      ],
+    ),
     maxLines: maxLines,
     overflow: overflow,
   );

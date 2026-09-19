@@ -77,11 +77,7 @@ void main() {
   });
 
   group('HearthPool scaling', () {
-    HearthPool pool({
-      required int xfg,
-      required int heat,
-      required int spot,
-    }) =>
+    HearthPool pool({required int xfg, required int heat, required int spot}) =>
         HearthPool.fromJson({
           'reserve_xfg': xfg,
           'reserve_heat': heat,

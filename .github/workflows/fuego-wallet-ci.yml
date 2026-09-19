@@ -32,7 +32,10 @@ jobs:
 
       - name: Analyze (warnings are errors; infos reported)
         run: |
-          flutter analyze --fatal-warnings 2>&1 | tee analyze.log
+          # --fatal-warnings alone ALSO makes infos fatal in Flutter 3.44, which
+          # is not what the gate below describes. --no-fatal-infos restores the
+          # stated intent: fail on warnings and errors, report infos.
+          flutter analyze --fatal-warnings --no-fatal-infos 2>&1 | tee analyze.log
           EXIT=${PIPESTATUS[0]}
           echo "## Analyzer summary" >> $GITHUB_STEP_SUMMARY
           grep -E "warning -|error -" analyze.log | wc -l | xargs echo "Warnings+Errors:" >> $GITHUB_STEP_SUMMARY || true

@@ -8,10 +8,7 @@ class SwapDaemonClient {
   final int port;
   http.Client? _httpClient;
 
-  SwapDaemonClient({
-    this.host = '127.0.0.1',
-    this.port = 18902,
-  });
+  SwapDaemonClient({this.host = '127.0.0.1', this.port = 18902});
 
   String get _baseUrl => 'http://$host:$port';
   http.Client get _client => _httpClient ??= http.Client();
@@ -97,7 +94,8 @@ class SwapDaemonClient {
     if (ctrAddress != null && ctrAddress.isNotEmpty)
       params['ctr_address'] = ctrAddress;
     if (requirePtlc) params['require_ptlc'] = true;
-    if (ptlcPoint != null && ptlcPoint.isNotEmpty) params['ptlc_point'] = ptlcPoint;
+    if (ptlcPoint != null && ptlcPoint.isNotEmpty)
+      params['ptlc_point'] = ptlcPoint;
     if (lockType != null) params['lock_type'] = lockType;
     final result = await _rpc('initiate_swap', params) as Map<String, dynamic>;
     return result['swap_id'] as String;
@@ -222,46 +220,122 @@ class SwapInfo {
     } else if (j.containsKey('lock_type') && j['lock_type'] is num) {
       lockTypeVal = (j['lock_type'] as num).toInt();
     }
-    if (params.containsKey('lockTypeName') && params['lockTypeName'] is String) {
+    if (params.containsKey('lockTypeName') &&
+        params['lockTypeName'] is String) {
       lockTypeNameVal = params['lockTypeName'] as String;
     } else if (j.containsKey('lockTypeName') && j['lockTypeName'] is String) {
       lockTypeNameVal = j['lockTypeName'] as String;
-    } else if (params.containsKey('lock_type_name') && params['lock_type_name'] is String) {
+    } else if (params.containsKey('lock_type_name') &&
+        params['lock_type_name'] is String) {
       lockTypeNameVal = params['lock_type_name'] as String;
     } else {
       // derive from int
-      if (lockTypeVal == 1) lockTypeNameVal = 'PTLC';
-      else if (lockTypeVal == 2) lockTypeNameVal = 'BRIDGE';
-      else lockTypeNameVal = 'HTLC';
+      if (lockTypeVal == 1)
+        lockTypeNameVal = 'PTLC';
+      else if (lockTypeVal == 2)
+        lockTypeNameVal = 'BRIDGE';
+      else
+        lockTypeNameVal = 'HTLC';
     }
     // SPV live fields (additive — daemon may omit on old binaries)
-    String? ctrLockTxIdVal = params['ctrLockTxId'] as String? ?? j['ctrLockTxId'] as String? ?? params['ctr_lock_txid'] as String? ?? j['ctr_lock_txid'] as String? ?? params['ctrLockTxId'] as String? ?? j['ctrLockTxId'] as String?;
+    String? ctrLockTxIdVal =
+        params['ctrLockTxId'] as String? ??
+        j['ctrLockTxId'] as String? ??
+        params['ctr_lock_txid'] as String? ??
+        j['ctr_lock_txid'] as String? ??
+        params['ctrLockTxId'] as String? ??
+        j['ctrLockTxId'] as String?;
     if (ctrLockTxIdVal != null && ctrLockTxIdVal.isEmpty) ctrLockTxIdVal = null;
     // params may also hold ctrLockTxId as hex without prefix — also check top-level j
     ctrLockTxIdVal ??= j['ctrLockTxId'] as String?;
-    int confirmationsVal = (params['confirmations'] as num?)?.toInt() ?? (j['confirmations'] as num?)?.toInt() ?? 0;
-    int requiredConfirmationsVal = (params['requiredConfirmations'] as num?)?.toInt() ?? (j['requiredConfirmations'] as num?)?.toInt() ?? (params['required_confirmations'] as num?)?.toInt() ?? (j['required_confirmations'] as num?)?.toInt() ?? 6;
-    int blockHeightVal = (params['blockHeight'] as num?)?.toInt() ?? (j['blockHeight'] as num?)?.toInt() ?? (params['block_height'] as num?)?.toInt() ?? (j['block_height'] as num?)?.toInt() ?? 0;
-    bool spvVerifiedVal = params['spvVerified'] as bool? ?? j['spvVerified'] as bool? ?? params['spv_verified'] as bool? ?? j['spv_verified'] as bool? ?? false;
-    bool confirmedVal = params['confirmed'] as bool? ?? j['confirmed'] as bool? ?? false;
-    String? spvErrorVal = params['spvError'] as String? ?? j['spvError'] as String? ?? params['spv_error'] as String? ?? j['spv_error'] as String?;
-    int? currentHeightVal = (params['currentHeight'] as num?)?.toInt() ?? (j['currentHeight'] as num?)?.toInt() ?? (params['current_height'] as num?)?.toInt() ?? (j['current_height'] as num?)?.toInt();
+    int confirmationsVal =
+        (params['confirmations'] as num?)?.toInt() ??
+        (j['confirmations'] as num?)?.toInt() ??
+        0;
+    int requiredConfirmationsVal =
+        (params['requiredConfirmations'] as num?)?.toInt() ??
+        (j['requiredConfirmations'] as num?)?.toInt() ??
+        (params['required_confirmations'] as num?)?.toInt() ??
+        (j['required_confirmations'] as num?)?.toInt() ??
+        6;
+    int blockHeightVal =
+        (params['blockHeight'] as num?)?.toInt() ??
+        (j['blockHeight'] as num?)?.toInt() ??
+        (params['block_height'] as num?)?.toInt() ??
+        (j['block_height'] as num?)?.toInt() ??
+        0;
+    bool spvVerifiedVal =
+        params['spvVerified'] as bool? ??
+        j['spvVerified'] as bool? ??
+        params['spv_verified'] as bool? ??
+        j['spv_verified'] as bool? ??
+        false;
+    bool confirmedVal =
+        params['confirmed'] as bool? ?? j['confirmed'] as bool? ?? false;
+    String? spvErrorVal =
+        params['spvError'] as String? ??
+        j['spvError'] as String? ??
+        params['spv_error'] as String? ??
+        j['spv_error'] as String?;
+    int? currentHeightVal =
+        (params['currentHeight'] as num?)?.toInt() ??
+        (j['currentHeight'] as num?)?.toInt() ??
+        (params['current_height'] as num?)?.toInt() ??
+        (j['current_height'] as num?)?.toInt();
     // Fallback: legacy field name ctrLockTxId may be inside j['params'] already handled via params= j; also check top-level txid alias
-    ctrLockTxIdVal ??= params['ctrLockTxid'] as String? ?? j['ctrLockTxid'] as String?;
+    ctrLockTxIdVal ??=
+        params['ctrLockTxid'] as String? ?? j['ctrLockTxid'] as String?;
     return SwapInfo(
-      swapId: params['swapId'] as String? ?? j['swapId'] as String? ?? j['swap_id'] as String? ?? '',
+      swapId:
+          params['swapId'] as String? ??
+          j['swapId'] as String? ??
+          j['swap_id'] as String? ??
+          '',
       state: stateName,
-      pair: (params['pair'] as num?)?.toInt() ?? (j['pair'] as num?)?.toInt() ?? 0,
-      xfgAmount: (params['xfgAmount'] as num?)?.toInt() ?? (j['xfgAmount'] as num?)?.toInt() ?? 0,
-      ctrAmount: (params['ctrAmount'] as num?)?.toInt() ?? (j['ctrAmount'] as num?)?.toInt() ?? 0,
-      peerEndpoint: params['peerEndpoint'] as String? ?? j['peerEndpoint'] as String? ?? params['peer'] as String? ?? j['peer'] as String? ?? '',
-      createdAt: (j['createdAt'] as num?)?.toInt() ?? (params['createdAt'] as num?)?.toInt() ?? 0,
-      updatedAt: (j['updatedAt'] as num?)?.toInt() ?? (params['updatedAt'] as num?)?.toInt() ?? 0,
-      timeoutHeight: (params['xfgTimeoutHeight'] as num?)?.toInt() ?? (j['xfgTimeoutHeight'] as num?)?.toInt() ?? (params['xfg_timeout_height'] as num?)?.toInt(),
+      pair:
+          (params['pair'] as num?)?.toInt() ??
+          (j['pair'] as num?)?.toInt() ??
+          0,
+      xfgAmount:
+          (params['xfgAmount'] as num?)?.toInt() ??
+          (j['xfgAmount'] as num?)?.toInt() ??
+          0,
+      ctrAmount:
+          (params['ctrAmount'] as num?)?.toInt() ??
+          (j['ctrAmount'] as num?)?.toInt() ??
+          0,
+      peerEndpoint:
+          params['peerEndpoint'] as String? ??
+          j['peerEndpoint'] as String? ??
+          params['peer'] as String? ??
+          j['peer'] as String? ??
+          '',
+      createdAt:
+          (j['createdAt'] as num?)?.toInt() ??
+          (params['createdAt'] as num?)?.toInt() ??
+          0,
+      updatedAt:
+          (j['updatedAt'] as num?)?.toInt() ??
+          (params['updatedAt'] as num?)?.toInt() ??
+          0,
+      timeoutHeight:
+          (params['xfgTimeoutHeight'] as num?)?.toInt() ??
+          (j['xfgTimeoutHeight'] as num?)?.toInt() ??
+          (params['xfg_timeout_height'] as num?)?.toInt(),
       lockType: lockTypeVal,
       lockTypeName: lockTypeNameVal,
-      ptlcPoint: params['ptlcPoint'] as String? ?? params['ptlc_point'] as String? ?? j['ptlcPoint'] as String? ?? j['ptlc_point'] as String? ?? '',
-      requirePtlc: params['requirePtlc'] as bool? ?? params['require_ptlc'] as bool? ?? j['requirePtlc'] as bool? ?? j['require_ptlc'] as bool? ?? false,
+      ptlcPoint:
+          params['ptlcPoint'] as String? ??
+          params['ptlc_point'] as String? ??
+          j['ptlcPoint'] as String? ??
+          j['ptlc_point'] as String? ??
+          '',
+      requirePtlc:
+          params['requirePtlc'] as bool? ??
+          params['require_ptlc'] as bool? ??
+          j['requirePtlc'] as bool? ??
+          j['require_ptlc'] as bool? ??
+          false,
       ctrLockTxId: ctrLockTxIdVal,
       confirmations: confirmationsVal,
       requiredConfirmations: requiredConfirmationsVal,
@@ -344,29 +418,55 @@ class SwapInfo {
   }
 
   bool get isCommitSeen => ctrLockTxId != null && ctrLockTxId!.isNotEmpty;
-  bool get isLanded => spvVerified && confirmations >= requiredConfirmations && requiredConfirmations > 0;
-  double get confirmationProgress => requiredConfirmations > 0 ? (confirmations / requiredConfirmations).clamp(0.0, 1.0) : 0.0;
-  String get shortTxid => ctrLockTxId == null || ctrLockTxId!.length < 12 ? (ctrLockTxId ?? '') : '${ctrLockTxId!.substring(0, 8)}…${ctrLockTxId!.substring(ctrLockTxId!.length - 4)}';
-  String? get explorerUrl => ctrLockTxId == null ? null : ChainInfo.explorerTxUrl(pairName, ctrLockTxId!);
+  bool get isLanded =>
+      spvVerified &&
+      confirmations >= requiredConfirmations &&
+      requiredConfirmations > 0;
+  double get confirmationProgress => requiredConfirmations > 0
+      ? (confirmations / requiredConfirmations).clamp(0.0, 1.0)
+      : 0.0;
+  String get shortTxid => ctrLockTxId == null || ctrLockTxId!.length < 12
+      ? (ctrLockTxId ?? '')
+      : '${ctrLockTxId!.substring(0, 8)}…${ctrLockTxId!.substring(ctrLockTxId!.length - 4)}';
+  String? get explorerUrl => ctrLockTxId == null
+      ? null
+      : ChainInfo.explorerTxUrl(pairName, ctrLockTxId!);
   bool get isWaitingSpv => state == 'ADAPTOR_WAITING_SPV';
   bool get isSecretConfirmedSpv => state == 'ADAPTOR_SECRET_CONFIRMED_SPV';
-  bool get isFailedCommit => state.contains('FAILED') || state.contains('REFUND');
+  bool get isFailedCommit =>
+      state.contains('FAILED') || state.contains('REFUND');
   String get displayState {
     switch (state) {
-      case 'ADAPTOR_KEYS_EXCHANGED': return 'Keys exchanged';
-      case 'ADAPTOR_ESCROW_FUNDED': return 'XFG escrow funded';
-      case 'ADAPTOR_PRESIGS_READY': return 'Presignatures ready';
-      case 'ADAPTOR_CTR_LOCKED': return isCommitSeen ? 'Counterparty committed' : 'Awaiting counterparty lock';
-      case 'ADAPTOR_WAITING_SPV': return 'Confirming — $confirmations/$requiredConfirmations';
-      case 'ADAPTOR_SECRET_CONFIRMED_SPV': return 'Confirmed — claiming';
-      case 'ADAPTOR_SECRET_REVEALED': return 'Secret revealed';
-      case 'ADAPTOR_XFG_SPENT': return 'Claimed — complete';
-      case 'ADAPTOR_REFUNDED': return 'Refunded';
-      case 'AFK_OFFER_LOCKED': return 'Offer pre-locked (AFK)';
-      case 'AFK_OFFER_ACCEPTED': return 'Offer accepted';
-      case 'AFK_CLAIMED': return 'AFK completed';
-      case 'AFK_REFUNDED': return 'AFK refunded';
-      default: return state;
+      case 'ADAPTOR_KEYS_EXCHANGED':
+        return 'Keys exchanged';
+      case 'ADAPTOR_ESCROW_FUNDED':
+        return 'XFG escrow funded';
+      case 'ADAPTOR_PRESIGS_READY':
+        return 'Presignatures ready';
+      case 'ADAPTOR_CTR_LOCKED':
+        return isCommitSeen
+            ? 'Counterparty committed'
+            : 'Awaiting counterparty lock';
+      case 'ADAPTOR_WAITING_SPV':
+        return 'Confirming — $confirmations/$requiredConfirmations';
+      case 'ADAPTOR_SECRET_CONFIRMED_SPV':
+        return 'Confirmed — claiming';
+      case 'ADAPTOR_SECRET_REVEALED':
+        return 'Secret revealed';
+      case 'ADAPTOR_XFG_SPENT':
+        return 'Claimed — complete';
+      case 'ADAPTOR_REFUNDED':
+        return 'Refunded';
+      case 'AFK_OFFER_LOCKED':
+        return 'Offer pre-locked (AFK)';
+      case 'AFK_OFFER_ACCEPTED':
+        return 'Offer accepted';
+      case 'AFK_CLAIMED':
+        return 'AFK completed';
+      case 'AFK_REFUNDED':
+        return 'AFK refunded';
+      default:
+        return state;
     }
   }
 }

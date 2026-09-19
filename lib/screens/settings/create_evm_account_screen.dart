@@ -10,8 +10,7 @@ class CreateEvmAccountScreen extends StatefulWidget {
   const CreateEvmAccountScreen({super.key});
 
   @override
-  State<CreateEvmAccountScreen> createState() =>
-      _CreateEvmAccountScreenState();
+  State<CreateEvmAccountScreen> createState() => _CreateEvmAccountScreenState();
 }
 
 class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
@@ -91,7 +90,9 @@ class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_created == null ? 'New EVM Wallet' : 'Back Up Wallet')),
+      appBar: AppBar(
+        title: Text(_created == null ? 'New EVM Wallet' : 'Back Up Wallet'),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -108,9 +109,9 @@ class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
         Text(
           'One account, every EVM chain',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         const Text(
@@ -205,9 +206,11 @@ class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Icon(_importMode ? Icons.download : Icons.add),
-          label: Text(_isSaving
-              ? 'Saving...'
-              : (_importMode ? 'Import and save' : 'Generate and save')),
+          label: Text(
+            _isSaving
+                ? 'Saving...'
+                : (_importMode ? 'Import and save' : 'Generate and save'),
+          ),
         ),
         const SizedBox(height: 12),
         const Text(
@@ -244,8 +247,11 @@ class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.warning_amber_rounded,
-            color: AppTheme.warningColor, size: 44),
+        const Icon(
+          Icons.warning_amber_rounded,
+          color: AppTheme.warningColor,
+          size: 44,
+        ),
         const SizedBox(height: 12),
         const Text(
           'Save this private key now',
@@ -272,7 +278,9 @@ class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
           decoration: BoxDecoration(
             color: AppTheme.cardColor,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.35)),
+            border: Border.all(
+              color: AppTheme.primaryColor.withValues(alpha: 0.35),
+            ),
           ),
           child: SelectableText(
             created.privateKeyHex,
@@ -302,11 +310,16 @@ class _CreateEvmAccountScreenState extends State<CreateEvmAccountScreen> {
         children: [
           SizedBox(
             width: 105,
-            child: Text(label, style: const TextStyle(color: AppTheme.textMuted)),
+            child: Text(
+              label,
+              style: const TextStyle(color: AppTheme.textMuted),
+            ),
           ),
           Expanded(
-            child: SelectableText(value,
-                style: const TextStyle(color: AppTheme.textPrimary)),
+            child: SelectableText(
+              value,
+              style: const TextStyle(color: AppTheme.textPrimary),
+            ),
           ),
         ],
       ),

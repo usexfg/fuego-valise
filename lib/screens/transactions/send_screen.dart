@@ -119,8 +119,11 @@ class _SendScreenState extends State<SendScreen> {
       await _resolveOpenAlias();
       if (!mounted) return;
       if (_resolvedAddress == null) {
-        setState(() => _errorMessage =
-            _errorMessage ?? 'Could not resolve that alias — check it and retry.');
+        setState(
+          () => _errorMessage =
+              _errorMessage ??
+              'Could not resolve that alias — check it and retry.',
+        );
         return;
       }
     }
@@ -161,58 +164,72 @@ class _SendScreenState extends State<SendScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.cardColor,
-        title: Text('Confirm Send $coin', style: const TextStyle(color: AppTheme.textPrimary)),
+        title: Text(
+          'Confirm Send $coin',
+          style: const TextStyle(color: AppTheme.textPrimary),
+        ),
         content: SingleChildScrollView(
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Recipient',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-            const SizedBox(height: 4),
-            // Full address — a truncated middle hides exactly the bytes an
-            // address-swap attack changes.
-            SelectableText(
-              address,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 12,
-                fontFamily: 'IBMPlexMono',
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Recipient',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
               ),
-            ),
-            if (_resolvedAddress != null) ...[
               const SizedBox(height: 4),
-              Text(
-                'Resolved from an OpenAlias TXT record. DNSSEC is not '
-                'validated — confirm the address out of band for large sends.',
-                style: TextStyle(
-                  color: AppTheme.warningColor,
-                  fontSize: 10,
-                  height: 1.3,
+              // Full address — a truncated middle hides exactly the bytes an
+              // address-swap attack changes.
+              SelectableText(
+                address,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontFamily: 'IBMPlexMono',
                 ),
               ),
+              if (_resolvedAddress != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Resolved from an OpenAlias TXT record. DNSSEC is not '
+                  'validated — confirm the address out of band for large sends.',
+                  style: TextStyle(
+                    color: AppTheme.warningColor,
+                    fontSize: 10,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              const SizedBox(height: 8),
+              _confirmRow('Amount', '${amount.toStringAsFixed(7)} $coin'),
+              const SizedBox(height: 8),
+              _confirmRow('Fee', '${fee.toStringAsFixed(7)} $coin'),
+              const Divider(color: AppTheme.textMuted),
+              _confirmRow(
+                'Total',
+                '${total.toStringAsFixed(7)} $coin',
+                bold: true,
+              ),
             ],
-            const SizedBox(height: 8),
-            const SizedBox(height: 8),
-            _confirmRow('Amount', '${amount.toStringAsFixed(7)} $coin'),
-            const SizedBox(height: 8),
-            _confirmRow('Fee', '${fee.toStringAsFixed(7)} $coin'),
-            const Divider(color: AppTheme.textMuted),
-            _confirmRow('Total', '${total.toStringAsFixed(7)} $coin', bold: true),
-          ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               _promptPinAndSend();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
             child: const Text('Confirm & Send'),
           ),
         ],
@@ -267,7 +284,8 @@ class _SendScreenState extends State<SendScreen> {
       children: [
         Text(label, style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
         Flexible(
-          child: Text(value,
+          child: Text(
+            value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.right,
@@ -346,61 +364,73 @@ class _SendScreenState extends State<SendScreen> {
             children: [
               Icon(Icons.check_circle, color: AppTheme.successColor),
               SizedBox(width: 8),
-              Text('Transaction Sent', style: TextStyle(color: AppTheme.textPrimary)),
+              Text(
+                'Transaction Sent',
+                style: TextStyle(color: AppTheme.textPrimary),
+              ),
             ],
           ),
           content: SingleChildScrollView(
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Your transaction has been broadcast to the network.',
-                style: TextStyle(color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Transaction ID:',
-                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.textMuted.withOpacity(0.3)),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Your transaction has been broadcast to the network.',
+                  style: TextStyle(color: AppTheme.textSecondary),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        txHash,
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 12,
-                          fontFamily: 'IBMPlexMono',
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Transaction ID:',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.textMuted.withOpacity(0.3),
                     ),
-                    IconButton(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: txHash));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Transaction ID copied'),
-                            backgroundColor: AppTheme.successColor,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          txHash,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 12,
+                            fontFamily: 'IBMPlexMono',
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 16, color: AppTheme.primaryColor),
-                    ),
-                  ],
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: txHash));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Transaction ID copied'),
+                              backgroundColor: AppTheme.successColor,
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.copy,
+                          size: 16,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
             ),
           ),
           actions: [
@@ -426,8 +456,13 @@ class _SendScreenState extends State<SendScreen> {
 
   void _setMaxAmount() {
     final state = context.read<WalletCubit>().state;
-    final availableBalance = _isHeat ? state.unlockedHeatXfg : state.unlockedBalanceXfg;
-    final maxAmount = (availableBalance - txFeeXfg).clamp(0.0, availableBalance);
+    final availableBalance = _isHeat
+        ? state.unlockedHeatXfg
+        : state.unlockedBalanceXfg;
+    final maxAmount = (availableBalance - txFeeXfg).clamp(
+      0.0,
+      availableBalance,
+    );
     _amountController.text = maxAmount.toStringAsFixed(7);
   }
 
@@ -441,7 +476,9 @@ class _SendScreenState extends State<SendScreen> {
       ),
       body: BlocBuilder<WalletCubit, WalletState>(
         builder: (context, state) {
-          final availableBalance = _isHeat ? state.unlockedHeatXfg : state.unlockedBalanceXfg;
+          final availableBalance = _isHeat
+              ? state.unlockedHeatXfg
+              : state.unlockedBalanceXfg;
           final coin = _isHeat ? 'ΗΞΔŦ' : 'XFG';
 
           return SingleChildScrollView(
@@ -467,14 +504,18 @@ class _SendScreenState extends State<SendScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: !_isHeat ? AppTheme.primaryColor : Colors.transparent,
+                                color: !_isHeat
+                                    ? AppTheme.primaryColor
+                                    : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               alignment: Alignment.center,
                               child: Text(
                                 'XFG',
                                 style: TextStyle(
-                                  color: !_isHeat ? Colors.white : AppTheme.textSecondary,
+                                  color: !_isHeat
+                                      ? Colors.white
+                                      : AppTheme.textSecondary,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 15,
                                 ),
@@ -488,14 +529,18 @@ class _SendScreenState extends State<SendScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: _isHeat ? AppTheme.primaryColor : Colors.transparent,
+                                color: _isHeat
+                                    ? AppTheme.primaryColor
+                                    : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               alignment: Alignment.center,
                               child: Text(
                                 'ΗΞΔŦ',
                                 style: TextStyle(
-                                  color: _isHeat ? Colors.white : AppTheme.textSecondary,
+                                  color: _isHeat
+                                      ? Colors.white
+                                      : AppTheme.textSecondary,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 15,
                                 ),
@@ -515,14 +560,19 @@ class _SendScreenState extends State<SendScreen> {
                     decoration: BoxDecoration(
                       color: AppTheme.cardColor,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                      border: Border.all(
+                        color: AppTheme.primaryColor.withOpacity(0.3),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Available Balance',
-                          style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Row(
@@ -574,7 +624,9 @@ class _SendScreenState extends State<SendScreen> {
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             )
                           : Row(
@@ -595,7 +647,9 @@ class _SendScreenState extends State<SendScreen> {
                                 IconButton(
                                   onPressed: () {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('QR scanner coming soon')),
+                                      const SnackBar(
+                                        content: Text('QR scanner coming soon'),
+                                      ),
                                     );
                                   },
                                   icon: const Icon(Icons.qr_code_scanner),
@@ -673,7 +727,9 @@ class _SendScreenState extends State<SendScreen> {
                       return null;
                     },
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,7}')),
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,7}'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 32),
@@ -686,16 +742,24 @@ class _SendScreenState extends State<SendScreen> {
                       decoration: BoxDecoration(
                         color: AppTheme.errorColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
+                        border: Border.all(
+                          color: AppTheme.errorColor.withOpacity(0.3),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline, color: AppTheme.errorColor),
+                          const Icon(
+                            Icons.error_outline,
+                            color: AppTheme.errorColor,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               _errorMessage!,
-                              style: const TextStyle(color: AppTheme.errorColor, fontSize: 14),
+                              style: const TextStyle(
+                                color: AppTheme.errorColor,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ],
@@ -709,19 +773,26 @@ class _SendScreenState extends State<SendScreen> {
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: _isLoading || availableBalance <= 0 ? null : _showConfirmDialog,
+                      onPressed: _isLoading || availableBalance <= 0
+                          ? null
+                          : _showConfirmDialog,
                       child: _isLoading
                           ? const SizedBox(
                               height: 20,
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : Text(
                               'Send $coin',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                     ),
                   ),
@@ -733,12 +804,18 @@ class _SendScreenState extends State<SendScreen> {
                     decoration: BoxDecoration(
                       color: AppTheme.warningColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.warningColor.withOpacity(0.3)),
+                      border: Border.all(
+                        color: AppTheme.warningColor.withOpacity(0.3),
+                      ),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.info_outline, color: AppTheme.warningColor, size: 20),
+                        const Icon(
+                          Icons.info_outline,
+                          color: AppTheme.warningColor,
+                          size: 20,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(

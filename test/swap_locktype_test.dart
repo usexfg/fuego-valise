@@ -15,7 +15,10 @@ void main() {
     test('fromString case insensitive', () {
       expect(SwapLockTypeSdk.fromString('ptlc'), SwapLockTypeSdk.ptlc);
       expect(SwapLockTypeSdk.fromString('BRIDGE'), SwapLockTypeSdk.bridge);
-      expect(SwapLockTypeSdk.fromString('PTLC_HTLC_BRIDGE'), SwapLockTypeSdk.bridge);
+      expect(
+        SwapLockTypeSdk.fromString('PTLC_HTLC_BRIDGE'),
+        SwapLockTypeSdk.bridge,
+      );
       expect(SwapLockTypeSdk.fromString('htlc'), SwapLockTypeSdk.htlc);
       expect(SwapLockTypeSdk.fromString('unknown'), SwapLockTypeSdk.htlc);
     });
@@ -67,7 +70,13 @@ void main() {
       final j = {
         'swapId': 'ghi',
         'state': 13,
-        'params': {'pair': 1, 'xfgAmount': 0, 'ctrAmount': 0, 'lock_type': 2, 'ptlc_point': 'cd' * 32},
+        'params': {
+          'pair': 1,
+          'xfgAmount': 0,
+          'ctrAmount': 0,
+          'lock_type': 2,
+          'ptlc_point': 'cd' * 32,
+        },
         'createdAt': 0,
         'updatedAt': 0,
       };

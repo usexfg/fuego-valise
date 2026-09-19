@@ -38,9 +38,9 @@ class WalletProvider extends ChangeNotifier {
     FuegoRPCService? rpcService,
     SecurityService? securityService,
     FuegoVaultService? vault,
-  })  : _rpcService = rpcService ?? FuegoRPCService(),
-        _securityService = securityService ?? SecurityService(),
-        _vault = vault {
+  }) : _rpcService = rpcService ?? FuegoRPCService(),
+       _securityService = securityService ?? SecurityService(),
+       _vault = vault {
     _initConnectivity();
   }
 
@@ -87,7 +87,9 @@ class WalletProvider extends ChangeNotifier {
   }
 
   /// Removed insecure unauthenticated access — use [getPrivateKeyForBurn].
-  @Deprecated('Use getPrivateKeyForBurn(password) — unauthenticated access removed')
+  @Deprecated(
+    'Use getPrivateKeyForBurn(password) — unauthenticated access removed',
+  )
   String? getPrivateKey() {
     _setError('PIN required to access private keys');
     return null;
@@ -163,7 +165,11 @@ class WalletProvider extends ChangeNotifier {
       if (!SecurityService.validateMnemonic(mnemonic)) {
         throw Exception('Invalid mnemonic phrase');
       }
-      await v.restoreFromMnemonic(mnemonic: mnemonic, password: password, name: name);
+      await v.restoreFromMnemonic(
+        mnemonic: mnemonic,
+        password: password,
+        name: name,
+      );
       _isUnlocked = true;
       await refreshWallet();
       _setLoading(false);
@@ -176,7 +182,10 @@ class WalletProvider extends ChangeNotifier {
   }
 
   /// Decrypt and activate a saved wallet file with that wallet's password.
-  Future<bool> switchWallet({required String id, required String password}) async {
+  Future<bool> switchWallet({
+    required String id,
+    required String password,
+  }) async {
     _setLoading(true);
     _clearError();
     try {
@@ -290,7 +299,9 @@ class WalletProvider extends ChangeNotifier {
       await _checkConnection();
       if (!_isConnected) {
         // Still allow local address from vault when offline
-        if (_vault != null && _vault!.isUnlocked && _vault!.address.isNotEmpty) {
+        if (_vault != null &&
+            _vault!.isUnlocked &&
+            _vault!.address.isNotEmpty) {
           _wallet = Wallet(
             address: _vault!.address,
             viewKey: '',
@@ -320,11 +331,7 @@ class WalletProvider extends ChangeNotifier {
       }
 
       // Never put secret keys into the Wallet model
-      _wallet = balance.copyWith(
-        address: address,
-        viewKey: '',
-        spendKey: '',
-      );
+      _wallet = balance.copyWith(address: address, viewKey: '', spendKey: '');
 
       if (!isWalletSynced) {
         _startSyncTimer();

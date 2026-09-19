@@ -28,15 +28,18 @@ class CustomTokenStore {
       if (raw != null && raw.isNotEmpty) {
         final list = jsonDecode(raw) as List<dynamic>;
         _customs = list
-            .map((e) => Erc20Token(
-                  address: (e['address'] as String?) ?? '',
-                  symbol: (e['symbol'] as String?) ?? '?',
-                  name: (e['name'] as String?) ?? 'Unknown',
-                  decimals: (e['decimals'] as num?)?.toInt() ?? 18,
-                  chain: EvmChainKey.fromKey((e['chain'] as String?) ?? '') ??
-                      EvmChainKey.eth,
-                  kind: Erc20Kind.token,
-                ))
+            .map(
+              (e) => Erc20Token(
+                address: (e['address'] as String?) ?? '',
+                symbol: (e['symbol'] as String?) ?? '?',
+                name: (e['name'] as String?) ?? 'Unknown',
+                decimals: (e['decimals'] as num?)?.toInt() ?? 18,
+                chain:
+                    EvmChainKey.fromKey((e['chain'] as String?) ?? '') ??
+                    EvmChainKey.eth,
+                kind: Erc20Kind.token,
+              ),
+            )
             .where((t) => t.address.isNotEmpty)
             .toList();
       }
@@ -50,15 +53,19 @@ class CustomTokenStore {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _prefsKey,
-      jsonEncode(_customs
-          .map((t) => {
+      jsonEncode(
+        _customs
+            .map(
+              (t) => {
                 'address': t.address,
                 'symbol': t.symbol,
                 'name': t.name,
                 'decimals': t.decimals,
                 'chain': t.chainKey,
-              })
-          .toList()),
+              },
+            )
+            .toList(),
+      ),
     );
   }
 
@@ -103,8 +110,9 @@ class CustomTokenStore {
   Future<void> add(Erc20Token token) async {
     await _ensureLoaded();
     // Replace any prior custom at same (chain,address).
-    _customs.removeWhere((t) =>
-        t.chainKey == token.chainKey && t.lcAddress == token.lcAddress);
+    _customs.removeWhere(
+      (t) => t.chainKey == token.chainKey && t.lcAddress == token.lcAddress,
+    );
     _customs.add(token);
     await _persist();
   }
@@ -112,11 +120,14 @@ class CustomTokenStore {
   Future<void> remove(String chainKey, String address) async {
     await _ensureLoaded();
     final lc = address.toLowerCase();
-    _customs.removeWhere((t) => t.chainKey == chainKey.toLowerCase() && t.lcAddress == lc);
+    _customs.removeWhere(
+      (t) => t.chainKey == chainKey.toLowerCase() && t.lcAddress == lc,
+    );
     await _persist();
   }
 
-  bool isRegistry(Erc20Token token) => Erc20Registry.findByAddress(token.chainKey, token.address) != null;
+  bool isRegistry(Erc20Token token) =>
+      Erc20Registry.findByAddress(token.chainKey, token.address) != null;
 
   /// Drop the in-memory cache so the next read re-parses SharedPreferences.
   @visibleForTesting

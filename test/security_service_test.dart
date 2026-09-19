@@ -19,11 +19,12 @@ void main() {
 
     test('validateMnemonic rejects garbage and placeholders', () {
       expect(SecurityService.validateMnemonic(''), isFalse);
-      expect(SecurityService.validateMnemonic('not a real seed phrase at all'), isFalse);
       expect(
-        SecurityService.validateMnemonic(
-          List.filled(24, 'abandon').join(' '),
-        ),
+        SecurityService.validateMnemonic('not a real seed phrase at all'),
+        isFalse,
+      );
+      expect(
+        SecurityService.validateMnemonic(List.filled(24, 'abandon').join(' ')),
         isFalse, // invalid checksum for all-abandon 24-word
       );
     });

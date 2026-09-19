@@ -65,8 +65,9 @@ class HearthState {
     isSubmitting: isSubmitting ?? this.isSubmitting,
     pool: pool ?? this.pool,
     quote: clearQuote ? null : (quote ?? this.quote),
-    quoteInputAtomic:
-        clearQuote ? null : (quoteInputAtomic ?? this.quoteInputAtomic),
+    quoteInputAtomic: clearQuote
+        ? null
+        : (quoteInputAtomic ?? this.quoteInputAtomic),
     quoteSellXfg: clearQuote ? null : (quoteSellXfg ?? this.quoteSellXfg),
     orderBookState: orderBookState ?? this.orderBookState,
     orderType: orderType ?? this.orderType,
@@ -106,12 +107,14 @@ class HearthCubit extends Cubit<HearthState> {
       } catch (_) {
         // The book is optional context; a missing one must not blank the pool.
       }
-      emit(state.copyWith(
-        isLoading: false,
-        pool: pool,
-        orderBookState: book,
-        clearError: true,
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          pool: pool,
+          orderBookState: book,
+          clearError: true,
+        ),
+      );
     } catch (e) {
       emit(state.copyWith(isLoading: false, error: _message(e)));
     }
@@ -131,22 +134,26 @@ class HearthCubit extends Cubit<HearthState> {
   }) async {
     final atomic = parseAtomic(amountDisplay);
     if (atomic == null || atomic <= 0) {
-      emit(state.copyWith(
-        clearQuote: true,
-        error: 'Enter an amount with at most $decimalPlaces decimals.',
-      ));
+      emit(
+        state.copyWith(
+          clearQuote: true,
+          error: 'Enter an amount with at most $decimalPlaces decimals.',
+        ),
+      );
       return;
     }
     try {
       final quote = HearthQuote.fromJson(
         await _rpc.hearthQuote(inputAmountAtomic: atomic, sellXfg: sellXfg),
       );
-      emit(state.copyWith(
-        quote: quote,
-        quoteInputAtomic: atomic,
-        quoteSellXfg: sellXfg,
-        clearError: true,
-      ));
+      emit(
+        state.copyWith(
+          quote: quote,
+          quoteInputAtomic: atomic,
+          quoteSellXfg: sellXfg,
+          clearError: true,
+        ),
+      );
     } catch (e) {
       emit(state.copyWith(clearQuote: true, error: _message(e)));
     }

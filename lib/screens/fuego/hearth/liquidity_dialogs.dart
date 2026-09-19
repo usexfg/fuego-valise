@@ -26,34 +26,55 @@ class _AddLiquidityDialogState extends State<AddLiquidityDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: HearthTheme.bgCard,
-      title: Text('Add Liquidity', style: HearthTheme.mono(size: 16, weight: FontWeight.w700, color: HearthTheme.textWhite)),
+      title: Text(
+        'Add Liquidity',
+        style: HearthTheme.mono(
+          size: 16,
+          weight: FontWeight.w700,
+          color: HearthTheme.textWhite,
+        ),
+      ),
       content: SingleChildScrollView(
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _dialogInput(_xfgController, 'XFG Amount'),
-          const SizedBox(height: 12),
-          _dialogInput(_heatController, 'HΞ∆T Amount'),
-          const SizedBox(height: 8),
-          Text('Provide equal-value amounts of both tokens',
-              style: HearthTheme.label(size: 10, color: HearthTheme.textMuted)),
-        ],
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _dialogInput(_xfgController, 'XFG Amount'),
+            const SizedBox(height: 12),
+            _dialogInput(_heatController, 'HΞ∆T Amount'),
+            const SizedBox(height: 8),
+            Text(
+              'Provide equal-value amounts of both tokens',
+              style: HearthTheme.label(size: 10, color: HearthTheme.textMuted),
+            ),
+          ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          child: Text('Cancel', style: HearthTheme.mono(size: 12, color: HearthTheme.textSecondary)),
+          child: Text(
+            'Cancel',
+            style: HearthTheme.mono(size: 12, color: HearthTheme.textSecondary),
+          ),
         ),
         ElevatedButton(
           onPressed: _submitting ? null : _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: HearthTheme.bidPrimary,
             foregroundColor: HearthTheme.textWhite,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
           ),
           child: _submitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: HearthTheme.textWhite))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: HearthTheme.textWhite,
+                  ),
+                )
               : const Text('Add'),
         ),
       ],
@@ -71,7 +92,11 @@ class _AddLiquidityDialogState extends State<AddLiquidityDialog> {
       child: TextField(
         controller: controller,
         keyboardType: TextInputType.number,
-        style: HearthTheme.mono(size: 14, weight: FontWeight.w600, color: HearthTheme.textWhite),
+        style: HearthTheme.mono(
+          size: 14,
+          weight: FontWeight.w600,
+          color: HearthTheme.textWhite,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: label,
@@ -88,9 +113,10 @@ class _AddLiquidityDialogState extends State<AddLiquidityDialog> {
     setState(() => _submitting = true);
     // No bare try/finally here: a failure used to close the spinner and show
     // nothing, so a rejected deposit looked identical to a successful one.
-    final r = await context
-        .read<HearthCubit>()
-        .addLiquidity(xfgDisplay: xfg, heatDisplay: heat);
+    final r = await context.read<HearthCubit>().addLiquidity(
+      xfgDisplay: xfg,
+      heatDisplay: heat,
+    );
     if (!mounted) return;
     setState(() => _submitting = false);
     _reportHearth(context, r, 'Liquidity added');
@@ -105,8 +131,8 @@ void _reportHearth(BuildContext context, HearthResult r, String successLabel) {
       content: Text(
         r.ok
             ? (r.txHash == null || r.txHash!.isEmpty
-                ? successLabel
-                : '$successLabel — ${r.txHash}')
+                  ? successLabel
+                  : '$successLabel — ${r.txHash}')
             : (r.error ?? 'Failed'),
       ),
       backgroundColor: r.ok ? HearthTheme.bidPrimary : HearthTheme.askPrimary,
@@ -139,44 +165,66 @@ class _RemoveLiquidityDialogState extends State<RemoveLiquidityDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: HearthTheme.bgCard,
-      title: Text('Withdraw Earnings', style: HearthTheme.mono(size: 16, weight: FontWeight.w700, color: HearthTheme.textWhite)),
+      title: Text(
+        'Withdraw Earnings',
+        style: HearthTheme.mono(
+          size: 16,
+          weight: FontWeight.w700,
+          color: HearthTheme.textWhite,
+        ),
+      ),
       content: SingleChildScrollView(
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Enter the number of LP shares to burn. Your proportional share of pool reserves will be returned.',
-            style: HearthTheme.mono(size: 11, color: HearthTheme.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          _dialogInput(_sharesController, 'LP Shares to Burn'),
-          const SizedBox(height: 12),
-          _dialogInput(_minXfgController, 'Min XFG (required)'),
-          const SizedBox(height: 12),
-          _dialogInput(_minHeatController, 'Min HΞΔŦ (required)'),
-          const SizedBox(height: 8),
-          Text(
-            'Both minimums are required. Leaving them blank sends a floor of '
-            'zero, which lets the withdrawal be sandwiched.',
-            style: HearthTheme.label(size: 10, color: HearthTheme.textMuted),
-          ),
-        ],
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Enter the number of LP shares to burn. Your proportional share of pool reserves will be returned.',
+              style: HearthTheme.mono(
+                size: 11,
+                color: HearthTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _dialogInput(_sharesController, 'LP Shares to Burn'),
+            const SizedBox(height: 12),
+            _dialogInput(_minXfgController, 'Min XFG (required)'),
+            const SizedBox(height: 12),
+            _dialogInput(_minHeatController, 'Min HΞΔŦ (required)'),
+            const SizedBox(height: 8),
+            Text(
+              'Both minimums are required. Leaving them blank sends a floor of '
+              'zero, which lets the withdrawal be sandwiched.',
+              style: HearthTheme.label(size: 10, color: HearthTheme.textMuted),
+            ),
+          ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          child: Text('Cancel', style: HearthTheme.mono(size: 12, color: HearthTheme.textSecondary)),
+          child: Text(
+            'Cancel',
+            style: HearthTheme.mono(size: 12, color: HearthTheme.textSecondary),
+          ),
         ),
         ElevatedButton(
           onPressed: _submitting ? null : _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: HearthTheme.askPrimary,
             foregroundColor: HearthTheme.textWhite,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
           ),
           child: _submitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: HearthTheme.textWhite))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: HearthTheme.textWhite,
+                  ),
+                )
               : const Text('Withdraw'),
         ),
       ],
@@ -194,7 +242,11 @@ class _RemoveLiquidityDialogState extends State<RemoveLiquidityDialog> {
       child: TextField(
         controller: controller,
         keyboardType: TextInputType.number,
-        style: HearthTheme.mono(size: 14, weight: FontWeight.w600, color: HearthTheme.textWhite),
+        style: HearthTheme.mono(
+          size: 14,
+          weight: FontWeight.w600,
+          color: HearthTheme.textWhite,
+        ),
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: label,
@@ -211,10 +263,10 @@ class _RemoveLiquidityDialogState extends State<RemoveLiquidityDialog> {
     if (shares.isEmpty) return;
     setState(() => _submitting = true);
     final r = await context.read<HearthCubit>().removeLiquidity(
-          sharesDisplay: shares,
-          minXfgDisplay: minXfg,
-          minHeatDisplay: minHeat,
-        );
+      sharesDisplay: shares,
+      minXfgDisplay: minXfg,
+      minHeatDisplay: minHeat,
+    );
     if (!mounted) return;
     setState(() => _submitting = false);
     _reportHearth(context, r, 'Liquidity withdrawn');

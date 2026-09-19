@@ -41,7 +41,9 @@ class _MaisonCandleChartState extends State<MaisonCandleChart> {
       child: CustomPaint(
         painter: _CandlePainter(
           candles: widget.candles.length > widget.maxVisible
-              ? widget.candles.sublist(widget.candles.length - widget.maxVisible)
+              ? widget.candles.sublist(
+                  widget.candles.length - widget.maxVisible,
+                )
               : widget.candles,
           upColor: widget.upColor,
           downColor: widget.downColor,
@@ -98,7 +100,9 @@ class _CandlePainter extends CustomPainter {
     double py(double p) => priceH - (p - lo) / (hi - lo) * priceH;
 
     // Grid — three quiet lines.
-    final grid = Paint()..color = gridColor..strokeWidth = 1;
+    final grid = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
     for (var i = 0; i < 3; i++) {
       final y = priceH * (i + 1) / 4;
       canvas.drawLine(Offset(0, y), Offset(plotW, y), grid);
@@ -106,7 +110,9 @@ class _CandlePainter extends CustomPainter {
 
     final slot = plotW / candles.length;
     final bodyW = (slot * 0.6).clamp(1.5, 14.0);
-    final upFill = Paint()..color = upColor..style = PaintingStyle.fill;
+    final upFill = Paint()
+      ..color = upColor
+      ..style = PaintingStyle.fill;
     final upWick = Paint()
       ..color = upColor
       ..strokeWidth = 1;
@@ -126,12 +132,19 @@ class _CandlePainter extends CustomPainter {
       final up = c.close >= c.open;
       // Wick.
       canvas.drawLine(
-          Offset(x, py(c.high)), Offset(x, py(c.low)), up ? upWick : downWick);
+        Offset(x, py(c.high)),
+        Offset(x, py(c.low)),
+        up ? upWick : downWick,
+      );
       // Body.
       final top = py(up ? c.close : c.open);
       final bottom = py(up ? c.open : c.close);
       final rect = Rect.fromLTRB(
-          x - bodyW / 2, top, x + bodyW / 2, (bottom - top).abs() < 1 ? top + 1 : bottom);
+        x - bodyW / 2,
+        top,
+        x + bodyW / 2,
+        (bottom - top).abs() < 1 ? top + 1 : bottom,
+      );
       if (up) {
         canvas.drawRect(rect, upFill);
       } else {
@@ -141,7 +154,12 @@ class _CandlePainter extends CustomPainter {
       if (volMax > 0 && c.volume > 0) {
         final vh = (c.volume / volMax) * (size.height - volTop - 2);
         canvas.drawRect(
-          Rect.fromLTRB(x - bodyW / 2, size.height - vh, x + bodyW / 2, size.height),
+          Rect.fromLTRB(
+            x - bodyW / 2,
+            size.height - vh,
+            x + bodyW / 2,
+            size.height,
+          ),
           up ? volUp : volDown,
         );
       }
@@ -155,7 +173,11 @@ class _CandlePainter extends CustomPainter {
       ..strokeWidth = 1;
     const step = 5.0, gap = 4.0;
     for (var x = 0.0; x < plotW; x += step + gap) {
-      canvas.drawLine(Offset(x, ly), Offset((x + step).clamp(0, plotW), ly), dash);
+      canvas.drawLine(
+        Offset(x, ly),
+        Offset((x + step).clamp(0, plotW), ly),
+        dash,
+      );
     }
     _pill(canvas, _fmt(last), plotW + 2, ly, labelW - 4, upColor);
 
@@ -168,7 +190,11 @@ class _CandlePainter extends CustomPainter {
       final cross = Paint()
         ..color = upColor.withValues(alpha: 0.7)
         ..strokeWidth = 1;
-      canvas.drawLine(Offset(touch!.dx, 0), Offset(touch!.dx, size.height), cross);
+      canvas.drawLine(
+        Offset(touch!.dx, 0),
+        Offset(touch!.dx, size.height),
+        cross,
+      );
       final ty = touch!.dy.clamp(0.0, priceH);
       canvas.drawLine(Offset(0, ty), Offset(plotW, ty), cross);
       final price = hi - (ty / priceH) * (hi - lo);
@@ -193,7 +219,14 @@ class _CandlePainter extends CustomPainter {
     return v.toStringAsFixed(6);
   }
 
-  void _pill(Canvas canvas, String s, double x, double y, double w, Color color) {
+  void _pill(
+    Canvas canvas,
+    String s,
+    double x,
+    double y,
+    double w,
+    Color color,
+  ) {
     final tp = TextPainter(
       text: TextSpan(
         text: s,

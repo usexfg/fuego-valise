@@ -100,7 +100,10 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
     });
 
     try {
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
       final securityService = SecurityService();
       final vault = context.read<FuegoVaultService>();
 
@@ -211,256 +214,55 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   Widget _buildSetupPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 32),
-          const Icon(
-            Icons.lock_outline,
-            size: 64,
-            color: AppTheme.primaryColor,
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Create Your PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 32),
+            const Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Create a 6-digit PIN to secure your wallet',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 48),
-          PinInputWidget(
-            onComplete: _onFirstPinComplete,
-            errorMessage: _errorMessage,
-          ),
-          const SizedBox(height: 32),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.3),
+            const SizedBox(height: 24),
+            const Text(
+              'Create Your PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
               ),
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.info_outline,
-                  color: AppTheme.primaryColor,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Your PIN is stored securely on this device and cannot be recovered if forgotten.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 8),
+            Text(
+              'Create a 6-digit PIN to secure your wallet',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
             ),
-          ),
-        ],
-      ),
-      ),
-    );
-  }
-
-  Widget _buildConfirmPinPage() {
-    return SingleChildScrollView(
-      child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 32),
-          const Icon(
-            Icons.verified_outlined,
-            size: 64,
-            color: AppTheme.primaryColor,
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Confirm Your PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+            const SizedBox(height: 48),
+            PinInputWidget(
+              onComplete: _onFirstPinComplete,
+              errorMessage: _errorMessage,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Enter your PIN again to confirm',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 48),
-          PinInputWidget(
-            onComplete: _onConfirmPinComplete,
-            errorMessage: _errorMessage,
-          ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _firstPin = '';
-                  _confirmPin = '';
-                  _errorMessage = null;
-                });
-                _previousPage();
-              },
-              child: const Text('Change PIN'),
-            ),
-          ],
-        ],
-      ),
-      ),
-    );
-  }
-
-  Widget _buildSecurityOptionsPage() {
-    return SingleChildScrollView(
-      child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 32),
-          const Icon(
-            Icons.fingerprint,
-            size: 64,
-            color: AppTheme.primaryColor,
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Security Options',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Choose additional security features for your wallet',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 48),
-          
-          // Biometric option
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.cardColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.textMuted.withOpacity(0.3),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.fingerprint,
-                  color: AppTheme.primaryColor,
-                  size: 32,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Biometric Authentication',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        'Use fingerprint or face recognition',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: _biometricEnabled,
-                  onChanged: (value) {
-                    setState(() {
-                      _biometricEnabled = value;
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 48),
-          
-          // Create wallet button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _createWallet,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Text(widget.isRestore ? 'Restore Wallet' : 'Create Wallet'),
-            ),
-          ),
-          
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 32),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.errorColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.errorColor.withOpacity(0.3),
+                  color: AppTheme.primaryColor.withOpacity(0.3),
                 ),
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.error_outline,
-                    color: AppTheme.errorColor,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.info_outline, color: AppTheme.primaryColor),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      _errorMessage!,
-                      style: const TextStyle(
+                      'Your PIN is stored securely on this device and cannot be recovered if forgotten.',
+                      style: TextStyle(
                         fontSize: 14,
-                        color: AppTheme.errorColor,
+                        color: AppTheme.textSecondary,
                       ),
                     ),
                   ),
@@ -468,8 +270,199 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
               ),
             ),
           ],
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildConfirmPinPage() {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 32),
+            const Icon(
+              Icons.verified_outlined,
+              size: 64,
+              color: AppTheme.primaryColor,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Confirm Your PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Enter your PIN again to confirm',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 48),
+            PinInputWidget(
+              onComplete: _onConfirmPinComplete,
+              errorMessage: _errorMessage,
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _firstPin = '';
+                    _confirmPin = '';
+                    _errorMessage = null;
+                  });
+                  _previousPage();
+                },
+                child: const Text('Change PIN'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecurityOptionsPage() {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 32),
+            const Icon(
+              Icons.fingerprint,
+              size: 64,
+              color: AppTheme.primaryColor,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Security Options',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose additional security features for your wallet',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 48),
+
+            // Biometric option
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.textMuted.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.fingerprint,
+                    color: AppTheme.primaryColor,
+                    size: 32,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Biometric Authentication',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Use fingerprint or face recognition',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _biometricEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        _biometricEnabled = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 48),
+
+            // Create wallet button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _createWallet,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : Text(
+                        widget.isRestore ? 'Restore Wallet' : 'Create Wallet',
+                      ),
+              ),
+            ),
+
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppTheme.errorColor.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: AppTheme.errorColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.errorColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

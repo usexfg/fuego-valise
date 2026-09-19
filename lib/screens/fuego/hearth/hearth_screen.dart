@@ -72,7 +72,9 @@ class _HearthScreenState extends State<HearthScreen>
             '\$${(val * pool.heatPerXfg * kHeatPegUsd).toStringAsFixed(2)}',
       );
     } else {
-      setState(() => _amountUsd = '\$${(val * kHeatPegUsd).toStringAsFixed(2)}');
+      setState(
+        () => _amountUsd = '\$${(val * kHeatPegUsd).toStringAsFixed(2)}',
+      );
     }
   }
 
@@ -106,32 +108,32 @@ class _HearthScreenState extends State<HearthScreen>
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
-children: [
-                    if (_candles != null && _candles!.isNotEmpty)
-                      SizedBox(
-                        height: screenH * 0.30,
-                        child: FuegoChart(
-                          candles: _candles!,
-                          pair: 'XFG/ΗΞΔŦ',
-                          lineColor: HearthTheme.chartLine,
-                          bgColor: HearthTheme.bgPure,
-                        ),
-                      ),
-                    if (_candles == null || _candles!.isEmpty)
-                      Container(
-                        height: screenH * 0.30,
-                        color: HearthTheme.bgPure,
-                        child: const Center(
-                          child: Text(
-                            'No chart data',
-                            style: TextStyle(
-                              color: HearthTheme.textMuted,
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (state.pool != null)
-                      _buildPoolStats(state.pool!),
+                          children: [
+                            if (_candles != null && _candles!.isNotEmpty)
+                              SizedBox(
+                                height: screenH * 0.30,
+                                child: FuegoChart(
+                                  candles: _candles!,
+                                  pair: 'XFG/ΗΞΔŦ',
+                                  lineColor: HearthTheme.chartLine,
+                                  bgColor: HearthTheme.bgPure,
+                                ),
+                              ),
+                            if (_candles == null || _candles!.isEmpty)
+                              Container(
+                                height: screenH * 0.30,
+                                color: HearthTheme.bgPure,
+                                child: const Center(
+                                  child: Text(
+                                    'No chart data',
+                                    style: TextStyle(
+                                      color: HearthTheme.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (state.pool != null)
+                              _buildPoolStats(state.pool!),
                             if (state.pool != null) _buildHeatPriceBar(state),
                             const SizedBox(height: 16),
                             _buildTabSection(state),
@@ -190,7 +192,8 @@ children: [
                       size: 13,
                       weight: FontWeight.w700,
                       color: HearthTheme.xfgEmber.withValues(
-                          alpha: 0.4 + _pulseAnim.value * 0.6),
+                        alpha: 0.4 + _pulseAnim.value * 0.6,
+                      ),
                     ),
                   ),
                 );
@@ -198,7 +201,12 @@ children: [
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(child: _metricChip('24h ${_priceUp ? '+' : ''}0.00%', _priceUp ? HearthTheme.askPrimary : HearthTheme.bidPrimary)),
+          Flexible(
+            child: _metricChip(
+              '24h ${_priceUp ? '+' : ''}0.00%',
+              _priceUp ? HearthTheme.askPrimary : HearthTheme.bidPrimary,
+            ),
+          ),
           const SizedBox(width: 6),
           // Center: XFG priced in ΗΞΔŦ — expanded but ellipsized
           Expanded(
@@ -314,15 +322,14 @@ children: [
     final String leftLabel = mintRate == null
         ? '—'
         : (mintRate >= 1
-            ? '␉${mintRate.toStringAsFixed(2)}'
-            : '${mintRate.toStringAsFixed(2)}𐅪');
-    final double? xfgUsd =
-        heatPerXfg == null ? null : heatPerXfg * kHeatPegUsd;
+              ? '␉${mintRate.toStringAsFixed(2)}'
+              : '${mintRate.toStringAsFixed(2)}𐅪');
+    final double? xfgUsd = heatPerXfg == null ? null : heatPerXfg * kHeatPegUsd;
     final String rightLabel = xfgUsd == null
         ? '—'
         : (xfgUsd >= 1
-            ? '␉${xfgUsd.toStringAsFixed(2)}'
-            : '${xfgUsd.toStringAsFixed(2)}𐅪');
+              ? '␉${xfgUsd.toStringAsFixed(2)}'
+              : '${xfgUsd.toStringAsFixed(2)}𐅪');
 
     return Container(
       color: HearthTheme.bgDeep,
@@ -535,7 +542,9 @@ children: [
   }
 
   Widget _depthRow(OrderBookLevel level, bool isBid, double globalMax) {
-    final pct = globalMax > 0 ? (level.amount / globalMax).clamp(0.0, 1.0) : 0.0;
+    final pct = globalMax > 0
+        ? (level.amount / globalMax).clamp(0.0, 1.0)
+        : 0.0;
     final color = isBid ? HearthTheme.bidPrimary : HearthTheme.askPrimary;
     final depthColor = isBid ? HearthTheme.bidDepth : HearthTheme.askDepth;
     return Stack(
@@ -599,8 +608,8 @@ children: [
     final spot = mid != null
         ? mid.toStringAsFixed(7)
         : (book.bestAsk?.priceDisplay ??
-            book.bestBid?.priceDisplay ??
-            book.spreadDisplay);
+              book.bestBid?.priceDisplay ??
+              book.spreadDisplay);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: const BoxDecoration(
@@ -899,19 +908,17 @@ children: [
                 if (isLimit) {
                   final price = _priceController.text.trim();
                   if (price.isEmpty) return;
-                  final r = await context
-                      .read<HearthCubit>()
-                      .placeLimitOrder(
-                        sellXfg: _sellXfg,
-                        amountDisplay: amount,
-                        priceDisplay: price,
-                      );
+                  final r = await context.read<HearthCubit>().placeLimitOrder(
+                    sellXfg: _sellXfg,
+                    amountDisplay: amount,
+                    priceDisplay: price,
+                  );
                   if (mounted) _report(r, 'Limit order placed');
                 } else {
                   await context.read<HearthCubit>().getQuote(
-                        sellXfg: _sellXfg,
-                        amountDisplay: amount,
-                      );
+                    sellXfg: _sellXfg,
+                    amountDisplay: amount,
+                  );
                 }
               },
         style: ElevatedButton.styleFrom(
@@ -937,8 +944,7 @@ children: [
         onPressed: state.isSubmitting
             ? null
             : () async {
-                final r =
-                    await context.read<HearthCubit>().executeQuotedSwap();
+                final r = await context.read<HearthCubit>().executeQuotedSwap();
                 if (mounted) _report(r, 'Swap submitted');
               },
         style: ElevatedButton.styleFrom(
@@ -958,8 +964,9 @@ children: [
   Widget _quoteDisplay(HearthQuote quote, HearthState state) {
     // HEAT side of the trade in display units: the quote output when selling
     // XFG, otherwise what the user typed.
-    final heatDisplay =
-        _sellXfg ? quote.outputAmount : _amountController.text.trim();
+    final heatDisplay = _sellXfg
+        ? quote.outputAmount
+        : _amountController.text.trim();
     final heatVal = double.tryParse(heatDisplay) ?? 0;
     final usd = heatVal * kHeatPegUsd;
     final minOut = state.minOutputAtomic;
@@ -1051,8 +1058,11 @@ children: [
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Icon(Icons.error_outline,
-              size: 14, color: HearthTheme.askPrimary),
+          const Icon(
+            Icons.error_outline,
+            size: 14,
+            color: HearthTheme.askPrimary,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1062,8 +1072,10 @@ children: [
           ),
           TextButton(
             onPressed: () => context.read<HearthCubit>().loadPool(),
-            child: Text('Retry',
-                style: HearthTheme.mono(size: 10, color: HearthTheme.askPrimary)),
+            child: Text(
+              'Retry',
+              style: HearthTheme.mono(size: 10, color: HearthTheme.askPrimary),
+            ),
           ),
         ],
       ),
@@ -1078,12 +1090,11 @@ children: [
         content: Text(
           r.ok
               ? (r.txHash == null || r.txHash!.isEmpty
-                  ? successLabel
-                  : '$successLabel — ${r.txHash}')
+                    ? successLabel
+                    : '$successLabel — ${r.txHash}')
               : (r.error ?? 'Failed'),
         ),
-        backgroundColor:
-            r.ok ? HearthTheme.bidPrimary : HearthTheme.askPrimary,
+        backgroundColor: r.ok ? HearthTheme.bidPrimary : HearthTheme.askPrimary,
       ),
     );
   }

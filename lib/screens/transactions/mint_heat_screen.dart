@@ -116,65 +116,76 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
         ),
         content: SingleChildScrollView(
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _confirmRow('You burn', '${xfgAmount.toStringAsFixed(7)} XFG'),
-            const SizedBox(height: 8),
-            _confirmRow('Network fee', '${fee.toStringAsFixed(7)} XFG'),
-            const Divider(color: AppTheme.textMuted),
-            _confirmRow(
-              'Total XFG',
-              '${totalXfg.toStringAsFixed(7)} XFG',
-              bold: true,
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _confirmRow('You burn', '${xfgAmount.toStringAsFixed(7)} XFG'),
+              const SizedBox(height: 8),
+              _confirmRow('Network fee', '${fee.toStringAsFixed(7)} XFG'),
+              const Divider(color: AppTheme.textMuted),
+              _confirmRow(
+                'Total XFG',
+                '${totalXfg.toStringAsFixed(7)} XFG',
+                bold: true,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Estimated (daemon recomputes at execution)',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${estimatedHeat.toStringAsFixed(7)} ΗΞΔŦ',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                      fontFamily: AppTheme.numberFontFamily,
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Estimated (daemon recomputes at execution)',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Rate: 1 XFG = ${_poolRate.toStringAsFixed(4)} ΗΞΔŦ (pool)',
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      '${estimatedHeat.toStringAsFixed(7)} ΗΞΔŦ',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                        fontFamily: AppTheme.numberFontFamily,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Rate: 1 XFG = ${_poolRate.toStringAsFixed(4)} ΗΞΔŦ (pool)',
+                      style: const TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               _promptPinAndMint();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
             child: const Text('Confirm & Mint'),
           ),
         ],
@@ -262,9 +273,9 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       final result = await cubit.mintHeat(xfgDisplay: amountStr, pin: pin);
 
       if (mounted) {
-        final txHash = (result['transactionHash'] ??
-                result['txHash'] ??
-                result['tx_hash']) as String? ??
+        final txHash =
+            (result['transactionHash'] ?? result['txHash'] ?? result['tx_hash'])
+                as String? ??
             '';
         // The daemon may report the minted amount; only show a figure it gave
         // us. The old dialog printed the pre-trade estimate as if it were the
@@ -300,89 +311,92 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
             children: [
               Icon(Icons.check_circle, color: AppTheme.successColor),
               SizedBox(width: 8),
-              Text('ΗΞΔŦ Minted', style: TextStyle(color: AppTheme.textPrimary)),
+              Text(
+                'ΗΞΔŦ Minted',
+                style: TextStyle(color: AppTheme.textPrimary),
+              ),
             ],
           ),
           content: SingleChildScrollView(
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              xt.xfgAmount(
-                '${xfgAmount.toStringAsFixed(7)}',
-                plainTail: ' XFG burned',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 18,
-                  fontFamily: AppTheme.numberFontFamily,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                minted != null
-                    ? '+$minted ΗΞΔŦ minted'
-                    : 'ΗΞΔŦ minted at the pool rate — check your balance once '
-                        'the transaction confirms',
-                style: TextStyle(
-                  color: AppTheme.successColor,
-                  fontSize: minted != null ? 16 : 13,
-                  fontFamily: AppTheme.numberFontFamily,
-                ),
-              ),
-              if (txHash.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text(
-                  'Transaction ID:',
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                xt.xfgAmount(
+                  '${xfgAmount.toStringAsFixed(7)}',
+                  plainTail: ' XFG burned',
                   style: TextStyle(
                     color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontFamily: AppTheme.numberFontFamily,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceColor,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.textMuted.withOpacity(0.3),
+                const SizedBox(height: 4),
+                Text(
+                  minted != null
+                      ? '+$minted ΗΞΔŦ minted'
+                      : 'ΗΞΔŦ minted at the pool rate — check your balance once '
+                            'the transaction confirms',
+                  style: TextStyle(
+                    color: AppTheme.successColor,
+                    fontSize: minted != null ? 16 : 13,
+                    fontFamily: AppTheme.numberFontFamily,
+                  ),
+                ),
+                if (txHash.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Transaction ID:',
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          txHash,
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 12,
-                            fontFamily: 'IBMPlexMono',
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.textMuted.withOpacity(0.3),
                       ),
-                      IconButton(
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: txHash));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Transaction ID copied'),
-                              backgroundColor: AppTheme.successColor,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            txHash,
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 12,
+                              fontFamily: 'IBMPlexMono',
                             ),
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.copy,
-                          size: 16,
-                          color: AppTheme.primaryColor,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                    ],
+                        IconButton(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: txHash));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Transaction ID copied'),
+                                backgroundColor: AppTheme.successColor,
+                              ),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.copy,
+                            size: 16,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
             ),
           ),
           actions: [
@@ -501,55 +515,55 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                             ],
                           )
                         : _rateError != null
-                            ? Row(
-                                children: [
-                                  const Icon(
-                                    Icons.warning_amber,
-                                    color: AppTheme.warningColor,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _rateError!,
-                                      style: const TextStyle(
-                                        color: AppTheme.warningColor,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: _loadMetrics,
-                                    child: const Text('Retry'),
-                                  ),
-                                ],
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Minting Rate (live pool)',
-                                    style: TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  Flexible(
-                                    child: Text(
-                                      '1 XFG = ${_poolRate.toStringAsFixed(4)} ΗΞΔŦ',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.right,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.textPrimary,
-                                        fontFamily: AppTheme.numberFontFamily,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                        ? Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber,
+                                color: AppTheme.warningColor,
+                                size: 16,
                               ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _rateError!,
+                                  style: const TextStyle(
+                                    color: AppTheme.warningColor,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _loadMetrics,
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Minting Rate (live pool)',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Flexible(
+                                child: Text(
+                                  '1 XFG = ${_poolRate.toStringAsFixed(4)} ΗΞΔŦ',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary,
+                                    fontFamily: AppTheme.numberFontFamily,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                   const SizedBox(height: 24),
 
@@ -570,13 +584,17 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                     onChanged: (_) => _onAmountChanged(),
                     decoration: InputDecoration(
                       hintText: '0.0000000',
-                      prefixText: xt.XfgTicker.isGlyph ? xt.XfgTicker.glyph : 'XFG ',
+                      prefixText: xt.XfgTicker.isGlyph
+                          ? xt.XfgTicker.glyph
+                          : 'XFG ',
                       prefixStyle: xt.XfgTicker.isGlyph
-                          ? xt.XfgTicker.glyphStyle(const TextStyle(
-                              color: AppTheme.primaryColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ))
+                          ? xt.XfgTicker.glyphStyle(
+                              const TextStyle(
+                                color: AppTheme.primaryColor,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
                           : const TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 14,
@@ -682,9 +700,8 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: _isLoading ||
-                              availableXfg <= 0 ||
-                              _poolRate <= 0
+                      onPressed:
+                          _isLoading || availableXfg <= 0 || _poolRate <= 0
                           ? null
                           : _showConfirmDialog,
                       style: ElevatedButton.styleFrom(

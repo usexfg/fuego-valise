@@ -28,11 +28,11 @@ class Subaddress {
   }
 
   Map<String, dynamic> toJson() => {
-        'address': address,
-        'label': label,
-        'index': index,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'address': address,
+    'label': label,
+    'index': index,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   String get addressShort {
     if (address.length <= 30) return address;
@@ -53,7 +53,8 @@ class SubaddressStore {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$_fileName');
       if (await file.exists()) {
-        final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        final data =
+            jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         _nextIndex = data['nextIndex'] as int? ?? 1;
         final list = data['subaddresses'] as List<dynamic>? ?? [];
         _subaddresses = list
@@ -72,12 +73,17 @@ class SubaddressStore {
       final dir = await getApplicationDocumentsDirectory();
       final dst = File('${dir.path}/$_fileName');
       final tmp = File('${dir.path}/$_fileName.tmp');
-      await tmp.writeAsString(jsonEncode({
-        'nextIndex': _nextIndex,
-        'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
-      }), flush: true);
+      await tmp.writeAsString(
+        jsonEncode({
+          'nextIndex': _nextIndex,
+          'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
+        }),
+        flush: true,
+      );
       if (!Platform.isWindows) {
-        try { await Process.run('chmod', ['600', tmp.path]); } catch (_) {}
+        try {
+          await Process.run('chmod', ['600', tmp.path]);
+        } catch (_) {}
       }
       await tmp.rename(dst.path);
     } catch (e) {

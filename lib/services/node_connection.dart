@@ -78,9 +78,9 @@ class NodeConnection {
     ConnectionMode? mode,
     String? remoteHost,
     int? remotePort,
-  })  : _mode = mode ?? platformDefaultMode(),
-        _remoteHost = remoteHost ?? _defaultRemoteHost(networkConfig),
-        _remotePort = remotePort ?? networkConfig.daemonRpcPort;
+  }) : _mode = mode ?? platformDefaultMode(),
+       _remoteHost = remoteHost ?? _defaultRemoteHost(networkConfig),
+       _remotePort = remotePort ?? networkConfig.daemonRpcPort;
 
   ConnectionMode get mode => _mode;
   String get remoteHost => _remoteHost;
@@ -91,8 +91,7 @@ class NodeConnection {
   static bool get isDesktop =>
       !kIsWeb && (Platform.isLinux || Platform.isMacOS || Platform.isWindows);
 
-  static bool get isMobile =>
-      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  static bool get isMobile => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   /// Desktop → local, mobile/web → remote.
   static ConnectionMode platformDefaultMode() {
@@ -218,8 +217,7 @@ class NodeConnection {
   /// Probe whether a seed node answers getinfo with a daemon-shaped body
   /// (3s timeout).
   Future<bool> _probeSeed(String host, int port) async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 3);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
     try {
       final req = await client.getUrl(Uri.parse('http://$host:$port/getinfo'));
       final resp = await req.close().timeout(const Duration(seconds: 3));
@@ -317,7 +315,9 @@ class NodeConnection {
         chainPort: chainPort,
         proxyRunning: true,
       );
-      debugPrint('[node] proxy up → ${ep.walletBaseUrl} (chain ${ep.chainBaseUrl})');
+      debugPrint(
+        '[node] proxy up → ${ep.walletBaseUrl} (chain ${ep.chainBaseUrl})',
+      );
       _notify(ep);
       return ep;
     }
@@ -326,7 +326,9 @@ class NodeConnection {
     // 1) Desktop local → try remote proxy automatically
     // 2) Otherwise → direct remote chain (read-only / degraded)
     if (local && isDesktop) {
-      debugPrint('[node] local failed ($startErr) — auto-fallback to remote proxy');
+      debugPrint(
+        '[node] local failed ($startErr) — auto-fallback to remote proxy',
+      );
       final fallback = await _connectRemoteProxy(
         useTestnet: useTestnet,
         priorError: startErr,
@@ -345,7 +347,8 @@ class NodeConnection {
       chainHost: _remoteHost,
       chainPort: _remotePort,
       proxyRunning: false,
-      error: startErr ??
+      error:
+          startErr ??
           'Wallet proxy unavailable. Connected to chain node only '
               '($_remoteHost:$_remotePort). Wallet ops require fuego_walletd.',
     );
@@ -434,8 +437,12 @@ class NodeConnection {
       final parts = h.split(':');
       if (parts.length != 2) {
         return ConnectionEndpoints(
-          mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
-          chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+          mode: ConnectionMode.remote,
+          walletHost: _remoteHost,
+          walletPort: _remotePort,
+          chainHost: _remoteHost,
+          chainPort: _remotePort,
+          proxyRunning: false,
           error: 'Invalid host:port format',
         );
       }
@@ -443,8 +450,12 @@ class NodeConnection {
       final parsed = int.tryParse(parts.last.trim());
       if (parsed == null || parsed < 1 || parsed > 65535) {
         return ConnectionEndpoints(
-          mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
-          chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+          mode: ConnectionMode.remote,
+          walletHost: _remoteHost,
+          walletPort: _remotePort,
+          chainHost: _remoteHost,
+          chainPort: _remotePort,
+          proxyRunning: false,
           error: 'Invalid port (1-65535)',
         );
       }
@@ -454,8 +465,12 @@ class NodeConnection {
       if (port != null) {
         if (port < 1 || port > 65535) {
           return ConnectionEndpoints(
-            mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
-            chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+            mode: ConnectionMode.remote,
+            walletHost: _remoteHost,
+            walletPort: _remotePort,
+            chainHost: _remoteHost,
+            chainPort: _remotePort,
+            proxyRunning: false,
             error: 'Invalid port (1-65535)',
           );
         }
@@ -464,8 +479,12 @@ class NodeConnection {
     }
     if (!_isValidRemoteHost(newHost)) {
       return ConnectionEndpoints(
-        mode: ConnectionMode.remote, walletHost: _remoteHost, walletPort: _remotePort,
-        chainHost: _remoteHost, chainPort: _remotePort, proxyRunning: false,
+        mode: ConnectionMode.remote,
+        walletHost: _remoteHost,
+        walletPort: _remotePort,
+        chainHost: _remoteHost,
+        chainPort: _remotePort,
+        proxyRunning: false,
         error: 'Invalid or blocked host (SSRF guard)',
       );
     }
@@ -481,10 +500,16 @@ class NodeConnection {
   static bool _isValidRemoteHost(String host) {
     final h = host.trim();
     if (h.isEmpty || h.length > 253) return false;
-    if (h.contains(' ') || h.contains('\t') || h.contains('\n') || h.contains('/')) return false;
+    if (h.contains(' ') ||
+        h.contains('\t') ||
+        h.contains('\n') ||
+        h.contains('/'))
+      return false;
     // Block link-local/cloud metadata and loopback tricks
-    if (h.startsWith('169.254.') || h == '0.0.0.0' || h == '::' || h == '::1') return false;
-    if (h.startsWith('169.254.') || h.contains('metadata.google.internal')) return false;
+    if (h.startsWith('169.254.') || h == '0.0.0.0' || h == '::' || h == '::1')
+      return false;
+    if (h.startsWith('169.254.') || h.contains('metadata.google.internal'))
+      return false;
     // IPv4
     if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(h)) {
       final parts = h.split('.').map(int.tryParse).toList();
@@ -493,8 +518,10 @@ class NodeConnection {
       return true;
     }
     // DNS name
-    if (!RegExp(r'^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,61}[a-zA-Z0-9])?$').hasMatch(h)) return false;
-    if (h.contains('..') || h.startsWith('-') || h.startsWith('.')) return false;
+    if (!RegExp(r'^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,61}[a-zA-Z0-9])?$').hasMatch(h))
+      return false;
+    if (h.contains('..') || h.startsWith('-') || h.startsWith('.'))
+      return false;
     return true;
   }
 

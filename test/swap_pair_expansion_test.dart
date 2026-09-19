@@ -99,13 +99,13 @@ void main() {
 
   group('SwapInfo pair lookup', () {
     SwapInfo infoFor(int pair, int ctrAmount) => SwapInfo.fromJson({
-          'swapId': 'x',
-          'state': 0,
-          'pair': pair,
-          'xfgAmount': 10000000,
-          'ctrAmount': ctrAmount,
-          'peer': 'host:1',
-        });
+      'swapId': 'x',
+      'state': 0,
+      'pair': pair,
+      'xfgAmount': 10000000,
+      'ctrAmount': ctrAmount,
+      'peer': 'host:1',
+    });
 
     test('resolves every daemon pair id to a ticker', () {
       for (final p in SwapPairSdk.values) {
@@ -113,21 +113,23 @@ void main() {
       }
     });
 
-    test('scales counterparty amounts by the pair decimals, not a 7 default',
-        () {
-      // 1 AVAX = 1e18 wei. The old table stopped at id 11, so AVAX fell back
-      // to 7 decimals and rendered 1 AVAX as 100,000,000,000 AVAX.
-      final avax = infoFor(SwapPairSdk.avax.id, 1000000000000000000);
-      expect(avax.ctrAmountDecimal, closeTo(1.0, 1e-9));
+    test(
+      'scales counterparty amounts by the pair decimals, not a 7 default',
+      () {
+        // 1 AVAX = 1e18 wei. The old table stopped at id 11, so AVAX fell back
+        // to 7 decimals and rendered 1 AVAX as 100,000,000,000 AVAX.
+        final avax = infoFor(SwapPairSdk.avax.id, 1000000000000000000);
+        expect(avax.ctrAmountDecimal, closeTo(1.0, 1e-9));
 
-      // Polygon's pairName used to be 'POLYGON', which is not a key in
-      // ChainInfo.decimals — another silent 7-decimal fallback.
-      final poly = infoFor(SwapPairSdk.poly.id, 1000000000000000000);
-      expect(poly.ctrAmountDecimal, closeTo(1.0, 1e-9));
+        // Polygon's pairName used to be 'POLYGON', which is not a key in
+        // ChainInfo.decimals — another silent 7-decimal fallback.
+        final poly = infoFor(SwapPairSdk.poly.id, 1000000000000000000);
+        expect(poly.ctrAmountDecimal, closeTo(1.0, 1e-9));
 
-      final btc = infoFor(SwapPairSdk.btc.id, 100000000);
-      expect(btc.ctrAmountDecimal, closeTo(1.0, 1e-9));
-    });
+        final btc = infoFor(SwapPairSdk.btc.id, 100000000);
+        expect(btc.ctrAmountDecimal, closeTo(1.0, 1e-9));
+      },
+    );
 
     test('an unknown pair yields null rather than a wrongly scaled number', () {
       final unknown = infoFor(99, 1000000000000000000);
@@ -150,8 +152,11 @@ void main() {
       // registerChain(SwapPair::…) in SwapDaemon.cpp — 25 of 29.
       expect(ChainInfo.swapableChains.length, 25);
       for (final staged in ChainInfo.stagedChains) {
-        expect(ChainInfo.swapableChains, isNot(contains(staged)),
-            reason: '$staged has a staged client and cannot swap');
+        expect(
+          ChainInfo.swapableChains,
+          isNot(contains(staged)),
+          reason: '$staged has a staged client and cannot swap',
+        );
       }
     });
 
@@ -164,7 +169,10 @@ void main() {
 
     test('tryAmountToDecimal returns null for an unknown ticker', () {
       expect(ChainInfo.tryAmountToDecimal('NOPE', 1), isNull);
-      expect(ChainInfo.tryAmountToDecimal('BTC', 100000000), closeTo(1.0, 1e-9));
+      expect(
+        ChainInfo.tryAmountToDecimal('BTC', 100000000),
+        closeTo(1.0, 1e-9),
+      );
     });
   });
 

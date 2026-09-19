@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../models/network_config.dart';
 import '../models/hearth.dart';
+
 class FuegoDaemonClient {
   final Dio _dio;
   String _baseUrl;

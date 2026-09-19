@@ -91,9 +91,9 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
 
   Future<void> _refreshAccountBalance(String accountId) async {
     final account = _accounts.cast<EvmAccount?>().firstWhere(
-          (entry) => entry?.id == accountId,
-          orElse: () => null,
-        );
+      (entry) => entry?.id == accountId,
+      orElse: () => null,
+    );
     if (account == null) return;
     final generation = ++_balanceGeneration;
     if (mounted) setState(() => _loadingBalances.add(account.id));
@@ -132,7 +132,9 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+            ),
             child: const Text('Remove'),
           ),
         ],
@@ -209,8 +211,11 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
       padding: const EdgeInsets.all(28),
       children: [
         const SizedBox(height: 90),
-        const Icon(Icons.account_balance_wallet_outlined,
-            size: 58, color: AppTheme.primaryColor),
+        const Icon(
+          Icons.account_balance_wallet_outlined,
+          size: 58,
+          color: AppTheme.primaryColor,
+        ),
         const SizedBox(height: 18),
         const Text(
           'No EVM wallets saved',
@@ -326,7 +331,10 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Text('Balance', style: TextStyle(color: AppTheme.textMuted)),
+                const Text(
+                  'Balance',
+                  style: TextStyle(color: AppTheme.textMuted),
+                ),
                 const Spacer(),
                 if (isLoading)
                   const SizedBox(

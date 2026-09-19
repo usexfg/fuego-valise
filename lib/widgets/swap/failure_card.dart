@@ -20,7 +20,9 @@ FailureCause _cause(SwapInfo swap) {
   if (state.contains('FAILED') && err.contains('reorg')) {
     return FailureCause.reorg;
   }
-  if (err.contains('timeout') || state == 'ADAPTOR_REFUNDED' || state == 'AFK_REFUNDED') {
+  if (err.contains('timeout') ||
+      state == 'ADAPTOR_REFUNDED' ||
+      state == 'AFK_REFUNDED') {
     return FailureCause.timeout;
   }
   if (err.contains('not found') || err.contains('header pruned')) {
@@ -32,7 +34,9 @@ FailureCause _cause(SwapInfo swap) {
   if (err.contains('insufficient') || err.contains('amount')) {
     return FailureCause.dust;
   }
-  if (err.contains('peer') || err.contains('offline') || stateLower.contains('offline')) {
+  if (err.contains('peer') ||
+      err.contains('offline') ||
+      stateLower.contains('offline')) {
     return FailureCause.peerOffline;
   }
   return FailureCause.spvFailed;
@@ -103,9 +107,13 @@ class FailureCard extends StatelessWidget {
     final String causeLabel = _causeLabel(cause);
     final String description = _causeDescription(cause);
     final bool refunded = _isRefundedState(swap.state);
-    final String title = refunded ? 'Refunded \u2014 $causeLabel' : 'Failed \u2014 $causeLabel';
+    final String title = refunded
+        ? 'Refunded \u2014 $causeLabel'
+        : 'Failed \u2014 $causeLabel';
     final bool hasError = swap.spvError != null && swap.spvError!.isNotEmpty;
-    final Color iconColor = refunded ? AppTheme.warningColor : AppTheme.errorColor;
+    final Color iconColor = refunded
+        ? AppTheme.warningColor
+        : AppTheme.errorColor;
     const IconData iconData = Icons.error_outline;
     final bool isRefundable = _checkRefundable();
     final int? remaining = _remainingBlocks();
@@ -116,7 +124,9 @@ class FailureCard extends StatelessWidget {
         color: AppTheme.cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: refunded ? AppTheme.warningColor.withValues(alpha: 0.3) : AppTheme.errorColor.withValues(alpha: 0.3),
+          color: refunded
+              ? AppTheme.warningColor.withValues(alpha: 0.3)
+              : AppTheme.errorColor.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -125,11 +135,7 @@ class FailureCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                iconData,
-                color: iconColor,
-                size: 20,
-              ),
+              Icon(iconData, color: iconColor, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -181,7 +187,10 @@ class FailureCard extends StatelessWidget {
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: AppTheme.surfaceColor,
                   disabledForegroundColor: AppTheme.textMuted,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   minimumSize: const Size(0, 36),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(
@@ -192,8 +201,8 @@ class FailureCard extends StatelessWidget {
                   isRefundable
                       ? 'Refund'
                       : remaining != null
-                          ? 'Refundable in $remaining blocks'
-                          : 'Refund \u2014 awaiting heights',
+                      ? 'Refundable in $remaining blocks'
+                      : 'Refund \u2014 awaiting heights',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -205,16 +214,16 @@ class FailureCard extends StatelessWidget {
                   onPressed: onRetry,
                   style: TextButton.styleFrom(
                     foregroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     minimumSize: const Size(0, 36),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: const Text(
                     'Retry verify',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -235,16 +244,16 @@ class FailureCard extends StatelessWidget {
                   },
                   style: TextButton.styleFrom(
                     foregroundColor: AppTheme.textSecondary,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     minimumSize: const Size(0, 36),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: const Text(
                     'Contact peer',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],

@@ -22,56 +22,59 @@ void main() {
   final hasBins = walletd.existsSync() && swapd.existsSync();
 
   group('live daemon stack (testnet local)', () {
-    test('NodeConnection local testnet starts proxy; swapd binary discoverable',
-        () async {
-      if (!hasBins) {
-        // ignore: avoid_print
-        print('SKIP: binaries not present');
-        return;
-      }
+    test(
+      'NodeConnection local testnet starts proxy; swapd binary discoverable',
+      () async {
+        if (!hasBins) {
+          // ignore: avoid_print
+          print('SKIP: binaries not present');
+          return;
+        }
 
-      final dm = DaemonManager(config: NetworkConfig.testnet);
-      expect(dm.walletdPort, NetworkConfig.testnet.walletRpcPort);
-      expect(dm.fuegodPort, NetworkConfig.testnet.daemonRpcPort);
+        final dm = DaemonManager(config: NetworkConfig.testnet);
+        expect(dm.walletdPort, NetworkConfig.testnet.walletRpcPort);
+        expect(dm.fuegodPort, NetworkConfig.testnet.daemonRpcPort);
 
-      final rpc = FuegoRPCService(
-        host: '127.0.0.1',
-        port: NetworkConfig.testnet.walletRpcPort,
-        networkConfig: NetworkConfig.testnet,
-      );
-      final nc = NodeConnection(
-        daemonManager: dm,
-        rpcService: rpc,
-        networkConfig: NetworkConfig.testnet,
-        mode: ConnectionMode.local,
-      );
+        final rpc = FuegoRPCService(
+          host: '127.0.0.1',
+          port: NetworkConfig.testnet.walletRpcPort,
+          networkConfig: NetworkConfig.testnet,
+        );
+        final nc = NodeConnection(
+          daemonManager: dm,
+          rpcService: rpc,
+          networkConfig: NetworkConfig.testnet,
+          mode: ConnectionMode.local,
+        );
 
-      // Prefer not fighting an already-healthy stack: if proxy answers, assert
-      // connectivity instead of restarting.
-      final already = await _httpGetOk(
-        'http://127.0.0.1:${NetworkConfig.testnet.walletRpcPort}/health',
-      );
-      if (!already) {
-        final ep = await nc.connect(useTestnet: true);
-        expect(ep.proxyRunning, isTrue, reason: ep.error);
-        expect(ep.walletPort, NetworkConfig.testnet.walletRpcPort);
-      }
+        // Prefer not fighting an already-healthy stack: if proxy answers, assert
+        // connectivity instead of restarting.
+        final already = await _httpGetOk(
+          'http://127.0.0.1:${NetworkConfig.testnet.walletRpcPort}/health',
+        );
+        if (!already) {
+          final ep = await nc.connect(useTestnet: true);
+          expect(ep.proxyRunning, isTrue, reason: ep.error);
+          expect(ep.walletPort, NetworkConfig.testnet.walletRpcPort);
+        }
 
-      final health = await _httpGetJson(
-        'http://127.0.0.1:${NetworkConfig.testnet.walletRpcPort}/health',
-      );
-      expect(health['status'], 'ok');
-      expect(health['wallet'], isA<Map<String, dynamic>>());
+        final health = await _httpGetJson(
+          'http://127.0.0.1:${NetworkConfig.testnet.walletRpcPort}/health',
+        );
+        expect(health['status'], 'ok');
+        expect(health['wallet'], isA<Map<String, dynamic>>());
 
-      // Chain via local proxy
-      final bal = await rpc.getBalance();
-      expect(bal.unlockedBalance, isNonNegative);
+        // Chain via local proxy
+        final bal = await rpc.getBalance();
+        expect(bal.unlockedBalance, isNonNegative);
 
-      // Swap daemon: either already running or started by connect
-      final swapHealth = await _httpGetJson('http://127.0.0.1:18902/health');
-      expect(swapHealth['status'], 'ok');
-      expect(swapHealth['connected'], isTrue);
-    }, timeout: const Timeout(Duration(minutes: 4)));
+        // Swap daemon: either already running or started by connect
+        final swapHealth = await _httpGetJson('http://127.0.0.1:18902/health');
+        expect(swapHealth['status'], 'ok');
+        expect(swapHealth['connected'], isTrue);
+      },
+      timeout: const Timeout(Duration(minutes: 4)),
+    );
 
     test('chain getinfo has height+status on testnet daemon port', () async {
       if (!hasBins) return;

@@ -161,214 +161,219 @@ class _DexScreenState extends State<DexScreen>
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-      children: [
-        // Fuego logo + XFG
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: Image.asset(
-            'assets/coin-icons/xfg.png',
-            width: 20,
-            height: 20,
-            errorBuilder: (_, __, ___) => Container(
+        children: [
+          // Fuego logo + XFG
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.asset(
+              'assets/coin-icons/xfg.png',
               width: 20,
               height: 20,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Center(
-                child: Text(
-                  'FG',
-                  style: TextStyle(
-                    color: AppTheme.primaryColor,
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
+              errorBuilder: (_, __, ___) => Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Center(
+                  child: Text(
+                    'FG',
+                    style: TextStyle(
+                      color: AppTheme.primaryColor,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          'XFG',
-          style: TextStyle(
-            color: AppTheme.primaryColor,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
+          const SizedBox(width: 4),
+          Text(
+            'XFG',
+            style: TextStyle(
+              color: AppTheme.primaryColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(width: 4),
-        const Text(
-          '/',
-          style: TextStyle(color: AppTheme.textMuted, fontSize: 15),
-        ),
-        const SizedBox(width: 4),
-        // Chain selector button
-        GestureDetector(
-          onTap: () => _showChainSelector(state),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color:
-                  (ChainInfo.colors[state.selectedPair.ticker] ??
-                          AppTheme.primaryColor)
-                      .withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
+          const SizedBox(width: 4),
+          const Text(
+            '/',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 15),
+          ),
+          const SizedBox(width: 4),
+          // Chain selector button
+          GestureDetector(
+            onTap: () => _showChainSelector(state),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
                 color:
                     (ChainInfo.colors[state.selectedPair.ticker] ??
                             AppTheme.primaryColor)
-                        .withValues(alpha: 0.3),
+                        .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color:
+                      (ChainInfo.colors[state.selectedPair.ticker] ??
+                              AppTheme.primaryColor)
+                          .withValues(alpha: 0.3),
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: Image.asset(
-                    ChainInfo.icons[state.selectedPair.ticker] ?? '',
-                    width: 20,
-                    height: 20,
-                    errorBuilder: (_, __, ___) => Container(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.asset(
+                      ChainInfo.icons[state.selectedPair.ticker] ?? '',
                       width: 20,
                       height: 20,
-                      decoration: BoxDecoration(
-                        color:
-                            (ChainInfo.colors[state.selectedPair.ticker] ??
-                                    AppTheme.primaryColor)
-                                .withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Center(
-                        child: Text(
-                          state.selectedPair.ticker.substring(0, 2),
-                          style: TextStyle(
-                            color:
-                                ChainInfo.colors[state.selectedPair.ticker] ??
-                                AppTheme.primaryColor,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color:
+                              (ChainInfo.colors[state.selectedPair.ticker] ??
+                                      AppTheme.primaryColor)
+                                  .withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Center(
+                          child: Text(
+                            state.selectedPair.ticker.substring(0, 2),
+                            style: TextStyle(
+                              color:
+                                  ChainInfo.colors[state.selectedPair.ticker] ??
+                                  AppTheme.primaryColor,
+                              fontSize: 8,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  state.selectedPair.ticker,
-                  style: TextStyle(
+                  const SizedBox(width: 6),
+                  Text(
+                    state.selectedPair.ticker,
+                    style: TextStyle(
+                      color:
+                          ChainInfo.colors[state.selectedPair.ticker] ??
+                          AppTheme.primaryColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
                     color:
                         ChainInfo.colors[state.selectedPair.ticker] ??
                         AppTheme.primaryColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    size: 18,
                   ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color:
-                      ChainInfo.colors[state.selectedPair.ticker] ??
-                      AppTheme.primaryColor,
-                  size: 18,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        // Chain type badge
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            ChainInfo.info[state.selectedPair.ticker]?['type'] ?? '',
-            style: const TextStyle(
-              color: AppTheme.textMuted,
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // PTLC lockType badge
-        Semantics(
-          label: 'Lock type ${state.lastLockType}',
-          child: Container(
+          const SizedBox(width: 8),
+          // Chain type badge
+          Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: (state.lastLockType == 'PTLC'
-                      ? AppTheme.primaryColor
-                      : state.lastLockType == 'BRIDGE'
-                          ? AppTheme.primaryVariant
-                          : AppTheme.textMuted)
-                  .withValues(alpha: 0.15),
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(
-                color: state.lastLockType == 'PTLC'
-                    ? AppTheme.primaryColor
-                    : state.lastLockType == 'BRIDGE'
-                        ? AppTheme.primaryVariant
-                        : AppTheme.textMuted,
-                width: 0.8,
-              ),
             ),
             child: Text(
-              state.lastLockType.isEmpty ? 'HTLC' : state.lastLockType,
-              style: TextStyle(
-                color: state.lastLockType == 'PTLC'
-                    ? AppTheme.primaryColor
-                    : state.lastLockType == 'BRIDGE'
-                        ? AppTheme.primaryVariant
-                        : AppTheme.textMuted,
+              ChainInfo.info[state.selectedPair.ticker]?['type'] ?? '',
+              style: const TextStyle(
+                color: AppTheme.textMuted,
                 fontSize: 9,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        IconButton(
-          icon: const Icon(
-            Icons.info_outline,
-            size: 18,
-            color: AppTheme.textMuted,
+          const SizedBox(width: 4),
+          // PTLC lockType badge
+          Semantics(
+            label: 'Lock type ${state.lastLockType}',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color:
+                    (state.lastLockType == 'PTLC'
+                            ? AppTheme.primaryColor
+                            : state.lastLockType == 'BRIDGE'
+                            ? AppTheme.primaryVariant
+                            : AppTheme.textMuted)
+                        .withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: state.lastLockType == 'PTLC'
+                      ? AppTheme.primaryColor
+                      : state.lastLockType == 'BRIDGE'
+                      ? AppTheme.primaryVariant
+                      : AppTheme.textMuted,
+                  width: 0.8,
+                ),
+              ),
+              child: Text(
+                state.lastLockType.isEmpty ? 'HTLC' : state.lastLockType,
+                style: TextStyle(
+                  color: state.lastLockType == 'PTLC'
+                      ? AppTheme.primaryColor
+                      : state.lastLockType == 'BRIDGE'
+                      ? AppTheme.primaryVariant
+                      : AppTheme.textMuted,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
-          onPressed: _showChainInfo,
-          tooltip: 'Chain details',
-        ),
-        IconButton(
-          icon: const Icon(
-            Icons.verified_outlined,
-            size: 18,
-            color: AppTheme.primaryColor,
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(
+              Icons.info_outline,
+              size: 18,
+              color: AppTheme.textMuted,
+            ),
+            onPressed: _showChainInfo,
+            tooltip: 'Chain details',
           ),
-          onPressed: _showPtlcGuide,
-          tooltip: 'PTLC guide',
-        ),
-        const SizedBox(width: 4),
-        if (!state.isConnected)
-          const Icon(Icons.cloud_off, color: AppTheme.errorColor, size: 16)
-        else
-          const Icon(Icons.cloud_done, color: AppTheme.successColor, size: 16),
-        const SizedBox(width: 4),
-        IconButton(
-          icon: const Icon(
-            Icons.refresh,
-            size: 18,
-            color: AppTheme.primaryColor,
+          IconButton(
+            icon: const Icon(
+              Icons.verified_outlined,
+              size: 18,
+              color: AppTheme.primaryColor,
+            ),
+            onPressed: _showPtlcGuide,
+            tooltip: 'PTLC guide',
           ),
-          onPressed: () => context.read<DexCubit>().refresh(),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-        ),
-      ],
+          const SizedBox(width: 4),
+          if (!state.isConnected)
+            const Icon(Icons.cloud_off, color: AppTheme.errorColor, size: 16)
+          else
+            const Icon(
+              Icons.cloud_done,
+              color: AppTheme.successColor,
+              size: 16,
+            ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(
+              Icons.refresh,
+              size: 18,
+              color: AppTheme.primaryColor,
+            ),
+            onPressed: () => context.read<DexCubit>().refresh(),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+        ],
       ),
     ),
   );
@@ -524,18 +529,25 @@ class _DexScreenState extends State<DexScreen>
                                       ),
                                     const SizedBox(width: 4),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 1,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: (ChainInfo.isPtlcSupported(ticker)
-                                                ? AppTheme.primaryColor
-                                                : AppTheme.primaryVariant)
-                                            .withValues(alpha: 0.13),
+                                        color:
+                                            (ChainInfo.isPtlcSupported(ticker)
+                                                    ? AppTheme.primaryColor
+                                                    : AppTheme.primaryVariant)
+                                                .withValues(alpha: 0.13),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        ChainInfo.isPtlcSupported(ticker) ? 'PTLC' : 'BRIDGE',
+                                        ChainInfo.isPtlcSupported(ticker)
+                                            ? 'PTLC'
+                                            : 'BRIDGE',
                                         style: TextStyle(
-                                          color: ChainInfo.isPtlcSupported(ticker)
+                                          color:
+                                              ChainInfo.isPtlcSupported(ticker)
                                               ? AppTheme.primaryColor
                                               : AppTheme.primaryVariant,
                                           fontSize: 8,
@@ -872,16 +884,14 @@ class _DexScreenState extends State<DexScreen>
           children: [
             ClipOval(
               child: Image.asset(
-                ChainInfo.icons[offer.sellXfg ? 'XFG' : offer.ticker] ??
-                    '',
+                ChainInfo.icons[offer.sellXfg ? 'XFG' : offer.ticker] ?? '',
                 width: 28,
                 height: 28,
                 errorBuilder: (_, __, ___) => Container(
                   width: 28,
                   height: 28,
                   color:
-                      ChainInfo.colors[offer.ticker] ??
-                      AppTheme.primaryColor,
+                      ChainInfo.colors[offer.ticker] ?? AppTheme.primaryColor,
                 ),
               ),
             ),
@@ -1103,13 +1113,20 @@ class _DexScreenState extends State<DexScreen>
               child: SwitchListTile(
                 title: const Text(
                   'Require PTLC (no HTLC fallback)',
-                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 subtitle: Text(
                   ChainInfo.isPtlcSupported(state.selectedPair.ticker)
                       ? 'Enforces per-hop decorrelation + scriptless'
                       : 'This chain is HTLC-only — will abort if on',
-                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 10,
+                  ),
                 ),
                 value: state.requirePtlc,
                 activeThumbColor: AppTheme.primaryColor,
@@ -1117,7 +1134,10 @@ class _DexScreenState extends State<DexScreen>
               ),
             ),
           ),
-          if (state.requirePtlc && !ChainInfo.isPtlcSupported(state.selectedPair.ticker) && state.selectedPair.ticker != 'XMR' && state.selectedPair.ticker != 'ZANO')
+          if (state.requirePtlc &&
+              !ChainInfo.isPtlcSupported(state.selectedPair.ticker) &&
+              state.selectedPair.ticker != 'XMR' &&
+              state.selectedPair.ticker != 'ZANO')
             const Padding(
               padding: EdgeInsets.only(top: 6, left: 4),
               child: Text(
@@ -1135,7 +1155,11 @@ class _DexScreenState extends State<DexScreen>
                   Expanded(
                     child: Text(
                       'T: ${state.lastPtlcPoint}  •  ${state.lastLockType}',
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 9, fontFamily: 'IBMPlexMono'),
+                      style: const TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 9,
+                        fontFamily: 'IBMPlexMono',
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1411,7 +1435,10 @@ class _DexScreenState extends State<DexScreen>
   Widget _buildErc20Balances(DexState state) {
     final chainKey = _evmChainKey(state.selectedChain);
     if (chainKey == null) return const SizedBox.shrink();
-    final stables = Erc20Registry.forChain(chainKey, filter: Erc20Filter.stables);
+    final stables = Erc20Registry.forChain(
+      chainKey,
+      filter: Erc20Filter.stables,
+    );
     final others = Erc20Registry.forChain(chainKey, filter: Erc20Filter.tokens);
     if (stables.isEmpty && others.isEmpty) return const SizedBox.shrink();
     final showStables = _erc20Filter == Erc20Filter.stables;
@@ -1430,16 +1457,35 @@ class _DexScreenState extends State<DexScreen>
         children: [
           Row(
             children: [
-              const Icon(Icons.account_balance_wallet, size: 14, color: AppTheme.textMuted),
+              const Icon(
+                Icons.account_balance_wallet,
+                size: 14,
+                color: AppTheme.textMuted,
+              ),
               const SizedBox(width: 6),
               Text(
                 '${showStables ? 'Stablecoins' : 'Tokens'} on ${chainKey.toUpperCase()}',
-                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TokenOverviewScreen())),
-                child: const Text('Manage →', style: TextStyle(color: AppTheme.primaryColor, fontSize: 11, fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TokenOverviewScreen(),
+                  ),
+                ),
+                child: const Text(
+                  'Manage →',
+                  style: TextStyle(
+                    color: AppTheme.primaryColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1475,7 +1521,13 @@ class _DexScreenState extends State<DexScreen>
               style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
             )
           else
-            ...shown.map((t) => _Erc20BalanceTile(chainKey: chainKey, token: t, holder: derived)),
+            ...shown.map(
+              (t) => _Erc20BalanceTile(
+                chainKey: chainKey,
+                token: t,
+                holder: derived,
+              ),
+            ),
         ],
       ),
     );
@@ -1483,22 +1535,38 @@ class _DexScreenState extends State<DexScreen>
 
   String? _evmChainKey(ChainTypeSdk c) {
     switch (c) {
-      case ChainTypeSdk.ethereum: return 'eth';
-      case ChainTypeSdk.arbitrum: return 'arb';
-      case ChainTypeSdk.base: return 'base';
-      case ChainTypeSdk.bnb: return 'bsc';
-      case ChainTypeSdk.polygon: return 'poly';
-      case ChainTypeSdk.avax: return 'avax';
-      case ChainTypeSdk.gleec: return 'gleec';
-      case ChainTypeSdk.robinhood: return 'rh';
-      case ChainTypeSdk.cro: return 'cro';
-      case ChainTypeSdk.bob: return 'bob';
-      case ChainTypeSdk.unichain: return 'uni';
-      case ChainTypeSdk.plasma: return 'xpl';
-      case ChainTypeSdk.pulsex: return 'pls';
-      case ChainTypeSdk.monad: return 'monad';
-      case ChainTypeSdk.optimism: return 'op';
-      default: return null;
+      case ChainTypeSdk.ethereum:
+        return 'eth';
+      case ChainTypeSdk.arbitrum:
+        return 'arb';
+      case ChainTypeSdk.base:
+        return 'base';
+      case ChainTypeSdk.bnb:
+        return 'bsc';
+      case ChainTypeSdk.polygon:
+        return 'poly';
+      case ChainTypeSdk.avax:
+        return 'avax';
+      case ChainTypeSdk.gleec:
+        return 'gleec';
+      case ChainTypeSdk.robinhood:
+        return 'rh';
+      case ChainTypeSdk.cro:
+        return 'cro';
+      case ChainTypeSdk.bob:
+        return 'bob';
+      case ChainTypeSdk.unichain:
+        return 'uni';
+      case ChainTypeSdk.plasma:
+        return 'xpl';
+      case ChainTypeSdk.pulsex:
+        return 'pls';
+      case ChainTypeSdk.monad:
+        return 'monad';
+      case ChainTypeSdk.optimism:
+        return 'op';
+      default:
+        return null;
     }
   }
 
@@ -1762,7 +1830,14 @@ class _DexScreenState extends State<DexScreen>
           children: [
             Icon(Icons.verified_outlined, color: Color(0xFF2E7D32), size: 20),
             SizedBox(width: 8),
-            Text('PTLC — Point Locks', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(
+              'PTLC — Point Locks',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -1770,15 +1845,42 @@ class _DexScreenState extends State<DexScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _ptlcBullet('PTLC', 'Point T=t·G, sig s\'=k+e·sk+t, extract t=s\'-s. Per-hop T_i decorrelated.', AppTheme.primaryColor),
-              _ptlcBullet('BRIDGE', 'XFG PTLC + CTR HTLC H(t) + DLEQ Q=t·escrowPub. Current default.', AppTheme.primaryVariant),
-              _ptlcBullet('HTLC', 'Legacy hash only. Linkable.', AppTheme.textMuted),
+              _ptlcBullet(
+                'PTLC',
+                'Point T=t·G, sig s\'=k+e·sk+t, extract t=s\'-s. Per-hop T_i decorrelated.',
+                AppTheme.primaryColor,
+              ),
+              _ptlcBullet(
+                'BRIDGE',
+                'XFG PTLC + CTR HTLC H(t) + DLEQ Q=t·escrowPub. Current default.',
+                AppTheme.primaryVariant,
+              ),
+              _ptlcBullet(
+                'HTLC',
+                'Legacy hash only. Linkable.',
+                AppTheme.textMuted,
+              ),
               const SizedBox(height: 12),
-              const Text('Require PTLC ON aborts if chain cannot do PTLC. Leave OFF for BRIDGE (works everywhere).', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+              const Text(
+                'Require PTLC ON aborts if chain cannot do PTLC. Leave OFF for BRIDGE (works everywhere).',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+              ),
               const SizedBox(height: 8),
               GestureDetector(
-                onTap: () => launchUrl(Uri.parse('https://github.com/usexfg/fuego-suite/blob/master/docs/PTLC_USER_WALKTHROUGH.md')),
-                child: const Text('Open full walkthrough →', style: TextStyle(color: AppTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.w600, decoration: TextDecoration.underline)),
+                onTap: () => launchUrl(
+                  Uri.parse(
+                    'https://github.com/usexfg/fuego-suite/blob/master/docs/PTLC_USER_WALKTHROUGH.md',
+                  ),
+                ),
+                child: const Text(
+                  'Open full walkthrough →',
+                  style: TextStyle(
+                    color: AppTheme.primaryColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1786,7 +1888,10 @@ class _DexScreenState extends State<DexScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: AppTheme.primaryColor)),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: AppTheme.primaryColor),
+            ),
           ),
         ],
       ),
@@ -1794,20 +1899,36 @@ class _DexScreenState extends State<DexScreen>
   }
 
   Widget _ptlcBullet(String label, String text, Color color) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: color, width: 0.7)),
-              child: Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700)),
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: color, width: 0.7),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11))),
-          ],
+          ),
         ),
-      );
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Two-state chip for the inline ERC20 panel. Shows the count so an empty
@@ -1859,7 +1980,11 @@ class _Erc20BalanceTile extends StatefulWidget {
   final String chainKey;
   final Erc20Token token;
   final String holder;
-  const _Erc20BalanceTile({required this.chainKey, required this.token, required this.holder});
+  const _Erc20BalanceTile({
+    required this.chainKey,
+    required this.token,
+    required this.holder,
+  });
 
   @override
   State<_Erc20BalanceTile> createState() => _Erc20BalanceTileState();
@@ -1878,10 +2003,17 @@ class _Erc20BalanceTileState extends State<_Erc20BalanceTile> {
 
   Future<String> _load() async {
     try {
-      final raw = await _w3!.getErc20Balance(holderAddress: widget.holder, tokenAddress: widget.token.address, chain: widget.chainKey);
+      final raw = await _w3!.getErc20Balance(
+        holderAddress: widget.holder,
+        tokenAddress: widget.token.address,
+        chain: widget.chainKey,
+      );
       int dec = widget.token.decimals;
       try {
-        dec = await _w3!.getErc20Decimals(tokenAddress: widget.token.address, chain: widget.chainKey);
+        dec = await _w3!.getErc20Decimals(
+          tokenAddress: widget.token.address,
+          chain: widget.chainKey,
+        );
       } catch (_) {}
       final disp = Erc20Amount.fromBaseUnits(raw, dec);
       return disp;
@@ -1893,7 +2025,9 @@ class _Erc20BalanceTileState extends State<_Erc20BalanceTile> {
   @override
   void didUpdateWidget(covariant _Erc20BalanceTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.holder != widget.holder || oldWidget.token != widget.token || oldWidget.chainKey != widget.chainKey) {
+    if (oldWidget.holder != widget.holder ||
+        oldWidget.token != widget.token ||
+        oldWidget.chainKey != widget.chainKey) {
       _future = _load();
     }
   }
@@ -1916,20 +2050,53 @@ class _Erc20BalanceTileState extends State<_Erc20BalanceTile> {
           child: Row(
             children: [
               Container(
-                width: 6, height: 6,
-                decoration: BoxDecoration(color: AppTheme.primaryColor.withValues(alpha: 0.7), shape: BoxShape.circle),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.7),
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 8),
-              Text('${widget.token.symbol}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11, fontWeight: FontWeight.w600)),
+              Text(
+                '${widget.token.symbol}',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(width: 6),
               Expanded(
-                child: SelectableText(widget.token.address, style: const TextStyle(color: AppTheme.textMuted, fontSize: 9, fontFamily: 'IBMPlexMono')),
+                child: SelectableText(
+                  widget.token.address,
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 9,
+                    fontFamily: 'IBMPlexMono',
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               if (isLoading)
-                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.textMuted))
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppTheme.textMuted,
+                  ),
+                )
               else
-                Text(bal, style: TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontFamily: AppTheme.numberFontFamily, fontWeight: FontWeight.w600)),
+                Text(
+                  bal,
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontFamily: AppTheme.numberFontFamily,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
             ],
           ),
         );

@@ -69,10 +69,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
 
   void _warn(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppTheme.warningColor,
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppTheme.warningColor),
     );
   }
 
@@ -111,13 +108,13 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
       return;
     }
     context.read<DexCubit>().initiateCrossChainSwap(
-          // Daemon name, not the display ticker — swapPairFromString() does
-          // not accept RHC/UNI/XPL/PLS/MON.
-          pair: pair.daemonName,
-          xfgAmount: xfgAtomic,
-          ctrAmount: ctrAtomic,
-          peer: peer,
-        );
+      // Daemon name, not the display ticker — swapPairFromString() does
+      // not accept RHC/UNI/XPL/PLS/MON.
+      pair: pair.daemonName,
+      xfgAmount: xfgAtomic,
+      ctrAmount: ctrAtomic,
+      peer: peer,
+    );
   }
 
   @override
@@ -125,10 +122,12 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
     return BlocBuilder<DexCubit, DexState>(
       builder: (BuildContext context, DexState state) {
         final String ticker = state.selectedPair.ticker;
-        final List<SwapInfo> allActive =
-            state.spvSwaps.where((SwapInfo s) => !s.isTerminal).toList();
-        final List<SwapInfo> allHistory =
-            state.spvSwaps.where((SwapInfo s) => s.isTerminal).toList();
+        final List<SwapInfo> allActive = state.spvSwaps
+            .where((SwapInfo s) => !s.isTerminal)
+            .toList();
+        final List<SwapInfo> allHistory = state.spvSwaps
+            .where((SwapInfo s) => s.isTerminal)
+            .toList();
         final List<SwapInfo> active = _filtered(allActive);
         final List<SwapInfo> history = _filtered(allHistory);
         return SingleChildScrollView(
@@ -238,30 +237,34 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
         spacing: 8,
         runSpacing: 8,
         children: ChainInfo.swapableChains.map((String t) {
-        final bool selected = t == state.selectedPair.ticker;
-        final Color color = ChainInfo.colors[t] ?? AppTheme.primaryColor;
-        return GestureDetector(
-          onTap: () {
-            context.read<DexCubit>().selectPairById(t);
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: selected ? color.withValues(alpha: 0.2) : AppTheme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: selected ? color : AppTheme.surfaceColor),
-            ),
-            child: Text(
-              t,
-              style: TextStyle(
-                color: selected ? color : AppTheme.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+          final bool selected = t == state.selectedPair.ticker;
+          final Color color = ChainInfo.colors[t] ?? AppTheme.primaryColor;
+          return GestureDetector(
+            onTap: () {
+              context.read<DexCubit>().selectPairById(t);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected
+                    ? color.withValues(alpha: 0.2)
+                    : AppTheme.cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: selected ? color : AppTheme.surfaceColor,
+                ),
+              ),
+              child: Text(
+                t,
+                style: TextStyle(
+                  color: selected ? color : AppTheme.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        }).toList(),
       ),
     );
   }
@@ -340,9 +343,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
         decoration: BoxDecoration(
           color: selected ? base.withValues(alpha: 0.18) : AppTheme.cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? base : AppTheme.surfaceColor,
-          ),
+          border: Border.all(color: selected ? base : AppTheme.surfaceColor),
         ),
         child: Text(
           label,
@@ -483,9 +484,8 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: (isError ? AppTheme.errorColor : AppTheme.successColor).withValues(
-          alpha: 0.1,
-        ),
+        color: (isError ? AppTheme.errorColor : AppTheme.successColor)
+            .withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -597,7 +597,8 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
               child: SwapCard(
                 swap: swap,
                 onTap: () => _showSwapDetail(swap),
-                onInspect: swap.ctrLockTxId != null && swap.ctrLockTxId!.isNotEmpty
+                onInspect:
+                    swap.ctrLockTxId != null && swap.ctrLockTxId!.isNotEmpty
                     ? () => _showSwapDetail(swap)
                     : null,
               ),
@@ -615,11 +616,18 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.filter_list_off, color: AppTheme.textMuted, size: 16),
+                const Icon(
+                  Icons.filter_list_off,
+                  color: AppTheme.textMuted,
+                  size: 16,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'No $_historyFilter swaps',
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -686,7 +694,9 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
               label: Text(
                 tab,
                 style: TextStyle(
-                  color: _historyFilter == tab ? Colors.white : AppTheme.textSecondary,
+                  color: _historyFilter == tab
+                      ? Colors.white
+                      : AppTheme.textSecondary,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -695,7 +705,9 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
               selectedColor: AppTheme.primaryColor,
               backgroundColor: AppTheme.cardColor,
               side: BorderSide(
-                color: _historyFilter == tab ? AppTheme.primaryColor : AppTheme.surfaceColor,
+                color: _historyFilter == tab
+                    ? AppTheme.primaryColor
+                    : AppTheme.surfaceColor,
               ),
               onSelected: (bool v) {
                 if (v) {
@@ -726,8 +738,9 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
       });
     }
     final String ts = swap.updatedAt > 0
-        ? DateTime.fromMillisecondsSinceEpoch(swap.updatedAt * 1000)
-            .toIso8601String()
+        ? DateTime.fromMillisecondsSinceEpoch(
+            swap.updatedAt * 1000,
+          ).toIso8601String()
         : '';
     showModalBottomSheet<void>(
       context: context,
@@ -774,7 +787,10 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(4),
@@ -876,7 +892,9 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.primaryColor,
-                            side: const BorderSide(color: AppTheme.primaryColor),
+                            side: const BorderSide(
+                              color: AppTheme.primaryColor,
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -900,7 +918,9 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.primaryColor,
-                            side: const BorderSide(color: AppTheme.primaryColor),
+                            side: const BorderSide(
+                              color: AppTheme.primaryColor,
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -911,7 +931,8 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (swap.ctrLockTxId != null && swap.ctrLockTxId!.isNotEmpty) ...[
+                  if (swap.ctrLockTxId != null &&
+                      swap.ctrLockTxId!.isNotEmpty) ...[
                     const Text(
                       'Counterparty TX',
                       style: TextStyle(
@@ -1085,7 +1106,11 @@ class _EmptySwapsHint extends StatelessWidget {
           Expanded(
             child: Text(
               'No swaps yet — initiate one above or accept an offer from the Accept tab.',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                height: 1.4,
+              ),
             ),
           ),
         ],

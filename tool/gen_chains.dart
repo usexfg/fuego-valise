@@ -10,6 +10,12 @@
 // No external dependencies: parses the simple flat block YAML subset used
 // by chains.yaml directly ("- key:" starts an entry, indented "k: v" lines
 // follow; strings may be single/double quoted; '#' comments stripped).
+//
+// The emitted source is run through `dart format` before it is written or
+// compared. CI gates on `dart format --set-exit-if-changed lib/ test/`, and
+// the generated file lives under lib/ — so unformatted output would either
+// fail that gate or, once someone formatted it by hand, fail the --check
+// golden here. Formatting on both paths keeps the two gates agreeing.
 
 import 'dart:io';
 
@@ -28,7 +34,7 @@ void main(List<String> args) {
   final src = File(yamlPath).readAsStringSync();
   final chains = parseChainsYaml(src);
   validate(chains);
-  final code = render(chains);
+  final code = dartFormat(render(chains));
 
   final outFile = File(outPath);
   if (!check) {
@@ -46,6 +52,26 @@ void main(List<String> args) {
   stderr.writeln('Run: dart run tool/gen_chains.dart');
   _printDiffSummary(existing, code);
   exit(1);
+}
+
+/// Runs [source] through `dart format` and returns the result.
+///
+/// Fails loudly rather than returning the unformatted source: emitting
+/// something the repo's format gate rejects only moves the failure to CI.
+String dartFormat(String source) {
+  final dir = Directory.systemTemp.createTempSync('gen_chains');
+  try {
+    final tmp = File('${dir.path}/chain_registry.g.dart')
+      ..writeAsStringSync(source);
+    final r = Process.runSync('dart', ['format', '--summary=none', tmp.path]);
+    if (r.exitCode != 0) {
+      stderr.writeln('dart format failed (exit ${r.exitCode}): ${r.stderr}');
+      exit(1);
+    }
+    return tmp.readAsStringSync();
+  } finally {
+    dir.deleteSync(recursive: true);
+  }
 }
 
 // ── Minimal YAML subset parser ────────────────────────────────────────

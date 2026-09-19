@@ -3,36 +3,62 @@ import 'package:flutter/material.dart';
 class AppTheme {
   // Obsidian Reserve Luxury Swiss Watch & Monaco — Ultra Rare Edition
   // Golden champagne dial, brushed platinum case, Midnight Blue accents
-  static const Color primaryColor = Color(0xFFC5A059); // Champagne gold (Swiss watch dial)
-  static const Color secondaryColor = Color(0xFF1A1814); // Midnight blue-black (depth)
-  static const Color accentColor = Color(0xFF3D5A80); // Midnight Blue (Monaco sea / yacht canvas)
-  static const Color backgroundColor = Color(0xFF0D0B08); // Obsidian black (premium watch case back)
-  static const Color surfaceColor = Color(0xFF181512); // Warm obsidian (inside the case)
-  static const Color cardColor = Color(0xFF25221A); // Brushed platinum dark (card face)
+  static const Color primaryColor = Color(
+    0xFFC5A059,
+  ); // Champagne gold (Swiss watch dial)
+  static const Color secondaryColor = Color(
+    0xFF1A1814,
+  ); // Midnight blue-black (depth)
+  static const Color accentColor = Color(
+    0xFF3D5A80,
+  ); // Midnight Blue (Monaco sea / yacht canvas)
+  static const Color backgroundColor = Color(
+    0xFF0D0B08,
+  ); // Obsidian black (premium watch case back)
+  static const Color surfaceColor = Color(
+    0xFF181512,
+  ); // Warm obsidian (inside the case)
+  static const Color cardColor = Color(
+    0xFF25221A,
+  ); // Brushed platinum dark (card face)
 
   // Champagne gold scale — fire gold IS champagne, not peachy orange (per design-tokens.json)
   static const Color primaryLight = Color(0xFFD4B896); // Light champagne
   static const Color primaryDark = Color(0xFF6B5637); // Deep gold
-  static const Color primaryAccent = Color(0xFFD4B896); // Light champagne accent
+  static const Color primaryAccent = Color(
+    0xFFD4B896,
+  ); // Light champagne accent
   static const Color primaryVariant = Color(0xFF8C734B); // Muted gold
 
   // Muted semantic — sage/burgundy/slate, no neon (house palette)
   static const Color successColor = Color(0xFF7A9B7E); // Sage — muted success
-  static const Color warningColor = Color(0xFFC5A059); // Champagne — warning is gold
+  static const Color warningColor = Color(
+    0xFFC5A059,
+  ); // Champagne — warning is gold
   static const Color errorColor = Color(0xFF7A1C1C); // Burgundy — muted error
   static const Color infoColor = Color(0xFF5A7A9C); // Slate blue — muted info
 
   // Asset colors — denomination marks only, never direction/buttons/progress
-  static const Color xfgEmber = Color(0xFFE8622C); // Ember Fire — XFG figures/marks
-  static const Color xfgEmberDeep = Color(0xFF8C3B14); // Deep Ember — XFG secondary
+  static const Color xfgEmber = Color(
+    0xFFE8622C,
+  ); // Ember Fire — XFG figures/marks
+  static const Color xfgEmberDeep = Color(
+    0xFF8C3B14,
+  ); // Deep Ember — XFG secondary
   static const Color xfgCoal = Color(0xFF000000); // Coal Black — XFG mark fills
-  static const Color heatFlame = Color(0xFFEAF6F9); // White Flame — HEAT figures/marks
-  static const Color heatAqua = Color(0xFF9FD4DE); // Glacial Aqua — HEAT secondary
+  static const Color heatFlame = Color(
+    0xFFEAF6F9,
+  ); // White Flame — HEAT figures/marks
+  static const Color heatAqua = Color(
+    0xFF9FD4DE,
+  ); // Glacial Aqua — HEAT secondary
 
   // Enhanced surface variations — warm obsidian family
   static const Color surfaceLight = Color(0xFF1E1B14); // Lighter warm obsidian
   static const Color surfaceDark = Color(0xFF12100C); // Darker warm obsidian
-  static const Color cardLight = Color(0xFF2A2418); // Lighter card — brushed platinum
+  static const Color cardLight = Color(
+    0xFF2A2418,
+  ); // Lighter card — brushed platinum
   static const Color cardDark = Color(0xFF1A1712); // Darker card
 
   // Text colors — parchment on obsidian (cream, not cold white)
@@ -102,9 +128,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: cardColor,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         shadowColor: Colors.black26,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -116,10 +140,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -130,20 +151,14 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: accentColor,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -192,28 +207,58 @@ class AppTheme {
       ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(
-            color: textPrimary, fontSize: 59, fontWeight: FontWeight.w600),
+          color: textPrimary,
+          fontSize: 59,
+          fontWeight: FontWeight.w600,
+        ),
         displayMedium: TextStyle(
-            color: textPrimary, fontSize: 47, fontWeight: FontWeight.w600),
+          color: textPrimary,
+          fontSize: 47,
+          fontWeight: FontWeight.w600,
+        ),
         displaySmall: TextStyle(
-            color: textPrimary, fontSize: 38, fontWeight: FontWeight.w600),
+          color: textPrimary,
+          fontSize: 38,
+          fontWeight: FontWeight.w600,
+        ),
         headlineLarge: TextStyle(
-            color: textPrimary, fontSize: 34, fontWeight: FontWeight.w600),
+          color: textPrimary,
+          fontSize: 34,
+          fontWeight: FontWeight.w600,
+        ),
         headlineMedium: TextStyle(
-            color: textPrimary, fontSize: 30, fontWeight: FontWeight.w500),
+          color: textPrimary,
+          fontSize: 30,
+          fontWeight: FontWeight.w500,
+        ),
         headlineSmall: TextStyle(
-            color: textPrimary, fontSize: 26, fontWeight: FontWeight.w500),
+          color: textPrimary,
+          fontSize: 26,
+          fontWeight: FontWeight.w500,
+        ),
         titleLarge: TextStyle(
-            color: textPrimary, fontSize: 24, fontWeight: FontWeight.w500),
+          color: textPrimary,
+          fontSize: 24,
+          fontWeight: FontWeight.w500,
+        ),
         titleMedium: TextStyle(
-            color: textPrimary, fontSize: 18, fontWeight: FontWeight.w500),
+          color: textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w500,
+        ),
         titleSmall: TextStyle(
-            color: textPrimary, fontSize: 16, fontWeight: FontWeight.w500),
+          color: textPrimary,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
         bodyLarge: TextStyle(color: textPrimary, fontSize: 18),
         bodyMedium: TextStyle(color: textPrimary, fontSize: 16),
         bodySmall: TextStyle(color: textSecondary, fontSize: 14),
         labelLarge: TextStyle(
-            color: textPrimary, fontSize: 16, fontWeight: FontWeight.w500),
+          color: textPrimary,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
         labelMedium: TextStyle(color: textSecondary, fontSize: 14),
         labelSmall: TextStyle(color: textMuted, fontSize: 13),
       ),
@@ -276,9 +321,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         shadowColor: Colors.black12,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -299,38 +342,25 @@ class AppTheme {
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      primaryDark,
-      primaryColor,
-      primaryLight,
-    ],
+    colors: [primaryDark, primaryColor, primaryLight],
   );
 
   static final LinearGradient subtleGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [
-      primaryColor.withOpacity(0.1),
-      primaryLight.withOpacity(0.05),
-    ],
+    colors: [primaryColor.withOpacity(0.1), primaryLight.withOpacity(0.05)],
   );
 
   static const LinearGradient buttonGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      primaryLight,
-      primaryColor,
-    ],
+    colors: [primaryLight, primaryColor],
   );
 
   static const LinearGradient accentGradient = LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [
-      primaryAccent,
-      primaryLight,
-    ],
+    colors: [primaryAccent, primaryLight],
   );
 
   static const LinearGradient backgroundGradient = LinearGradient(
@@ -345,25 +375,25 @@ class AppTheme {
   // Text styles with enhanced colors.
   // Numeric styles pin [numberFontFamily] (Noto Sans) for consistent figures.
   static TextStyle get balanceTextStyle => TextStyle(
-        fontSize: 34,
-        fontWeight: FontWeight.w600,
-        color: textPrimary,
-        fontFamily: numberFontFamily,
-      );
+    fontSize: 34,
+    fontWeight: FontWeight.w600,
+    color: textPrimary,
+    fontFamily: numberFontFamily,
+  );
 
   static TextStyle get currencyTextStyle => TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w500,
-        color: accentColor,
-        fontFamily: numberFontFamily,
-      );
+    fontSize: 18,
+    fontWeight: FontWeight.w500,
+    color: accentColor,
+    fontFamily: numberFontFamily,
+  );
 
   static TextStyle get transactionAmountStyle => TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        color: primaryColor,
-        fontFamily: numberFontFamily,
-      );
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    color: primaryColor,
+    fontFamily: numberFontFamily,
+  );
 
   static const TextStyle primaryButtonTextStyle = TextStyle(
     fontSize: 18,
@@ -373,11 +403,7 @@ class AppTheme {
 
   // Box shadows with reddish-orange tint
   static const List<BoxShadow> cardShadow = [
-    BoxShadow(
-      color: Colors.black12,
-      blurRadius: 8,
-      offset: Offset(0, 2),
-    ),
+    BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2)),
   ];
 
   static final List<BoxShadow> primaryShadow = [
@@ -390,11 +416,7 @@ class AppTheme {
   ];
 
   static const List<BoxShadow> subtleShadow = [
-    BoxShadow(
-      color: Colors.black26,
-      blurRadius: 6,
-      offset: Offset(0, 2),
-    ),
+    BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
   ];
 
   // Color utility methods

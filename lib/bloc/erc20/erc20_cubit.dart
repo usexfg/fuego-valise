@@ -49,15 +49,14 @@ class Erc20State extends Equatable {
     Map<String, List<Erc20Balance>>? byChain,
     Map<String, BigInt>? allowances,
     Erc20Token? selectedToken,
-  }) =>
-      Erc20State(
-        isLoading: isLoading ?? this.isLoading,
-        error: clearError ? null : (error ?? this.error),
-        address: address ?? this.address,
-        byChain: byChain ?? this.byChain,
-        allowances: allowances ?? this.allowances,
-        selectedToken: selectedToken ?? this.selectedToken,
-      );
+  }) => Erc20State(
+    isLoading: isLoading ?? this.isLoading,
+    error: clearError ? null : (error ?? this.error),
+    address: address ?? this.address,
+    byChain: byChain ?? this.byChain,
+    allowances: allowances ?? this.allowances,
+    selectedToken: selectedToken ?? this.selectedToken,
+  );
 
   List<Erc20Balance> balancesFor(String chainKey) =>
       byChain[chainKey.toLowerCase()] ?? const [];
@@ -65,7 +64,14 @@ class Erc20State extends Equatable {
   bool get hasAddress => address != null && address!.isNotEmpty;
 
   @override
-  List<Object?> get props => [isLoading, error, address, byChain, allowances, selectedToken];
+  List<Object?> get props => [
+    isLoading,
+    error,
+    address,
+    byChain,
+    allowances,
+    selectedToken,
+  ];
 }
 
 class Erc20Cubit extends Cubit<Erc20State> {
@@ -75,9 +81,9 @@ class Erc20Cubit extends Cubit<Erc20State> {
   bool _ownsErc20 = false;
 
   Erc20Cubit({Erc20Service? erc20, Web3MultiChainService? web3})
-      : _erc20 = erc20 ?? Erc20Service(),
-        _web3 = web3,
-        super(const Erc20State()) {
+    : _erc20 = erc20 ?? Erc20Service(),
+      _web3 = web3,
+      super(const Erc20State()) {
     if (erc20 == null) _ownsErc20 = true;
   }
 
@@ -118,21 +124,47 @@ class Erc20Cubit extends Cubit<Erc20State> {
             );
             int dec = token.decimals;
             try {
-              dec = await _erc20.decimals(chainKey: token.chainKey, tokenAddress: token.address);
+              dec = await _erc20.decimals(
+                chainKey: token.chainKey,
+                tokenAddress: token.address,
+              );
             } catch (_) {}
-            final display = dec == 0 ? raw.toDouble() : raw.toDouble() / BigInt.from(10).pow(dec).toDouble();
-            balances.add(Erc20Balance(token: token, raw: raw, decimals: dec, display: display));
+            final display = dec == 0
+                ? raw.toDouble()
+                : raw.toDouble() / BigInt.from(10).pow(dec).toDouble();
+            balances.add(
+              Erc20Balance(
+                token: token,
+                raw: raw,
+                decimals: dec,
+                display: display,
+              ),
+            );
           } catch (e) {
             // Keep token slot even on RPC failure so UI shows error per token not blank list
-            debugPrint('Erc20Cubit ${token.chainKey}:${token.symbol} balance failed: $e');
-            balances.add(Erc20Balance(token: token, raw: BigInt.zero, decimals: token.decimals, display: 0));
+            debugPrint(
+              'Erc20Cubit ${token.chainKey}:${token.symbol} balance failed: $e',
+            );
+            balances.add(
+              Erc20Balance(
+                token: token,
+                raw: BigInt.zero,
+                decimals: token.decimals,
+                display: 0,
+              ),
+            );
           }
         }
         next[chain.key] = balances;
       }
       emit(state.copyWith(isLoading: false, byChain: next));
     } catch (e) {
-      emit(state.copyWith(isLoading: false, error: 'Failed to load token balances: $e'));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Failed to load token balances: $e',
+        ),
+      );
     }
   }
 
@@ -146,19 +178,32 @@ class Erc20Cubit extends Cubit<Erc20State> {
     try {
       final List<Erc20Balance> balances = [];
       for (final token in tokens) {
-        final raw = await _erc20.balanceOf(chainKey: k, tokenAddress: token.address, holderAddress: addr);
+        final raw = await _erc20.balanceOf(
+          chainKey: k,
+          tokenAddress: token.address,
+          holderAddress: addr,
+        );
         int dec = token.decimals;
         try {
           dec = await _erc20.decimals(chainKey: k, tokenAddress: token.address);
         } catch (_) {}
-        final display = dec == 0 ? raw.toDouble() : raw.toDouble() / BigInt.from(10).pow(dec).toDouble();
-        balances.add(Erc20Balance(token: token, raw: raw, decimals: dec, display: display));
+        final display = dec == 0
+            ? raw.toDouble()
+            : raw.toDouble() / BigInt.from(10).pow(dec).toDouble();
+        balances.add(
+          Erc20Balance(token: token, raw: raw, decimals: dec, display: display),
+        );
       }
       final next = Map<String, List<Erc20Balance>>.from(state.byChain);
       next[k] = balances;
       emit(state.copyWith(isLoading: false, byChain: next));
     } catch (e) {
-      emit(state.copyWith(isLoading: false, error: 'Failed to load $chainKey balances: $e'));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Failed to load $chainKey balances: $e',
+        ),
+      );
     }
   }
 
@@ -169,8 +214,15 @@ class Erc20Cubit extends Cubit<Erc20State> {
     required String spender,
   }) async {
     try {
-      final v = await _erc20.allowance(chainKey: chainKey, tokenAddress: tokenAddress, owner: owner, spender: spender);
-      final key = '${chainKey.toLowerCase()}:${tokenAddress.toLowerCase()}:$spender'.toLowerCase();
+      final v = await _erc20.allowance(
+        chainKey: chainKey,
+        tokenAddress: tokenAddress,
+        owner: owner,
+        spender: spender,
+      );
+      final key =
+          '${chainKey.toLowerCase()}:${tokenAddress.toLowerCase()}:$spender'
+              .toLowerCase();
       final next = Map<String, BigInt>.from(state.allowances);
       next[key] = v;
       emit(state.copyWith(allowances: next));
@@ -188,15 +240,30 @@ class Erc20Cubit extends Cubit<Erc20State> {
     required String amountDisplay,
   }) async {
     final owner = state.address;
-    if (owner == null || owner.isEmpty) throw StateError('No holder address set');
+    if (owner == null || owner.isEmpty)
+      throw StateError('No holder address set');
     int dec = token.decimals;
     try {
-      dec = await _erc20.decimals(chainKey: token.chainKey, tokenAddress: token.address);
+      dec = await _erc20.decimals(
+        chainKey: token.chainKey,
+        tokenAddress: token.address,
+      );
     } catch (_) {}
     final needed = Erc20Amount.toBaseUnits(amountDisplay, dec);
-    final current = await checkAllowance(tokenAddress: token.address, chainKey: token.chainKey, owner: owner, spender: spender);
+    final current = await checkAllowance(
+      tokenAddress: token.address,
+      chainKey: token.chainKey,
+      owner: owner,
+      spender: spender,
+    );
     if (current >= needed) return 'already-approved';
-    return _erc20.approve(chainKey: token.chainKey, privateKey: privateKey, tokenAddress: token.address, spender: spender, amountBaseUnits: needed);
+    return _erc20.approve(
+      chainKey: token.chainKey,
+      privateKey: privateKey,
+      tokenAddress: token.address,
+      spender: spender,
+      amountBaseUnits: needed,
+    );
   }
 
   Future<String> transfer({
@@ -207,7 +274,12 @@ class Erc20Cubit extends Cubit<Erc20State> {
   }) async {
     emit(state.copyWith(isLoading: true, clearError: true));
     try {
-      final tx = await _erc20.transferToken(token: token, privateKey: privateKey, toAddress: toAddress, amountDisplay: amountDisplay);
+      final tx = await _erc20.transferToken(
+        token: token,
+        privateKey: privateKey,
+        toAddress: toAddress,
+        amountDisplay: amountDisplay,
+      );
       await refreshChain(token.chainKey);
       emit(state.copyWith(isLoading: false));
       return tx;
@@ -220,7 +292,9 @@ class Erc20Cubit extends Cubit<Erc20State> {
   // Derive EVM address from private key via web3dart for convenience.
   String addressFromPrivateKey(String privateKey) {
     try {
-      final clean = privateKey.startsWith('0x') ? privateKey.substring(2) : privateKey;
+      final clean = privateKey.startsWith('0x')
+          ? privateKey.substring(2)
+          : privateKey;
       final creds = EthPrivateKey.fromHex(clean);
       // EthPrivateKey exposes address lazily; extract via credentials.address
       return creds.address.hexEip55;

@@ -1,7 +1,4 @@
-enum NetworkType {
-  mainnet,
-  testnet,
-}
+enum NetworkType { mainnet, testnet }
 
 class NetworkConfig {
   final NetworkType type;

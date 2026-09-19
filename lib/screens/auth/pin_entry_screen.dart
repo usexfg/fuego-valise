@@ -8,7 +8,6 @@ import '../../utils/theme.dart';
 import '../../widgets/pin_input_widget.dart';
 import '../main/main_screen.dart';
 
-
 class PinEntryScreen extends StatefulWidget {
   const PinEntryScreen({super.key});
 
@@ -21,7 +20,7 @@ class _PinEntryScreenState extends State<PinEntryScreen>
   final SecurityService _securityService = SecurityService();
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
-  
+
   bool _isLoading = false;
   String? _errorMessage;
   bool _canUseBiometric = false;
@@ -42,13 +41,9 @@ class _PinEntryScreenState extends State<PinEntryScreen>
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeInOut,
-    ));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+    );
 
     _fadeController.forward();
   }
@@ -56,7 +51,7 @@ class _PinEntryScreenState extends State<PinEntryScreen>
   Future<void> _checkBiometricCapability() async {
     final available = await _securityService.isBiometricAvailable();
     final enabled = await _securityService.isBiometricEnabled();
-    
+
     setState(() {
       _canUseBiometric = available && enabled;
     });
@@ -83,7 +78,10 @@ class _PinEntryScreenState extends State<PinEntryScreen>
         }
         return;
       }
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -141,7 +139,10 @@ class _PinEntryScreenState extends State<PinEntryScreen>
 
   Future<void> _unlockWallet(String pin) async {
     try {
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
       final success = await walletProvider.unlockWallet(pin);
 
       if (success && mounted) {
@@ -206,44 +207,44 @@ class _PinEntryScreenState extends State<PinEntryScreen>
           ),
           content: SingleChildScrollView(
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'If you\'ve forgotten your PIN, you\'ll need to reset your wallet using your backup phrase.',
-                style: TextStyle(color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.warningColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppTheme.warningColor.withOpacity(0.3),
-                  ),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'If you\'ve forgotten your PIN, you\'ll need to reset your wallet using your backup phrase.',
+                  style: TextStyle(color: AppTheme.textSecondary),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.warning,
-                      color: AppTheme.warningColor,
-                      size: 20,
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warningColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.warningColor.withOpacity(0.3),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'This will remove the current wallet from this device.',
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning,
+                        color: AppTheme.warningColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This will remove the current wallet from this device.',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
             ),
           ),
           actions: [
@@ -273,7 +274,7 @@ class _PinEntryScreenState extends State<PinEntryScreen>
   Future<void> _resetWallet() async {
     try {
       await _securityService.clearWalletData();
-      
+
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const MainScreen()),
@@ -295,9 +296,7 @@ class _PinEntryScreenState extends State<PinEntryScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
+        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
@@ -365,9 +364,7 @@ class _PinEntryScreenState extends State<PinEntryScreen>
                             SizedBox(height: 16),
                             Text(
                               'Unlocking wallet...',
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                              ),
+                              style: TextStyle(color: AppTheme.textSecondary),
                             ),
                           ],
                         )
@@ -380,7 +377,7 @@ class _PinEntryScreenState extends State<PinEntryScreen>
                           canUseBiometric: _canUseBiometric,
                           onBiometric: _authenticateWithBiometric,
                         ),
-                        
+
                         // Failed attempts counter
                         if (_failedAttempts > 0) ...[
                           const SizedBox(height: 16),
@@ -407,17 +404,14 @@ class _PinEntryScreenState extends State<PinEntryScreen>
                     ],
                   ),
                 ),
-                
+
                 // Footer
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     'Your wallet is encrypted and stored securely on this device',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textMuted,
-                    ),
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                 ),
               ],

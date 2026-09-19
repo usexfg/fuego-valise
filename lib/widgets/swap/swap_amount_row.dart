@@ -198,11 +198,7 @@ class SwapAmountRow extends StatelessWidget {
             padding: EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 12,
-                  color: AppTheme.textMuted,
-                ),
+                Icon(Icons.info_outline, size: 12, color: AppTheme.textMuted),
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -214,11 +210,7 @@ class SwapAmountRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                Icon(
-                  Icons.open_in_new,
-                  size: 10,
-                  color: AppTheme.textMuted,
-                ),
+                Icon(Icons.open_in_new, size: 10, color: AppTheme.textMuted),
               ],
             ),
           ),
@@ -226,11 +218,7 @@ class SwapAmountRow extends StatelessWidget {
         const SizedBox(height: 4),
         const Row(
           children: [
-            Icon(
-              Icons.landscape_outlined,
-              size: 12,
-              color: AppTheme.textMuted,
-            ),
+            Icon(Icons.landscape_outlined, size: 12, color: AppTheme.textMuted),
             SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -256,10 +244,7 @@ Widget _feeSplitRow(String pct, String label, Color color) {
       Container(
         width: 10,
         height: 10,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 8),
       Text(

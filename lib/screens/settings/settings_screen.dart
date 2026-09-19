@@ -143,9 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Font will update on next app launch'),
-        ),
+        const SnackBar(content: Text('Font will update on next app launch')),
       );
     }
   }
@@ -184,8 +182,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         option.label,
                         style: TextStyle(
                           color: AppTheme.textPrimary,
-                          fontFamily:
-                              option.family.isEmpty ? null : option.family,
+                          fontFamily: option.family.isEmpty
+                              ? null
+                              : option.family,
                           fontSize: option.family.isEmpty ? null : 18,
                         ),
                       ),
@@ -230,30 +229,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 for (final option in fontOptions)
                   RadioListTile<String>(
-                  value: option.family,
-                  groupValue: _fontFamily,
-                  onChanged: (value) {
-                    if (value != null) {
-                      _setFontFamily(value);
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  title: Text(
-                    option.label,
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    value: option.family,
+                    groupValue: _fontFamily,
+                    onChanged: (value) {
+                      if (value != null) {
+                        _setFontFamily(value);
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    title: Text(
+                      option.label,
+                      style: const TextStyle(color: AppTheme.textPrimary),
+                    ),
+                    subtitle: option.note != null
+                        ? Text(
+                            option.note!,
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 13,
+                            ),
+                          )
+                        : null,
+                    activeColor: AppTheme.primaryColor,
                   ),
-                  subtitle: option.note != null
-                      ? Text(
-                          option.note!,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 13,
-                          ),
-                        )
-                      : null,
-                  activeColor: AppTheme.primaryColor,
-                ),
-            ],
+              ],
             ),
           ),
           actions: [
@@ -326,12 +325,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Confirm new PIN',
                         border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-            ),
-          ),
-          actions: [
+              actions: [
                 TextButton(
                   onPressed: isLoading
                       ? null
@@ -351,8 +350,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           final newPin = newPinController.text.trim();
                           final confirmPin = confirmPinController.text.trim();
 
-                          if (hasPin &&
-                              (oldPin.isEmpty || oldPin.length < 4)) {
+                          if (hasPin && (oldPin.isEmpty || oldPin.length < 4)) {
                             setDialogState(() {
                               oldPinError = 'PIN must be at least 4 digits';
                             });
@@ -374,8 +372,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           setDialogState(() => isLoading = true);
 
                           if (hasPin) {
-                            final verified =
-                                await _securityService.verifyPIN(oldPin);
+                            final verified = await _securityService.verifyPIN(
+                              oldPin,
+                            );
                             if (!verified) {
                               setDialogState(() {
                                 isLoading = false;
@@ -431,45 +430,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           content: SingleChildScrollView(
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'This will permanently remove your wallet from this device. Make sure you have your backup phrase saved!',
-                style: TextStyle(color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.errorColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppTheme.errorColor.withOpacity(0.3),
-                  ),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This will permanently remove your wallet from this device. Make sure you have your backup phrase saved!',
+                  style: TextStyle(color: AppTheme.textSecondary),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.warning,
-                      color: AppTheme.errorColor,
-                      size: 20,
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.errorColor.withOpacity(0.3),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'This action cannot be undone!',
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning,
+                        color: AppTheme.errorColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This action cannot be undone!',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
             ),
           ),
           actions: [
@@ -564,212 +563,220 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               content: SingleChildScrollView(
                 child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Local/Remote toggle
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => useLocal = true),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: useLocal
-                                    ? AppTheme.primaryColor
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.computer,
-                                    size: 16,
-                                    color: useLocal
-                                        ? Colors.white
-                                        : AppTheme.textMuted,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Local Node',
-                                    style: TextStyle(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Local/Remote toggle
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceColor.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => useLocal = true),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: useLocal
+                                      ? AppTheme.primaryColor
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.computer,
+                                      size: 16,
                                       color: useLocal
                                           ? Colors.white
                                           : AppTheme.textMuted,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Local Node',
+                                      style: TextStyle(
+                                        color: useLocal
+                                            ? Colors.white
+                                            : AppTheme.textMuted,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => useLocal = false),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: !useLocal
-                                    ? AppTheme.primaryColor
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.cloud,
-                                    size: 16,
-                                    color: !useLocal
-                                        ? Colors.white
-                                        : AppTheme.textMuted,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Remote Node',
-                                    style: TextStyle(
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() => useLocal = false),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: !useLocal
+                                      ? AppTheme.primaryColor
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.cloud,
+                                      size: 16,
                                       color: !useLocal
                                           ? Colors.white
                                           : AppTheme.textMuted,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Content based on selection
-                  if (useLocal) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.successColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppTheme.successColor.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                color: AppTheme.successColor,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Built-in Node',
-                                style: TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontWeight: FontWeight.w600,
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Remote Node',
+                                      style: TextStyle(
+                                        color: !useLocal
+                                            ? Colors.white
+                                            : AppTheme.textMuted,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Desktop default. Runs fuego_walletd with --local '
-                            '(embedded fuegod). Wallet RPC on 127.0.0.1:18189.',
-                            style: TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Requires bundled binaries. Syncs the chain on this machine.',
-                            style: TextStyle(
-                              color: AppTheme.textMuted,
-                              fontSize: 11,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ] else ...[
-                    const Text(
-                      'Connect to a remote Fuego node:',
-                      style: TextStyle(color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 12),
-                    ...FuegoRPCService.defaultRemoteNodes.map(
-                      (node) => RadioListTile<String>(
-                        title: Text(
-                          node,
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 13,
+                    const SizedBox(height: 16),
+
+                    // Content based on selection
+                    if (useLocal) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.successColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.successColor.withValues(alpha: 0.3),
                           ),
                         ),
-                        value: node,
-                        groupValue: selectedNode,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedNode = value!;
-                            customNodeController.clear();
-                          });
-                        },
-                        activeColor: AppTheme.primaryColor,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Or enter custom node:',
-                      style: TextStyle(color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: customNodeController,
-                      decoration: InputDecoration(
-                        hintText: 'node.example.com:18180',
-                        hintStyle: TextStyle(
-                          color: AppTheme.textSecondary.withValues(alpha: 0.5),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: AppTheme.successColor,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Built-in Node',
+                                  style: TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Desktop default. Runs fuego_walletd with --local '
+                              '(embedded fuegod). Wallet RPC on 127.0.0.1:18189.',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Requires bundled binaries. Syncs the chain on this machine.',
+                              style: TextStyle(
+                                color: AppTheme.textMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
+                      ),
+                    ] else ...[
+                      const Text(
+                        'Connect to a remote Fuego node:',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      ...FuegoRPCService.defaultRemoteNodes.map(
+                        (node) => RadioListTile<String>(
+                          title: Text(
+                            node,
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 13,
+                            ),
+                          ),
+                          value: node,
+                          groupValue: selectedNode,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedNode = value!;
+                              customNodeController.clear();
+                            });
+                          },
+                          activeColor: AppTheme.primaryColor,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Or enter custom node:',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: customNodeController,
+                        decoration: InputDecoration(
+                          hintText: 'node.example.com:18180',
+                          hintStyle: TextStyle(
                             color: AppTheme.textSecondary.withValues(
-                              alpha: 0.3,
+                              alpha: 0.5,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: AppTheme.textSecondary.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                          focusedBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: AppTheme.primaryColor,
                             ),
                           ),
                         ),
-                        focusedBorder: const OutlineInputBorder(
-                          borderSide: BorderSide(color: AppTheme.primaryColor),
-                        ),
+                        style: const TextStyle(color: AppTheme.textPrimary),
+                        onChanged: (value) {
+                          if (value.isNotEmpty) {
+                            setState(() {
+                              selectedNode = value;
+                            });
+                          }
+                        },
                       ),
-                      style: const TextStyle(color: AppTheme.textPrimary),
-                      onChanged: (value) {
-                        if (value.isNotEmpty) {
-                          setState(() {
-                            selectedNode = value;
-                          });
-                        }
-                      },
-                    ),
+                    ],
                   ],
-                ],
-              ),
+                ),
               ),
               actions: [
                 TextButton(
@@ -914,22 +921,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: const Text('Wallet Address'),
           content: SingleChildScrollView(
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.all(8),
-                child: _buildQrSafely(address, qrVersion),
-              ),
-              const SizedBox(height: 16),
-              SelectableText(
-                address,
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontFamily: 'IBMPlexMono',
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(8),
+                  child: _buildQrSafely(address, qrVersion),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                SelectableText(
+                  address,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontFamily: 'IBMPlexMono',
+                  ),
+                ),
+              ],
             ),
           ),
           actions: [
@@ -1058,7 +1065,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         mnemonic = bip39.entropyToMnemonic(seed);
       } else {
         final storedSeed = await _securityService.getWalletSeed(password);
-        if (storedSeed != null && SecurityService.validateMnemonic(storedSeed)) {
+        if (storedSeed != null &&
+            SecurityService.validateMnemonic(storedSeed)) {
           mnemonic = storedSeed;
         }
       }
@@ -1317,51 +1325,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           content: SingleChildScrollView(
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Version 1.0.0',
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Version 1.0.0',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Privacy Bank & Purchasing Power Chain',
-                style: TextStyle(
-                  color: AppTheme.primaryColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 8),
+                Text(
+                  'Privacy Bank & Purchasing Power Chain',
+                  style: TextStyle(
+                    color: AppTheme.primaryColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'A privacy-focused cryptocurrency wallet for Fuego (XFG)',
-                style: TextStyle(color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Features:',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 4),
+                Text(
+                  'A privacy-focused cryptocurrency wallet for Fuego (XFG)',
+                  style: TextStyle(color: AppTheme.textSecondary),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '• Private transactions with ring signatures\n'
-                '• ΗΞΔŦ flatcoin — mint or sell\n'
-                '• Certificates of Deposit earning yield\n'
-                '• Built-in unified daemon (fuegod + walletd + xfg-swapd)\n'
-                '• Cross-chain atomic swaps (12 chains)\n'
-                '• Built-in mining capabilities\n'
-                '• Advanced security features',
-                style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
-              ),
-            ],
+                const SizedBox(height: 16),
+                const Text(
+                  'Features:',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '• Private transactions with ring signatures\n'
+                  '• ΗΞΔŦ flatcoin — mint or sell\n'
+                  '• Certificates of Deposit earning yield\n'
+                  '• Built-in unified daemon (fuegod + walletd + xfg-swapd)\n'
+                  '• Cross-chain atomic swaps (12 chains)\n'
+                  '• Built-in mining capabilities\n'
+                  '• Advanced security features',
+                  style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+                ),
+              ],
             ),
           ),
           actions: [
@@ -1587,8 +1595,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSettingsTile(
                 icon: Icons.font_download,
                 title: 'App Font',
-                subtitle:
-                    fontOptions.firstWhere((f) => f.family == _fontFamily).label,
+                subtitle: fontOptions
+                    .firstWhere((f) => f.family == _fontFamily)
+                    .label,
                 onTap: _showFontPickerDialog,
                 trailing: const Icon(Icons.chevron_right),
               ),
@@ -1596,8 +1605,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.currency_exchange,
                 title: 'XFG Symbol',
                 subtitle: XfgTicker.options
-                    .firstWhere((o) => o.family == XfgTicker.font,
-                        orElse: () => XfgTicker.options.first)
+                    .firstWhere(
+                      (o) => o.family == XfgTicker.font,
+                      orElse: () => XfgTicker.options.first,
+                    )
                     .label,
                 onTap: _showTickerPickerDialog,
                 trailing: const Icon(Icons.chevron_right),

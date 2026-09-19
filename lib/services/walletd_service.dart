@@ -39,13 +39,20 @@ class WalletdService {
       // Start walletd
       if (kDebugMode) debugPrint('WalletdService: starting');
       _process = await Process.start(binary, [
-        '--daemon-address', daemonHost,
-        '--daemon-port', daemonPort.toString(),
-        '--container-file', _walletFile!,
-        '--container-password', containerPassword,
-        '--bind-port', rpcPort.toString(),
-        '--bind-address', '127.0.0.1',
-        '--log-level', '2',
+        '--daemon-address',
+        daemonHost,
+        '--daemon-port',
+        daemonPort.toString(),
+        '--container-file',
+        _walletFile!,
+        '--container-password',
+        containerPassword,
+        '--bind-port',
+        rpcPort.toString(),
+        '--bind-address',
+        '127.0.0.1',
+        '--log-level',
+        '2',
       ]);
 
       _walletdPid = _process!.pid;
@@ -125,7 +132,14 @@ class WalletdService {
     // In app bundle
     try {
       final appDir = Directory.current.path;
-      final resources = p.join(appDir, 'macos', 'Runner', 'Resources', 'bin', 'walletd');
+      final resources = p.join(
+        appDir,
+        'macos',
+        'Runner',
+        'Resources',
+        'bin',
+        'walletd',
+      );
       if (File(resources).existsSync()) return resources;
     } catch (_) {}
 
@@ -144,10 +158,14 @@ class WalletdService {
     if (kDebugMode) debugPrint('WalletdService: generating wallet container');
     final result = await Process.run(binary, [
       '--generate-container',
-      '--container-file', _walletFile!,
-      '--container-password', password,
-      '--daemon-address', '127.0.0.1',
-      '--daemon-port', '18180',
+      '--container-file',
+      _walletFile!,
+      '--container-password',
+      password,
+      '--daemon-address',
+      '127.0.0.1',
+      '--daemon-port',
+      '18180',
     ]);
 
     if (result.exitCode != 0) {

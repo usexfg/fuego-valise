@@ -16,7 +16,9 @@ import '../../utils/xfg_ticker.dart';
 
 // Shared prestige palette — Obsidian case + Champagne dial (Obsidian Reserve house)
 const Color _obsidian = Color(0xFF0D0B08);
-const Color _champagne = Color(0xFFC5A059); // Champagne gold — muted, not peachy
+const Color _champagne = Color(
+  0xFFC5A059,
+); // Champagne gold — muted, not peachy
 const Color _platinum = Color(0xFFF5F1E8); // Cream parchment
 const List<Color> _fireStops = [
   Color(0xFF8C734B), // Muted gold
@@ -24,8 +26,7 @@ const List<Color> _fireStops = [
   Color(0xFFD4B896), // Light champagne
   Color(0xFF8C734B),
 ];
-LinearGradient get _fireLine =>
-    const LinearGradient(colors: _fireStops);
+LinearGradient get _fireLine => const LinearGradient(colors: _fireStops);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,50 +47,50 @@ class _HomeScreenState extends State<HomeScreen> {
             onRefresh: () => context.read<WalletCubit>().refreshWallet(),
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-            children: [
-              const SizedBox(height: 8),
-              _balanceCard(state),
-              const SizedBox(height: 14),
-              if (state.address != null) _addressPlate(state),
-              if (state.address != null) const SizedBox(height: 14),
-              _complicationsRow(state),
-              _miningControls(state),
-              const SizedBox(height: 16),
-              const Text(
-                'Recent Transactions',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (state.transactions.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    'No transactions yet',
-                    style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
-                    textAlign: TextAlign.center,
+              children: [
+                const SizedBox(height: 8),
+                _balanceCard(state),
+                const SizedBox(height: 14),
+                if (state.address != null) _addressPlate(state),
+                if (state.address != null) const SizedBox(height: 14),
+                _complicationsRow(state),
+                _miningControls(state),
+                const SizedBox(height: 16),
+                const Text(
+                  'Recent Transactions',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
-                )
-              else
-                ...state.transactions.take(10).map((tx) => _txCard(tx)),
-              if (state.error != null)
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    state.error!,
-                    style: const TextStyle(
-                      color: AppTheme.errorColor,
-                      fontSize: 12,
+                ),
+                const SizedBox(height: 8),
+                if (state.transactions.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'No transactions yet',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else
+                  ...state.transactions.take(10).map((tx) => _txCard(tx)),
+                if (state.error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      state.error!,
+                      style: const TextStyle(
+                        color: AppTheme.errorColor,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
+        );
       },
     );
   }
@@ -119,7 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (h >= 1000) return '${(h / 1000).toStringAsFixed(1)}kH/s';
     return '${h}H/s';
   }
-
 
   Widget _complication(String value, String label) {
     return SizedBox(
@@ -232,7 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
 
   Widget _miningControls(WalletState state) {
     return BlocBuilder<MiningCubit, MiningState>(
@@ -515,12 +514,14 @@ class _GuillochePainter extends CustomPainter {
     final gold = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.7
-      ..shader = const LinearGradient(colors: [
-        Color(0xFF8C734B),
-        Color(0xFFC5A059),
-        Color(0xFFD4B896),
-        Color(0xFF8C734B),
-      ]).createShader(fireRect)
+      ..shader = const LinearGradient(
+        colors: [
+          Color(0xFF8C734B),
+          Color(0xFFC5A059),
+          Color(0xFFD4B896),
+          Color(0xFF8C734B),
+        ],
+      ).createShader(fireRect)
       ..color = const Color(0xFFC5A059).withOpacity(0.06);
 
     void rings(Offset center, int count, double step, Paint paint) {
@@ -531,12 +532,7 @@ class _GuillochePainter extends CustomPainter {
 
     rings(Offset(size.width * 0.88, -size.height * 0.30), 26, 15, white);
     rings(const Offset(-30, 0), 14, 17, white);
-    rings(
-      Offset(size.width * 0.88, -size.height * 0.30),
-      9,
-      42,
-      gold,
-    );
+    rings(Offset(size.width * 0.88, -size.height * 0.30), 9, 42, gold);
   }
 
   @override
@@ -671,11 +667,13 @@ class _BalanceCardState extends State<_BalanceCard> {
                             padding: const EdgeInsets.only(right: 8, bottom: 4),
                             child: Text(
                               XfgTicker.glyph,
-                              style: XfgTicker.glyphStyle(const TextStyle(
-                                color: _champagne,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w600,
-                              )),
+                              style: XfgTicker.glyphStyle(
+                                const TextStyle(
+                                  color: _champagne,
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
                         _ShimmerSweep(
@@ -708,9 +706,18 @@ class _BalanceCardState extends State<_BalanceCard> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  Container(height: 1, decoration: BoxDecoration(gradient: _fireLine.withOpacity(0.35))),
+                  Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: _fireLine.withOpacity(0.35),
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  _statementRow('AVAILABLE', _figure(state.unlockedBalanceXfg), isXfgAmount: true),
+                  _statementRow(
+                    'AVAILABLE',
+                    _figure(state.unlockedBalanceXfg),
+                    isXfgAmount: true,
+                  ),
                   if (state.totalHeatXfg > 0) ...[
                     const SizedBox(height: 8),
                     _statementRow(
@@ -720,9 +727,19 @@ class _BalanceCardState extends State<_BalanceCard> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Container(height: 1, decoration: BoxDecoration(gradient: _fireLine.withOpacity(0.35))),
+                  Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: _fireLine.withOpacity(0.35),
+                    ),
+                  ),
                   const SizedBox(height: 14),
-                  Container(height: 1, decoration: BoxDecoration(gradient: _fireLine.withOpacity(0.35))),
+                  Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: _fireLine.withOpacity(0.35),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -731,7 +748,8 @@ class _BalanceCardState extends State<_BalanceCard> {
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                                builder: (context) => const SendScreen()),
+                              builder: (context) => const SendScreen(),
+                            ),
                           );
                         },
                       ),
@@ -793,11 +811,13 @@ class _BalanceCardState extends State<_BalanceCard> {
             padding: const EdgeInsets.only(right: 4),
             child: Text(
               XfgTicker.glyph,
-              style: XfgTicker.glyphStyle(const TextStyle(
-                color: _champagne,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              )),
+              style: XfgTicker.glyphStyle(
+                const TextStyle(
+                  color: _champagne,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         _OdometerText(
@@ -814,7 +834,6 @@ class _BalanceCardState extends State<_BalanceCard> {
       ],
     );
   }
-
 }
 
 /// One-shot diagonal specular highlight across its child. Replays when the
@@ -945,7 +964,8 @@ class _OdometerTextState extends State<_OdometerText>
       });
       return;
     }
-    final rollable = !_display.contains('•') &&
+    final rollable =
+        !_display.contains('•') &&
         _display.length == to.length &&
         _layoutMatches(_display, to);
     setState(() {
@@ -985,12 +1005,14 @@ class _OdometerTextState extends State<_OdometerText>
         if (!_controller.isAnimating) {
           return Text(_display, style: widget.style);
         }
-        final t =
-            CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic)
-                .value;
+        final t = CurvedAnimation(
+          parent: _controller,
+          curve: Curves.easeOutCubic,
+        ).value;
         final rollable =
-            _from.isNotEmpty && _layoutMatches(_from, _target) &&
-                _from.length == _target.length;
+            _from.isNotEmpty &&
+            _layoutMatches(_from, _target) &&
+            _from.length == _target.length;
         if (!rollable) {
           return Transform.translate(
             offset: Offset(0, (1 - t) * 8),
@@ -1019,9 +1041,9 @@ class _OdometerTextState extends State<_OdometerText>
   }
 
   Widget _cell(Widget child, double lineHeight) => SizedBox(
-        height: lineHeight,
-        child: Center(child: child),
-      );
+    height: lineHeight,
+    child: Center(child: child),
+  );
 
   Widget _rollColumn(String from, String to, double t, double lineHeight) {
     final seq = _sequence(from, to);
@@ -1087,9 +1109,7 @@ class _CrownPusher extends StatelessWidget {
             height: 58,
             child: CustomPaint(
               painter: _KnurlPainter(accent: a),
-              child: Center(
-                child: Icon(icon, color: a, size: 20),
-              ),
+              child: Center(child: Icon(icon, color: a, size: 20)),
             ),
           ),
           const SizedBox(height: 6),
@@ -1129,9 +1149,9 @@ class _KnurlPainter extends CustomPainter {
 
     final fireRect = Rect.fromLTWH(0, 0, size.width, size.height);
     final tick = Paint()
-      ..shader = LinearGradient(colors: [
-        for (final c in _fireStops) c.withOpacity(0.55),
-      ]).createShader(fireRect)
+      ..shader = LinearGradient(
+        colors: [for (final c in _fireStops) c.withOpacity(0.55)],
+      ).createShader(fireRect)
       ..color = (accent ?? _champagne).withOpacity(0.45)
       ..strokeWidth = 1
       ..strokeCap = StrokeCap.round;

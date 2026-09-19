@@ -22,6 +22,7 @@ class HeatMetrics {
   final int heatOnDeposit;
   final int burnedXfg;
   final int totalBurnedXfg;
+
   /// Mint price numerator / denominator — ΗΞΔŦ per XFG.
   ///
   /// There is no redemption for ΗΞΔŦ: XFG is burned to mint it, and nothing
@@ -77,12 +78,16 @@ class HeatMetrics {
       heatOnDeposit: _u64(json['heat_on_deposit']),
       burnedXfg: _u64(json['burned_xfg']),
       totalBurnedXfg: _u64(json['total_burned_xfg']),
-      mintPriceNum: _u64(json['mint_price_num'] ?? json['redemption_price_num']),
-      mintPriceDenom:
-          _u64(json['mint_price_denom'] ?? json['redemption_price_denom']),
+      mintPriceNum: _u64(
+        json['mint_price_num'] ?? json['redemption_price_num'],
+      ),
+      mintPriceDenom: _u64(
+        json['mint_price_denom'] ?? json['redemption_price_denom'],
+      ),
       mintRateNum: _u64(json['mint_rate_num'] ?? json['redemption_rate_num']),
-      mintRateDenom:
-          _u64(json['mint_rate_denom'] ?? json['redemption_rate_denom']),
+      mintRateDenom: _u64(
+        json['mint_rate_denom'] ?? json['redemption_rate_denom'],
+      ),
       treasuryBalance: _u64(json['treasury_balance']),
       treasuryCounterXfg: _u64(json['treasury_counter_xfg']),
       swfBurnedXfgPendingHeat: _u64(json['swf_burned_xfg_pending_heat']),
@@ -192,10 +197,10 @@ class OrderBookLevel {
   double get totalHeat => price * amount;
 
   Map<String, dynamic> toJson() => {
-        'price': priceAtomic,
-        'amount': amountAtomic,
-        'orderCount': orderCount,
-      };
+    'price': priceAtomic,
+    'amount': amountAtomic,
+    'orderCount': orderCount,
+  };
 }
 
 /// Response to `/getorderbook`

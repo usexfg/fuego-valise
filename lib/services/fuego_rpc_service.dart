@@ -14,8 +14,7 @@ class FuegoRPCService {
   NetworkConfig _networkConfig;
 
   /// Mainnet seed list (derived from [NetworkConfig.mainnet.seedNodes]).
-  static List<String> get defaultRemoteNodes =>
-      NetworkConfig.mainnet.seedNodes;
+  static List<String> get defaultRemoteNodes => NetworkConfig.mainnet.seedNodes;
 
   FuegoRPCService({
     String host = 'localhost',
@@ -23,11 +22,13 @@ class FuegoRPCService {
     NetworkConfig? networkConfig,
   }) : _baseUrl = 'http://$host:${port ?? NetworkConfig.mainnet.walletRpcPort}',
        _networkConfig = networkConfig ?? NetworkConfig.mainnet,
-       _dio = Dio(BaseOptions(
-         connectTimeout: const Duration(seconds: 30),
-         receiveTimeout: const Duration(seconds: 30),
-         headers: {'Content-Type': 'application/json'},
-       ));
+       _dio = Dio(
+         BaseOptions(
+           connectTimeout: const Duration(seconds: 30),
+           receiveTimeout: const Duration(seconds: 30),
+           headers: {'Content-Type': 'application/json'},
+         ),
+       );
 
   /// Point wallet JSON-RPC at [host]:[port].
   ///
@@ -42,7 +43,8 @@ class FuegoRPCService {
     _networkConfig = config;
     final uri = Uri.parse(_baseUrl);
     // Keep the current host; only retarget port when it was a known network port.
-    final keepPort = uri.port == NetworkConfig.mainnet.walletRpcPort ||
+    final keepPort =
+        uri.port == NetworkConfig.mainnet.walletRpcPort ||
             uri.port == NetworkConfig.testnet.walletRpcPort ||
             uri.port == NetworkConfig.mainnet.daemonRpcPort ||
             uri.port == NetworkConfig.testnet.daemonRpcPort
@@ -94,7 +96,11 @@ class FuegoRPCService {
         localHeight = status['height'] as int? ?? 0;
       } catch (_) {}
 
-      final available = response['available_balance'] ?? response['availableBalance'] ?? response['balance'] ?? 0;
+      final available =
+          response['available_balance'] ??
+          response['availableBalance'] ??
+          response['balance'] ??
+          0;
       final locked = response['locked_amount'] ?? response['lockedAmount'] ?? 0;
 
       final effectiveLocal = localHeight > 0 ? localHeight : bchainHeight;
@@ -160,16 +166,17 @@ class FuegoRPCService {
       // sendTransaction → proxy remaps to walletd's "transfer"
       // Proxy also converts anonymity → mixin, adds unlock_time
       final response = await _makeRPCCall('sendTransaction', {
-        'destinations': [{
-          'amount': request.amount,
-          'address': request.address,
-        }],
+        'destinations': [
+          {'amount': request.amount, 'address': request.address},
+        ],
         'fee': request.fee,
         'anonymity': request.mixins,
         'paymentId': request.paymentId.isNotEmpty ? request.paymentId : null,
       });
 
-      return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
+      return response['tx_hash'] as String? ??
+          response['transactionHash'] as String? ??
+          '';
     } catch (e) {
       throw FuegoRPCException('Failed to send transaction: $e');
     }
@@ -177,8 +184,11 @@ class FuegoRPCService {
 
   Future<String> createIntegratedAddress(String paymentId) async {
     try {
-      if (paymentId.length != 64 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(paymentId)) {
-        throw FuegoRPCException('Invalid payment ID: must be 64 hex characters');
+      if (paymentId.length != 64 ||
+          !RegExp(r'^[0-9a-fA-F]+$').hasMatch(paymentId)) {
+        throw FuegoRPCException(
+          'Invalid payment ID: must be 64 hex characters',
+        );
       }
 
       final address = await getAddress();
@@ -195,8 +205,10 @@ class FuegoRPCService {
   }
 
   Future<String> generatePaymentId() async {
-    final bytes = List<int>.generate(32, (i) =>
-        DateTime.now().millisecondsSinceEpoch + i);
+    final bytes = List<int>.generate(
+      32,
+      (i) => DateTime.now().millisecondsSinceEpoch + i,
+    );
     return sha256.convert(bytes).toString().substring(0, 64);
   }
 
@@ -207,19 +219,17 @@ class FuegoRPCService {
         params['address'] = address;
       }
       final response = await _makeRPCCall('register_alias', params);
-      return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
+      return response['tx_hash'] as String? ??
+          response['transactionHash'] as String? ??
+          '';
     } catch (e) {
       throw FuegoRPCException('Failed to register alias: $e');
     }
   }
 
-
   // ── Mining (routed through proxy → fuegod) ──
 
-  Future<bool> startMining({
-    String? address,
-    int threads = 1,
-  }) async {
+  Future<bool> startMining({String? address, int threads = 1}) async {
     try {
       final minerAddress = address ?? await getAddress();
       await _makeRPCCall('start_mining', {
@@ -259,7 +269,9 @@ class FuegoRPCService {
   /// DEPRECATED — naming the HEAT side client-side is what consensus
   /// rejects. Use [mintHeat], which sends only the burn amount and lets
   /// walletd derive the HEAT side from the pool.
-  @Deprecated('Use mintHeat(xfgBurnedAtomic:) — see HeatMintEngine::validateMint')
+  @Deprecated(
+    'Use mintHeat(xfgBurnedAtomic:) — see HeatMintEngine::validateMint',
+  )
   Future<Map<String, dynamic>> heatMint({
     required int xfgBurned,
     required int heatMinted,
@@ -345,11 +357,15 @@ class FuegoRPCService {
     return response;
   }
 
-  Future<CdCreateResult> cdCreateLadder(List<Map<String, dynamic>> rungs) async {
+  Future<CdCreateResult> cdCreateLadder(
+    List<Map<String, dynamic>> rungs,
+  ) async {
     final response = await _makeRPCCall('cd::create_ladder', {'rungs': rungs});
     // Return first tx as representative; ladder creates multiple
     final hashes = response['tx_hashes'] as List<dynamic>?;
-    final tx = hashes != null && hashes.isNotEmpty ? hashes.first as String : '';
+    final tx = hashes != null && hashes.isNotEmpty
+        ? hashes.first as String
+        : '';
     return CdCreateResult.fromJson({
       'cd_id': tx,
       'tx_hash': tx,
@@ -393,23 +409,18 @@ class FuegoRPCService {
   }
 
   Future<CdBuyResult> cdBuy(String listingId) async {
-    final response = await _makeRPCCall('cd::buy', {
-      'listing_id': listingId,
-    });
+    final response = await _makeRPCCall('cd::buy', {'listing_id': listingId});
     return CdBuyResult.fromJson(response);
   }
 
   Future<void> cdCancelListing(String listingId) async {
-    await _makeRPCCall('cd::cancel_listing', {
-      'listing_id': listingId,
-    });
+    await _makeRPCCall('cd::cancel_listing', {'listing_id': listingId});
   }
 
   Future<CdApyResult> cdApy() async {
     final response = await _makeRPCCall('cd::apy', {});
     return CdApyResult.fromJson(response);
   }
-
 
   // ── Hearth — the XFG/ΗΞΔŦ pool and orderbook ────────────────────────
   //
@@ -428,20 +439,21 @@ class FuegoRPCService {
   // All amounts crossing this boundary are atomic units (HEAT and XFG both
   // use COIN = 10^7 — see fuego-suite CryptoNoteConfig.h).
 
-  Future<Map<String, dynamic>> heatMetrics() => _makeRPCCall('heat_metrics', {});
+  Future<Map<String, dynamic>> heatMetrics() =>
+      _makeRPCCall('heat_metrics', {});
 
-  Future<Map<String, dynamic>> hearthPool() => _makeRPCCall('amm_pool_info', {});
+  Future<Map<String, dynamic>> hearthPool() =>
+      _makeRPCCall('amm_pool_info', {});
 
   /// [inputAmountAtomic] is atomic units; [direction] is 0 = XFG→HEAT,
   /// 1 = HEAT→XFG, matching `COMMAND_RPC_AMM_QUOTE::request`.
   Future<Map<String, dynamic>> hearthQuote({
     required int inputAmountAtomic,
     required bool sellXfg,
-  }) =>
-      _makeRPCCall('amm_quote', {
-        'input_amount': inputAmountAtomic,
-        'direction': sellXfg ? 0 : 1,
-      });
+  }) => _makeRPCCall('amm_quote', {
+    'input_amount': inputAmountAtomic,
+    'direction': sellXfg ? 0 : 1,
+  });
 
   Future<Map<String, dynamic>> orderbookState({int pair = 0, int depth = 20}) =>
       _makeRPCCall('get_orderbook_state', {'pair': pair, 'depth': depth});
@@ -461,32 +473,29 @@ class FuegoRPCService {
     required bool sellXfg,
     required int inputAmountAtomic,
     required int minOutputAtomic,
-  }) =>
-      _makeRPCCall('swap', {
-        'direction': sellXfg ? 'xfg_to_heat' : 'heat_to_xfg',
-        'input_amount': inputAmountAtomic.toString(),
-        'min_output': minOutputAtomic.toString(),
-      });
+  }) => _makeRPCCall('swap', {
+    'direction': sellXfg ? 'xfg_to_heat' : 'heat_to_xfg',
+    'input_amount': inputAmountAtomic.toString(),
+    'min_output': minOutputAtomic.toString(),
+  });
 
   Future<Map<String, dynamic>> hearthAddLiquidity({
     required int xfgAmountAtomic,
     required int heatAmountAtomic,
-  }) =>
-      _makeRPCCall('add_liq', {
-        'xfg_amount': xfgAmountAtomic.toString(),
-        'heat_amount': heatAmountAtomic.toString(),
-      });
+  }) => _makeRPCCall('add_liq', {
+    'xfg_amount': xfgAmountAtomic.toString(),
+    'heat_amount': heatAmountAtomic.toString(),
+  });
 
   Future<Map<String, dynamic>> hearthRemoveLiquidity({
     required int shares,
     required int minXfgAtomic,
     required int minHeatAtomic,
-  }) =>
-      _makeRPCCall('remove_liq', {
-        'shares': shares.toString(),
-        'min_xfg': minXfgAtomic.toString(),
-        'min_heat': minHeatAtomic.toString(),
-      });
+  }) => _makeRPCCall('remove_liq', {
+    'shares': shares.toString(),
+    'min_xfg': minXfgAtomic.toString(),
+    'min_heat': minHeatAtomic.toString(),
+  });
 
   /// [amountAtomic] is atomic units. [priceDisplay] is a human HEAT-per-XFG
   /// decimal — walletd multiplies it by COIN itself, so pre-scaling it here
@@ -496,16 +505,14 @@ class FuegoRPCService {
     required int amountAtomic,
     required String priceDisplay,
     int ttlBlocks = 8640,
-  }) =>
-      _makeRPCCall('place_limit_order', {
-        'side': sellXfg ? 'sell' : 'buy',
-        'amount': amountAtomic.toString(),
-        'price': priceDisplay,
-        'ttlBlocks': ttlBlocks,
-      });
+  }) => _makeRPCCall('place_limit_order', {
+    'side': sellXfg ? 'sell' : 'buy',
+    'amount': amountAtomic.toString(),
+    'price': priceDisplay,
+    'ttlBlocks': ttlBlocks,
+  });
 
   // ── Private helpers ──
-
 
   Future<Map<String, dynamic>> _makeDaemonRPCCall(
     String method,

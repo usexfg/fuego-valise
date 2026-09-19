@@ -30,7 +30,10 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppTheme.cardColor,
-      title: const Text('Mint ΗΞΔŦ', style: TextStyle(color: AppTheme.textPrimary)),
+      title: const Text(
+        'Mint ΗΞΔŦ',
+        style: TextStyle(color: AppTheme.textPrimary),
+      ),
       content: _txHash != null ? _buildSuccess() : _buildForm(),
       actions: _txHash != null
           ? [
@@ -45,8 +48,13 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
             ]
           : [
               TextButton(
-                onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+                onPressed: _submitting
+                    ? null
+                    : () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
               ),
               ElevatedButton(
                 onPressed: _submitting ? null : _submit,
@@ -55,7 +63,11 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
                   foregroundColor: Colors.white,
                 ),
                 child: _submitting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Burn XFG → Mint ΗΞΔŦ'),
               ),
             ],
@@ -68,8 +80,10 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Burn XFG to mint ΗΞΔŦ at the live Hearth pool rate.',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+          Text(
+            'Burn XFG to mint ΗΞΔŦ at the live Hearth pool rate.',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _amountController,
@@ -80,7 +94,9 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
               hintText: '100.0',
               filled: true,
               fillColor: AppTheme.surfaceColor,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               suffixText: 'XFG',
             ),
             style: const TextStyle(color: AppTheme.textPrimary),
@@ -90,13 +106,20 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
           ),
           const SizedBox(height: 8),
           const Text(
-              'The daemon sizes the ΗΞΔŦ side from the pool when it builds the '
-              'transaction. This action cannot be undone.',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+            'The daemon sizes the ΗΞΔŦ side from the pool when it builds the '
+            'transaction. This action cannot be undone.',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 12)),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppTheme.errorColor,
+                  fontSize: 12,
+                ),
+              ),
             ),
         ],
       ),
@@ -109,18 +132,33 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
       children: [
         const Icon(Icons.check_circle, color: AppTheme.successColor, size: 48),
         const SizedBox(height: 12),
-        const Text('ΗΞΔŦ Minted!', style: TextStyle(
-            color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'ΗΞΔŦ Minted!',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 8),
         if (_heatReceived != null)
-          Text('$_heatReceived ΗΞΔŦ minted',
-              style: TextStyle(
-                  color: AppTheme.successColor,
-                  fontSize: 18,
-                  fontFamily: AppTheme.numberFontFamily)),
+          Text(
+            '$_heatReceived ΗΞΔŦ minted',
+            style: TextStyle(
+              color: AppTheme.successColor,
+              fontSize: 18,
+              fontFamily: AppTheme.numberFontFamily,
+            ),
+          ),
         const SizedBox(height: 4),
-        Text('TX: ${_txHash!.substring(0, _txHash!.length > 16 ? 16 : _txHash!.length)}...',
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 11, fontFamily: 'IBMPlexMono')),
+        Text(
+          'TX: ${_txHash!.substring(0, _txHash!.length > 16 ? 16 : _txHash!.length)}...',
+          style: const TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 11,
+            fontFamily: 'IBMPlexMono',
+          ),
+        ),
       ],
     );
   }
@@ -135,15 +173,16 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.cardColor,
-        title: const Text('Enter PIN to mint',
-            style: TextStyle(color: AppTheme.textPrimary)),
+        title: const Text(
+          'Enter PIN to mint',
+          style: TextStyle(color: AppTheme.textPrimary),
+        ),
         content: TextField(
           controller: controller,
           obscureText: true,
           keyboardType: TextInputType.number,
           maxLength: 12,
-          decoration:
-              const InputDecoration(labelText: 'PIN', counterText: ''),
+          decoration: const InputDecoration(labelText: 'PIN', counterText: ''),
           onSubmitted: (v) => Navigator.of(ctx).pop(v),
         ),
         actions: [
@@ -176,26 +215,32 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
     final pin = await _promptPin();
     if (pin == null || pin.isEmpty) return;
     if (!mounted) return;
-    setState(() { _submitting = true; _error = null; });
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
       // Only the burn amount is sent; walletd derives the ΗΞΔŦ side from the
       // pool, matching what consensus will accept.
-      final result = await context
-          .read<WalletCubit>()
-          .mintHeat(xfgDisplay: text, pin: pin);
+      final result = await context.read<WalletCubit>().mintHeat(
+        xfgDisplay: text,
+        pin: pin,
+      );
       if (!mounted) return;
       final minted = result['heat_minted'] ?? result['heatMinted'];
       setState(() {
-        _txHash = (result['transactionHash'] ??
-            result['txHash'] ??
-            result['tx_hash']) as String?;
-        _heatReceived =
-            minted is num ? atomicToDisplay(minted.toInt()) : null;
+        _txHash =
+            (result['transactionHash'] ?? result['txHash'] ?? result['tx_hash'])
+                as String?;
+        _heatReceived = minted is num ? atomicToDisplay(minted.toInt()) : null;
         _submitting = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() {
+        _submitting = false;
+        _error = e.toString();
+      });
     }
   }
 }

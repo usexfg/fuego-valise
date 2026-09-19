@@ -39,8 +39,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   @override
   void initState() {
     super.initState();
-    _hasExistingWallets =
-        context.read<FuegoVaultService>().wallets.isNotEmpty;
+    _hasExistingWallets = context.read<FuegoVaultService>().wallets.isNotEmpty;
     _determineMode();
   }
 
@@ -173,7 +172,10 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
     });
 
     try {
-      final walletProvider = Provider.of<WalletProvider>(context, listen: false);
+      final walletProvider = Provider.of<WalletProvider>(
+        context,
+        listen: false,
+      );
       final vault = context.read<FuegoVaultService>();
 
       // Generate the phrase up front so we can display it for backup.
@@ -253,9 +255,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           ),
           Expanded(
             child: !_modeReady
-                ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                 : PageView(
                     controller: _pageController,
                     physics: const NeverScrollableScrollPhysics(),
@@ -316,10 +316,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
                 : 'A brand-new wallet will be generated and saved on this '
                       'device.',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 15,
-              color: AppTheme.textSecondary,
-            ),
+            style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 24),
           Container(
@@ -328,9 +325,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.3),
-              ),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -388,86 +383,86 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   Widget _buildPasswordPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.key, size: 64, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          const Text(
-            'Wallet Password',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Choose a password for THIS wallet. It encrypts this wallet\'s '
-            'file only — other wallets keep their own passwords.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 32),
-          TextField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Wallet password',
-              errorText: _errorMessage,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _onPasswordContinue,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text(
-                'Continue',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(Icons.key, size: 64, color: AppTheme.primaryColor),
+            const SizedBox(height: 24),
+            const Text(
+              'Wallet Password',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.warningColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppTheme.warningColor.withOpacity(0.3),
+            const SizedBox(height: 8),
+            const Text(
+              'Choose a password for THIS wallet. It encrypts this wallet\'s '
+              'file only — other wallets keep their own passwords.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Wallet password',
+                errorText: _errorMessage,
+                border: const OutlineInputBorder(),
               ),
             ),
-            child: const Row(
-              children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: AppTheme.warningColor,
-                  size: 16,
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _onPasswordContinue,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
                 ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'This password cannot be recovered. If you forget it, '
-                    'only the seed phrase can restore the wallet.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.warningColor.withOpacity(0.3),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppTheme.warningColor,
+                    size: 16,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This password cannot be recovered. If you forget it, '
+                      'only the seed phrase can restore the wallet.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -475,67 +470,71 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   Widget _buildVerifyPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.lock_outline, size: 64, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          const Text(
-            'Confirm Your App PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Verify your app PIN to authorize adding a wallet',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 32),
-          TextField(
-            controller: _pinController,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 12,
-            decoration: InputDecoration(
-              labelText: 'App PIN',
-              counterText: '',
-              errorText: _errorMessage,
-              border: const OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _verifyPinAndCreate(),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _verifyPinAndCreate,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
+            const SizedBox(height: 24),
+            const Text(
+              'Confirm Your App PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
               ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text(
-                      'Create Wallet',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 8),
+            const Text(
+              'Verify your app PIN to authorize adding a wallet',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _pinController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 12,
+              decoration: InputDecoration(
+                labelText: 'App PIN',
+                counterText: '',
+                errorText: _errorMessage,
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _verifyPinAndCreate(),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _verifyPinAndCreate,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'Create Wallet',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -543,34 +542,38 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   Widget _buildSetupPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.lock_outline, size: 64, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          const Text(
-            'Create Your App PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'This PIN locks the app. It does NOT decrypt your wallets — '
-            'each wallet keeps its own password.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 48),
-          PinInputWidget(
-            onComplete: _onFirstPinComplete,
-            errorMessage: _errorMessage,
-          ),
-        ],
-      ),
+            const SizedBox(height: 24),
+            const Text(
+              'Create Your App PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This PIN locks the app. It does NOT decrypt your wallets — '
+              'each wallet keeps its own password.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 48),
+            PinInputWidget(
+              onComplete: _onFirstPinComplete,
+              errorMessage: _errorMessage,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -578,64 +581,64 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   Widget _buildConfirmPinPage() {
     return SingleChildScrollView(
       child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          const Icon(
-            Icons.verified_outlined,
-            size: 64,
-            color: AppTheme.primaryColor,
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Confirm Your App PIN',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textPrimary,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.verified_outlined,
+              size: 64,
+              color: AppTheme.primaryColor,
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Enter your PIN again to confirm',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 48),
-          PinInputWidget(
-            onComplete: _onConfirmPinComplete,
-            errorMessage: _errorMessage,
-          ),
-          const SizedBox(height: 24),
-          if (_isLoading) ...[
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
+            const SizedBox(height: 24),
+            const Text(
+              'Confirm Your App PIN',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Creating wallet...',
-              style: TextStyle(color: AppTheme.textSecondary),
+              'Enter your PIN again to confirm',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
             ),
-          ],
-          if (_errorMessage != null && !_isLoading) ...[
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _firstPin = '';
-                  _errorMessage = null;
-                  _isLoading = false;
-                });
-                _previousPage();
-              },
-              child: const Text('Change PIN'),
+            const SizedBox(height: 48),
+            PinInputWidget(
+              onComplete: _onConfirmPinComplete,
+              errorMessage: _errorMessage,
             ),
+            const SizedBox(height: 24),
+            if (_isLoading) ...[
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Creating wallet...',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ],
+            if (_errorMessage != null && !_isLoading) ...[
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _firstPin = '';
+                    _errorMessage = null;
+                    _isLoading = false;
+                  });
+                  _previousPage();
+                },
+                child: const Text('Change PIN'),
+              ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -646,7 +649,11 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
       child: Column(
         children: [
           const SizedBox(height: 16),
-          const Icon(Icons.check_circle, size: 64, color: AppTheme.successColor),
+          const Icon(
+            Icons.check_circle,
+            size: 64,
+            color: AppTheme.successColor,
+          ),
           const SizedBox(height: 24),
           const Text(
             'Wallet Created!',
