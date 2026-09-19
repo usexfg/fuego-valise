@@ -15,10 +15,17 @@ class HeatMetrics {
   final int heatOnDeposit;
   final int burnedXfg;
   final int totalBurnedXfg;
-  final int redemptionPriceNum;
-  final int redemptionPriceDenom;
-  final int redemptionRateNum;
-  final int redemptionRateDenom;
+  /// Mint price numerator / denominator — ΗΞΔŦ per XFG.
+  ///
+  /// There is no redemption for ΗΞΔŦ: XFG is burned to mint it, and nothing
+  /// converts it back. The daemon's JSON keys are still `redemption_price_*`
+  /// and `redemption_rate_*` (`COMMAND_RPC_GET_HEAT_METRICS`); the wallet
+  /// reads those and also accepts `mint_price_*` / `mint_rate_*` so a rename
+  /// on the daemon side needs no change here.
+  final int mintPriceNum;
+  final int mintPriceDenom;
+  final int mintRateNum;
+  final int mintRateDenom;
   final int treasuryBalance;
   final int treasuryCounterXfg;
   final int swfBurnedXfgPendingHeat;
@@ -38,10 +45,10 @@ class HeatMetrics {
     required this.heatOnDeposit,
     required this.burnedXfg,
     required this.totalBurnedXfg,
-    required this.redemptionPriceNum,
-    required this.redemptionPriceDenom,
-    required this.redemptionRateNum,
-    required this.redemptionRateDenom,
+    required this.mintPriceNum,
+    required this.mintPriceDenom,
+    required this.mintRateNum,
+    required this.mintRateDenom,
     required this.treasuryBalance,
     required this.treasuryCounterXfg,
     required this.swfBurnedXfgPendingHeat,
@@ -63,10 +70,12 @@ class HeatMetrics {
       heatOnDeposit: _u64(json['heat_on_deposit']),
       burnedXfg: _u64(json['burned_xfg']),
       totalBurnedXfg: _u64(json['total_burned_xfg']),
-      redemptionPriceNum: _u64(json['redemption_price_num']),
-      redemptionPriceDenom: _u64(json['redemption_price_denom']),
-      redemptionRateNum: _u64(json['redemption_rate_num']),
-      redemptionRateDenom: _u64(json['redemption_rate_denom']),
+      mintPriceNum: _u64(json['mint_price_num'] ?? json['redemption_price_num']),
+      mintPriceDenom:
+          _u64(json['mint_price_denom'] ?? json['redemption_price_denom']),
+      mintRateNum: _u64(json['mint_rate_num'] ?? json['redemption_rate_num']),
+      mintRateDenom:
+          _u64(json['mint_rate_denom'] ?? json['redemption_rate_denom']),
       treasuryBalance: _u64(json['treasury_balance']),
       treasuryCounterXfg: _u64(json['treasury_counter_xfg']),
       swfBurnedXfgPendingHeat: _u64(json['swf_burned_xfg_pending_heat']),
@@ -85,31 +94,33 @@ class HeatMetrics {
     );
   }
 
-  /// Redemption price as a human-readable double (num/denom).
-  double get redemptionPriceValue =>
-      redemptionPriceDenom != 0 ? redemptionPriceNum / redemptionPriceDenom : 0.0;
+  /// Mint price (ΗΞΔŦ per XFG) as a double, or null when unreported.
+  double? get mintPriceValue =>
+      mintPriceDenom != 0 ? mintPriceNum / mintPriceDenom : null;
 
-  /// Redemption price as a display string (num/denom).
-  String get redemptionPrice => redemptionPriceValue.toStringAsFixed(6);
+  /// Mint price as a display string, or '—'.
+  String get mintPrice => mintPriceValue?.toStringAsFixed(6) ?? '—';
 
-  /// Redemption rate as a human-readable double.
-  double get redemptionRate =>
-      redemptionRateDenom != 0 ? redemptionRateNum / redemptionRateDenom : 0.0;
+  /// Mint rate as a double, or null when unreported.
+  double? get mintRate =>
+      mintRateDenom != 0 ? mintRateNum / mintRateDenom : null;
 
-  /// Price per XFG in HEAT (num/denom).
-  /// When denom == 0, price is undefined.
-  String get formattedRedemptionPrice {
-    if (redemptionPriceDenom == 0) return '—';
-    return '${(redemptionPriceNum / redemptionPriceDenom).toStringAsFixed(6)} HEAT/XFG';
+  /// ΗΞΔŦ per XFG, or '—' when the daemon reports no price.
+  String get formattedMintPrice {
+    final v = mintPriceValue;
+    if (v == null) return '—';
+    return '${v.toStringAsFixed(6)} ΗΞΔŦ/XFG';
   }
 
   /// CD yield (APY) as a percent, or null.
   ///
   /// `on_get_heat_metrics` in fuego-suite assigns every response field except
-  /// `redemption_rate_num` / `redemption_rate_denom`, so a zero denominator
-  /// means "the daemon did not report a rate" — not "the rate is zero".
-  double? get currentApy =>
-      redemptionRateDenom > 0 ? redemptionRate * 100 : null;
+  /// the rate pair, so a zero denominator means "the daemon did not report a
+  /// rate" — not "the rate is zero".
+  double? get currentApy {
+    final r = mintRate;
+    return r == null ? null : r * 100;
+  }
 
   /// HEAT in circulation, display units.
   String get supply => atomicToDisplay(heatSupply);
@@ -129,36 +140,53 @@ class HeatMetrics {
   /// HEAT LP reserve, display units.
   String get poolHeat => atomicToDisplay(vaultHeatLpReserve);
 
-  /// De-facto mint target: the current redemption price.
-  String get piTarget => formattedRedemptionPrice;
+  /// De-facto mint target: the current mint price.
+  String get piTarget => formattedMintPrice;
 }
 
 /// Single level in the orderbook.
-/// C++: COMMAND_RPC_GET_ORDER_BOOK::response::OrderBookLevelJson
-/// (CoreRpcServerCommandsDefinitions.h:1047-1087)
-/// price/amount are uint64_t (JSON numbers, atomic units).
+///
+/// C++: `COMMAND_RPC_GET_ORDER_BOOK::response::OrderBookLevelJson`
+/// (`CoreRpcServerCommandsDefinitions.h:1061-1071`) — `price` and `amount` are
+/// `uint64_t`, both in atomic units. `price` carries the same scaling as
+/// `spot_price`: ΗΞΔŦ-per-XFG × COIN. Rendering either raw is off by 10^7.
 class OrderBookLevel {
-  final String price;
-  final String amount;
+  /// ΗΞΔŦ-per-XFG × COIN.
+  final int priceAtomic;
+
+  /// XFG, atomic units.
+  final int amountAtomic;
   final int orderCount;
 
   const OrderBookLevel({
-    required this.price,
-    required this.amount,
+    required this.priceAtomic,
+    required this.amountAtomic,
     required this.orderCount,
   });
 
   factory OrderBookLevel.fromJson(Map<String, dynamic> json) {
     return OrderBookLevel(
-      price: json['price']?.toString() ?? '0',
-      amount: json['amount']?.toString() ?? '0',
-      orderCount: json['orderCount'] as int? ?? 0,
+      priceAtomic: _u64(json['price']),
+      amountAtomic: _u64(json['amount']),
+      orderCount: _u64(json['orderCount']),
     );
   }
 
+  /// ΗΞΔŦ per XFG.
+  double get price => priceAtomic / atomicPerCoin;
+
+  /// XFG in display units.
+  double get amount => amountAtomic / atomicPerCoin;
+
+  String get priceDisplay => price.toStringAsFixed(7);
+  String get amountDisplay => atomicToDisplay(amountAtomic);
+
+  /// Level depth in ΗΞΔŦ — price × amount, both already descaled.
+  double get totalHeat => price * amount;
+
   Map<String, dynamic> toJson() => {
-        'price': price,
-        'amount': amount,
+        'price': priceAtomic,
+        'amount': amountAtomic,
         'orderCount': orderCount,
       };
 }
@@ -168,14 +196,16 @@ class OrderBookLevel {
 class OrderBookState {
   final List<OrderBookLevel> bids;
   final List<OrderBookLevel> asks;
-  final String spread;
+
+  /// Same scaling as a level price: ΗΞΔŦ-per-XFG × COIN.
+  final int spreadAtomic;
   final int height;
   final String status;
 
   const OrderBookState({
     required this.bids,
     required this.asks,
-    required this.spread,
+    required this.spreadAtomic,
     required this.height,
     required this.status,
   });
@@ -190,17 +220,37 @@ class OrderBookState {
       asks: asksRaw
           .map((e) => OrderBookLevel.fromJson(e as Map<String, dynamic>))
           .toList(),
-      spread: json['spread']?.toString() ?? '0',
+      spreadAtomic: _u64(json['spread']),
       height: _u64(json['height']),
       status: json['status'] as String? ?? '',
     );
   }
 
-  /// Best bid price (highest bid).
-  OrderBookLevel? get bestBid => bids.isNotEmpty ? bids.first : null;
+  double get spread => spreadAtomic / atomicPerCoin;
+  String get spreadDisplay => spread.toStringAsFixed(7);
 
-  /// Best ask price (lowest ask).
-  OrderBookLevel? get bestAsk => asks.isNotEmpty ? asks.first : null;
+  /// Highest bid. Computed rather than taking `bids.first` — the daemon's
+  /// ordering is not part of the response contract.
+  OrderBookLevel? get bestBid {
+    if (bids.isEmpty) return null;
+    return bids.reduce((a, b) => a.priceAtomic >= b.priceAtomic ? a : b);
+  }
+
+  /// Lowest ask, computed for the same reason.
+  OrderBookLevel? get bestAsk {
+    if (asks.isEmpty) return null;
+    return asks.reduce((a, b) => a.priceAtomic <= b.priceAtomic ? a : b);
+  }
+
+  /// Mid price in ΗΞΔŦ per XFG, or null when one side is empty.
+  double? get mid {
+    final b = bestBid;
+    final a = bestAsk;
+    if (b == null || a == null) return null;
+    return (b.price + a.price) / 2;
+  }
+
+  bool get isEmpty => bids.isEmpty && asks.isEmpty;
 }
 
 /// Response to `/amm_quote`

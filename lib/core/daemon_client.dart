@@ -288,7 +288,7 @@ class FuegoDaemonClient {
     return await _get('/status');
   }
 
-  /// Fetch raw ΗΞΔŦ metrics (supply, TWAP redemption price, treasury, CD
+  /// Fetch raw ΗΞΔŦ metrics (supply, mint price, treasury, CD
   /// yield) from the daemon's `/heat_metrics` endpoint.
   Future<Map<String, dynamic>> getHeatMetricsRaw() async {
     return await _get('/heat_metrics');

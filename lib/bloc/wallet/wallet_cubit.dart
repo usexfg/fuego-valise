@@ -509,7 +509,7 @@ class WalletCubit extends Cubit<WalletState> {
   Future<PoolInfo> getPoolInfo() async =>
       PoolInfo.fromJson(await _requireRpc().ammPoolInfo());
 
-  /// Fetch ΗΞΔŦ metrics: supply, redemption price (TWAP), treasury, CD yield.
+  /// Fetch ΗΞΔŦ metrics: supply, mint price, treasury, CD yield.
   /// Goes through the wallet proxy — fuegod's `/heat_metrics` handler reads a
   /// JSON body, which a REST GET never sends.
   Future<HeatMetrics> getHeatMetrics() async =>

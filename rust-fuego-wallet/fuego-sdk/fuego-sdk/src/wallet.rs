@@ -277,7 +277,7 @@ impl Wallet {
         tx_hash: &str,
         from_address: &str,
         to_address: &str,
-        amount: u64,
+        amount: u128,
         min_confirmations: u32,
     ) -> Result<PaymentProof> {
         let proof = chain_spv.build_payment_proof(tx_hash, from_address, to_address, amount).await?;

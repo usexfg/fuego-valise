@@ -4,8 +4,12 @@ use zeroize::Zeroize;
 // ── Swap / Orderbook types ────────────────────────────────────────
 
 /// Trading pair for swap offers.
-/// IDs match fuego-suite: SOL=0, ETH=1, XMR=2, BCH=3, ARB=4, BASE=5, KMD=6, BNB=7, DCR=8, BTC=9, LTC=10, POLY=11
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+///
+/// Mirrors `XfgSwap::SwapPair` in fuego-suite
+/// `src/SwapDaemon/SwapTypes.h:77` — ids 0-28, no gaps. Previously this
+/// enum stopped at 11, so two thirds of the daemon's pairs had no
+/// representation and `from_id` rejected them.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum SwapPair {
     XfgSol = 0,
     XfgEth = 1,
@@ -19,6 +23,23 @@ pub enum SwapPair {
     XfgBtc = 9,
     XfgLtc = 10,
     XfgPoly = 11,
+    XfgGleec = 12,
+    XfgRhc = 13,
+    XfgAvax = 14,
+    XfgCro = 15,
+    XfgBob = 16,
+    XfgSia = 17,
+    XfgUni = 18,
+    XfgXpl = 19,
+    XfgDoge = 20,
+    XfgDash = 21,
+    XfgZec = 22,
+    XfgPls = 23,
+    XfgZano = 24,
+    XfgMon = 25,
+    XfgOp = 26,
+    XfgTon = 27,
+    XfgDot = 28,
 }
 
 impl SwapPair {
@@ -36,9 +57,27 @@ impl SwapPair {
             Self::XfgBtc => "XFG/BTC",
             Self::XfgLtc => "XFG/LTC",
             Self::XfgPoly => "XFG/POLY",
+            Self::XfgGleec => "XFG/GLEEC",
+            Self::XfgRhc => "XFG/RHC",
+            Self::XfgAvax => "XFG/AVAX",
+            Self::XfgCro => "XFG/CRO",
+            Self::XfgBob => "XFG/BOB",
+            Self::XfgSia => "XFG/SIA",
+            Self::XfgUni => "XFG/UNI",
+            Self::XfgXpl => "XFG/XPL",
+            Self::XfgDoge => "XFG/DOGE",
+            Self::XfgDash => "XFG/DASH",
+            Self::XfgZec => "XFG/ZEC",
+            Self::XfgPls => "XFG/PLS",
+            Self::XfgZano => "XFG/ZANO",
+            Self::XfgMon => "XFG/MON",
+            Self::XfgOp => "XFG/OP",
+            Self::XfgTon => "XFG/TON",
+            Self::XfgDot => "XFG/DOT",
         }
     }
 
+    /// Display ticker.
     pub fn ticker(&self) -> &'static str {
         match self {
             Self::XfgSol => "SOL",
@@ -53,6 +92,62 @@ impl SwapPair {
             Self::XfgBtc => "BTC",
             Self::XfgLtc => "LTC",
             Self::XfgPoly => "POLY",
+            Self::XfgGleec => "GLEEC",
+            Self::XfgRhc => "RHC",
+            Self::XfgAvax => "AVAX",
+            Self::XfgCro => "CRO",
+            Self::XfgBob => "BOB",
+            Self::XfgSia => "SIA",
+            Self::XfgUni => "UNI",
+            Self::XfgXpl => "XPL",
+            Self::XfgDoge => "DOGE",
+            Self::XfgDash => "DASH",
+            Self::XfgZec => "ZEC",
+            Self::XfgPls => "PLS",
+            Self::XfgZano => "ZANO",
+            Self::XfgMon => "MON",
+            Self::XfgOp => "OP",
+            Self::XfgTon => "TON",
+            Self::XfgDot => "DOT",
+        }
+    }
+
+    /// The exact string `swapPairFromString` accepts
+    /// (`src/SwapDaemon/SwapTypes.cpp:30`). For six pairs this is NOT the
+    /// display ticker — sending `RHC`, `UNI`, `XPL`, `PLS` or `MON` is
+    /// rejected as "Unknown swap pair", and `KMD_SPV`/`POLYGON` are the
+    /// canonical forms of `KMD`/`POLY`.
+    pub fn daemon_name(&self) -> &'static str {
+        match self {
+            Self::XfgSol => "SOL",
+            Self::XfgEth => "ETH",
+            Self::XfgXmr => "XMR",
+            Self::XfgBch => "BCH",
+            Self::XfgArb => "ARB",
+            Self::XfgBase => "BASE",
+            Self::XfgKmd => "KMD_SPV",
+            Self::XfgBnb => "BNB",
+            Self::XfgDcr => "DCR",
+            Self::XfgBtc => "BTC",
+            Self::XfgLtc => "LTC",
+            Self::XfgPoly => "POLYGON",
+            Self::XfgGleec => "GLEEC",
+            Self::XfgRhc => "ROBINHOOD",
+            Self::XfgAvax => "AVAX",
+            Self::XfgCro => "CRO",
+            Self::XfgBob => "BOB",
+            Self::XfgSia => "SIA",
+            Self::XfgUni => "UNICHAIN",
+            Self::XfgXpl => "PLASMA",
+            Self::XfgDoge => "DOGE",
+            Self::XfgDash => "DASH",
+            Self::XfgZec => "ZEC",
+            Self::XfgPls => "PULSEX",
+            Self::XfgZano => "ZANO",
+            Self::XfgMon => "MONAD",
+            Self::XfgOp => "OPTIMISM",
+            Self::XfgTon => "TON",
+            Self::XfgDot => "DOT",
         }
     }
 
@@ -70,7 +165,43 @@ impl SwapPair {
             Self::XfgBtc => crate::chain::ChainType::Bitcoin,
             Self::XfgLtc => crate::chain::ChainType::Litecoin,
             Self::XfgPoly => crate::chain::ChainType::Polygon,
+            Self::XfgGleec => crate::chain::ChainType::Gleec,
+            Self::XfgRhc => crate::chain::ChainType::Robinhood,
+            Self::XfgAvax => crate::chain::ChainType::Avalanche,
+            Self::XfgCro => crate::chain::ChainType::Cronos,
+            Self::XfgBob => crate::chain::ChainType::Bob,
+            Self::XfgSia => crate::chain::ChainType::Sia,
+            Self::XfgUni => crate::chain::ChainType::Unichain,
+            Self::XfgXpl => crate::chain::ChainType::Plasma,
+            Self::XfgDoge => crate::chain::ChainType::Dogecoin,
+            Self::XfgDash => crate::chain::ChainType::Dash,
+            Self::XfgZec => crate::chain::ChainType::Zcash,
+            Self::XfgPls => crate::chain::ChainType::PulseChain,
+            Self::XfgZano => crate::chain::ChainType::Zano,
+            Self::XfgMon => crate::chain::ChainType::Monad,
+            Self::XfgOp => crate::chain::ChainType::Optimism,
+            Self::XfgTon => crate::chain::ChainType::Ton,
+            Self::XfgDot => crate::chain::ChainType::Polkadot,
         }
+    }
+
+    /// True when `SwapDaemon.cpp` never calls `registerChain` for this pair —
+    /// the client source exists but is staged, and the daemon logs
+    /// "… is staged — not yet registered". Offering such a pair produces a
+    /// swap the daemon refuses to run.
+    pub fn is_staged(&self) -> bool {
+        match self {
+            Self::XfgSia => true,
+            Self::XfgZano => true,
+            Self::XfgTon => true,
+            Self::XfgDot => true,
+            _ => false,
+        }
+    }
+
+    /// Pairs the daemon actually registers a client for (25 of 29).
+    pub fn registered() -> Vec<SwapPair> {
+        Self::all().iter().copied().filter(|p| !p.is_staged()).collect()
     }
 
     pub fn all() -> &'static [SwapPair] {
@@ -87,6 +218,23 @@ impl SwapPair {
             Self::XfgBtc,
             Self::XfgLtc,
             Self::XfgPoly,
+            Self::XfgGleec,
+            Self::XfgRhc,
+            Self::XfgAvax,
+            Self::XfgCro,
+            Self::XfgBob,
+            Self::XfgSia,
+            Self::XfgUni,
+            Self::XfgXpl,
+            Self::XfgDoge,
+            Self::XfgDash,
+            Self::XfgZec,
+            Self::XfgPls,
+            Self::XfgZano,
+            Self::XfgMon,
+            Self::XfgOp,
+            Self::XfgTon,
+            Self::XfgDot,
         ]
     }
 
@@ -104,24 +252,60 @@ impl SwapPair {
             9 => Some(Self::XfgBtc),
             10 => Some(Self::XfgLtc),
             11 => Some(Self::XfgPoly),
+            12 => Some(Self::XfgGleec),
+            13 => Some(Self::XfgRhc),
+            14 => Some(Self::XfgAvax),
+            15 => Some(Self::XfgCro),
+            16 => Some(Self::XfgBob),
+            17 => Some(Self::XfgSia),
+            18 => Some(Self::XfgUni),
+            19 => Some(Self::XfgXpl),
+            20 => Some(Self::XfgDoge),
+            21 => Some(Self::XfgDash),
+            22 => Some(Self::XfgZec),
+            23 => Some(Self::XfgPls),
+            24 => Some(Self::XfgZano),
+            25 => Some(Self::XfgMon),
+            26 => Some(Self::XfgOp),
+            27 => Some(Self::XfgTon),
+            28 => Some(Self::XfgDot),
             _ => None,
         }
     }
 
-    pub fn from_id_str(ticker: &str) -> Option<Self> {
-        match ticker.to_uppercase().as_str() {
+    /// Accepts the display ticker, the daemon name, and the daemon's own
+    /// aliases (`KMD`, `POLY`, `SC`, `PULS`, `OP`, `POLKADOT`).
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.trim().to_uppercase().as_str() {
             "SOL" => Some(Self::XfgSol),
             "ETH" => Some(Self::XfgEth),
             "XMR" => Some(Self::XfgXmr),
             "BCH" => Some(Self::XfgBch),
             "ARB" => Some(Self::XfgArb),
             "BASE" => Some(Self::XfgBase),
-            "KMD" => Some(Self::XfgKmd),
+            "KMD" | "KMD_SPV" => Some(Self::XfgKmd),
             "BNB" => Some(Self::XfgBnb),
             "DCR" => Some(Self::XfgDcr),
             "BTC" => Some(Self::XfgBtc),
             "LTC" => Some(Self::XfgLtc),
             "POLY" | "POLYGON" => Some(Self::XfgPoly),
+            "GLEEC" => Some(Self::XfgGleec),
+            "RHC" | "ROBINHOOD" => Some(Self::XfgRhc),
+            "AVAX" => Some(Self::XfgAvax),
+            "CRO" => Some(Self::XfgCro),
+            "BOB" => Some(Self::XfgBob),
+            "SC" | "SIA" => Some(Self::XfgSia),
+            "UNI" | "UNICHAIN" => Some(Self::XfgUni),
+            "PLASMA" | "XPL" => Some(Self::XfgXpl),
+            "DOGE" => Some(Self::XfgDoge),
+            "DASH" => Some(Self::XfgDash),
+            "ZEC" => Some(Self::XfgZec),
+            "PLS" | "PULS" | "PULSEX" => Some(Self::XfgPls),
+            "ZANO" => Some(Self::XfgZano),
+            "MON" | "MONAD" => Some(Self::XfgMon),
+            "OP" | "OPTIMISM" => Some(Self::XfgOp),
+            "TON" => Some(Self::XfgTon),
+            "DOT" | "POLKADOT" => Some(Self::XfgDot),
             _ => None,
         }
     }

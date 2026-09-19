@@ -18,6 +18,9 @@ impl OrderbookClient {
 
     // ── Swap Offers ───────────────────────────────────────────────────
 
+    /// Offers for `pair`. The daemon keys on the numeric id, so this is safe
+    /// for every pair; the string form has six divergences from the ticker
+    /// (see [`SwapPair::daemon_name`]).
     pub async fn get_offers(&self, pair: SwapPair) -> Result<Vec<SwapOffer>> {
         let resp: OfferResponse = self.post("/getswapoffers", serde_json::json!({
             "pair": pair as u8,
@@ -92,14 +95,34 @@ impl OrderbookClient {
 
     // ── AMM / Hearth ──────────────────────────────────────────────────
 
-    pub async fn get_amm_quote(&self, sell_xfg: bool, amount: &str) -> Result<AmmQuote> {
-        self.get(&format!(
-            "/amm_quote?sell_xfg={sell_xfg}&amount={amount}"
-        )).await
+    /// Hearth AMM quote.
+    ///
+    /// `COMMAND_RPC_AMM_QUOTE::request` is `{input_amount: u64, direction: u8}`
+    /// read from the request BODY — fuegod's `jsonMethod` handler calls
+    /// `loadFromJson(req, request.getBody())` and never looks at the query
+    /// string. This used to be a GET of `?sell_xfg=&amount=`, which the daemon
+    /// parsed as all-zeros.
+    ///
+    /// `input_amount` is atomic units (COIN = 10^7 for both XFG and HEAT);
+    /// `direction` is 0 for XFG→HEAT and 1 for HEAT→XFG.
+    pub async fn get_amm_quote(&self, sell_xfg: bool, input_amount: u64) -> Result<AmmQuote> {
+        self.post(
+            "/amm_quote",
+            serde_json::json!({
+                "input_amount": input_amount,
+                "direction": if sell_xfg { 0 } else { 1 },
+            }),
+        )
+        .await
     }
 
     pub async fn get_pool_info(&self) -> Result<PoolInfo> {
-        self.get("/amm_pool_info").await
+        self.post("/amm_pool_info", serde_json::json!({})).await
+    }
+
+    /// Hearth ΗΞΔŦ metrics.
+    pub async fn get_heat_metrics(&self) -> Result<serde_json::Value> {
+        self.post("/heat_metrics", serde_json::json!({})).await
     }
 
     // ── HTTP helpers ──────────────────────────────────────────────────
@@ -167,22 +190,67 @@ pub struct ActiveSwapsResponse {
     pub status: String,
 }
 
+/// Response of `/amm_quote`.
+///
+/// Field names are `COMMAND_RPC_AMM_QUOTE::response`
+/// (`CoreRpcServerCommandsDefinitions.h:2521-2532`). The previous shape
+/// (`sell_xfg` / `input_amount` / `output_amount` / `price_impact`) matched no
+/// struct fuegod serializes, so every field deserialized as missing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AmmQuote {
-    pub sell_xfg: bool,
-    pub input_amount: String,
-    pub output_amount: String,
-    pub price_impact: String,
+    /// Atomic units.
+    #[serde(default)]
+    pub expected_output: u64,
+    #[serde(default)]
+    pub price_impact_bps: u64,
+    /// Atomic units.
+    #[serde(default)]
+    pub fee: u64,
     #[serde(default)]
     pub status: String,
 }
 
+/// Response of `/amm_pool_info` — `COMMAND_RPC_AMM_POOL_INFO::response`
+/// (`CoreRpcServerCommandsDefinitions.h:2538-2557`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoolInfo {
-    pub xfg_reserve: String,
-    pub heat_reserve: String,
-    pub spot_price: String,
-    pub xfg_heat_ratio: String,
+    #[serde(default)]
+    pub reserve_xfg: u64,
+    #[serde(default)]
+    pub reserve_heat: u64,
+    #[serde(default)]
+    pub total_lp_shares: u64,
+    /// HEAT-per-XFG scaled by COIN, so the human ratio is `spot_price / 1e7`.
+    #[serde(default)]
+    pub spot_price: u64,
+    #[serde(default)]
+    pub epoch_swap_fees: u64,
+    #[serde(default)]
+    pub hearth_twap: u64,
+    #[serde(default)]
+    pub height: u64,
     #[serde(default)]
     pub status: String,
+}
+
+impl PoolInfo {
+    /// HEAT per XFG.
+    pub fn heat_per_xfg(&self) -> f64 {
+        self.spot_price as f64 / 10_000_000.0
+    }
+
+    /// True when the pool is seeded and a rate can be quoted at all.
+    pub fn is_seeded(&self) -> bool {
+        self.reserve_xfg > 0 && self.reserve_heat > 0 && self.spot_price > 0
+    }
+
+    /// HEAT a burn of `xfg_atomic` mints, by the rule walletd and consensus
+    /// both apply: `xfg_burned * spot_price / COIN`. `None` when unseeded —
+    /// naming a HEAT amount without a pool price is how a mint gets rejected.
+    pub fn heat_for_burn(&self, xfg_atomic: u64) -> Option<u64> {
+        if !self.is_seeded() {
+            return None;
+        }
+        Some(((xfg_atomic as u128 * self.spot_price as u128) / 10_000_000u128) as u64)
+    }
 }

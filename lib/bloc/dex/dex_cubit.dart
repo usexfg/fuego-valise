@@ -30,7 +30,6 @@ class DexState {
   final SwapOfferSdk? selectedOffer;
   final List<SwapTradeSdk> recentTrades;
   final SwapPriceSdk? price;
-  final OrderBookStateSdk? orderbook;
   final List<SwapStatusSdk> activeSwaps;
   final PaymentProofSdk? lastProof;
   final String? lastResult;
@@ -59,7 +58,6 @@ class DexState {
     this.selectedOffer,
     this.recentTrades = const [],
     this.price,
-    this.orderbook,
     this.activeSwaps = const [],
     this.lastProof,
     this.lastResult,
@@ -85,7 +83,6 @@ class DexState {
     SwapOfferSdk? selectedOffer,
     List<SwapTradeSdk>? recentTrades,
     SwapPriceSdk? price,
-    OrderBookStateSdk? orderbook,
     List<SwapStatusSdk>? activeSwaps,
     PaymentProofSdk? lastProof,
     String? lastResult,
@@ -109,7 +106,6 @@ class DexState {
     selectedOffer: selectedOffer ?? this.selectedOffer,
     recentTrades: recentTrades ?? this.recentTrades,
     price: price ?? this.price,
-    orderbook: orderbook ?? this.orderbook,
     activeSwaps: activeSwaps ?? this.activeSwaps,
     lastProof: lastProof ?? this.lastProof,
     lastResult: lastResult,
@@ -452,19 +448,6 @@ class DexCubit extends Cubit<DexState> {
       emit(state.copyWith(recentTrades: trades));
     } catch (e) {
       debugPrint('DexCubit: loadTrades failed: $e');
-    }
-  }
-
-  Future<void> loadOrderbook() async {
-    if (_baseUrl.isEmpty) return;
-    try {
-      final r = await _rpc('getorderbook', {
-        'pair': state.selectedPair.id,
-        'depth': 20,
-      });
-      emit(state.copyWith(orderbook: OrderBookStateSdk.fromJson(r)));
-    } catch (e) {
-      debugPrint('DexCubit: loadOrderbook failed: $e');
     }
   }
 

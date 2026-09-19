@@ -395,56 +395,16 @@ class SwapPriceSdk {
   }
 }
 
-/// Orderbook level (bid or ask).
-class OrderLevelSdk {
-  final String price;
-  final String amount;
-  final int count;
-
-  const OrderLevelSdk({
-    required this.price,
-    required this.amount,
-    required this.count,
-  });
-
-  factory OrderLevelSdk.fromJson(Map<String, dynamic> j) => OrderLevelSdk(
-    price: j['price']?.toString() ?? '0',
-    amount: j['amount']?.toString() ?? '0',
-    count: j['count'] as int? ?? j['orderCount'] as int? ?? 0,
-  );
-}
-
-/// Orderbook state snapshot.
-class OrderBookStateSdk {
-  final List<OrderLevelSdk> bids;
-  final List<OrderLevelSdk> asks;
-  final String lastPrice;
-  final String volume24h;
-
-  const OrderBookStateSdk({
-    required this.bids,
-    required this.asks,
-    required this.lastPrice,
-    required this.volume24h,
-  });
-
-  factory OrderBookStateSdk.fromJson(
-    Map<String, dynamic> j,
-  ) => OrderBookStateSdk(
-    bids:
-        (j['bids'] as List<dynamic>?)
-            ?.map((e) => OrderLevelSdk.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        [],
-    asks:
-        (j['asks'] as List<dynamic>?)
-            ?.map((e) => OrderLevelSdk.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        [],
-    lastPrice: j['last_price']?.toString() ?? j['lastPrice']?.toString() ?? '0',
-    volume24h: j['volume_24h']?.toString() ?? j['volume24h']?.toString() ?? '0',
-  );
-}
+// NOTE: the orderbook model lives in `heat_amm.dart` as OrderBookState /
+// OrderBookLevel, which matches `COMMAND_RPC_GET_ORDER_BOOK` exactly (bids,
+// asks, spread, height, status; levels of price/amount/orderCount).
+//
+// A second pair, OrderBookStateSdk / OrderLevelSdk, used to live here. It
+// parsed `last_price` and `volume_24h` — neither exists in that response —
+// and dropped `spread` and `height`, which do. It was filled by
+// DexCubit.loadOrderbook(), which nothing called and no widget read, via a
+// json_rpc method name (`getorderbook`) the walletd proxy does not route.
+// Removed rather than left as a second, wrong answer to the same question.
 
 /// HTLC hash lock result.
 class HtlcHashLock {

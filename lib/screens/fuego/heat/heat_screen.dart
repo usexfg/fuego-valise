@@ -102,7 +102,7 @@ class _HeatScreenState extends State<HeatScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _metricColumn('Target', m.piTarget, AppTheme.textMuted),
-                _metricColumn('Price', m.redemptionPrice, AppTheme.primaryColor),
+                _metricColumn('Mint price', m.mintPrice, AppTheme.primaryColor),
                 _metricColumn('APY', m.cdYield, AppTheme.successColor),
               ],
             ),

@@ -120,19 +120,30 @@ values, and `'SOL'` is a pair the daemon knows, so the fill proceeded.
 `ticker`; `tryFromId` returns null; `_chainForPair` has no `default:`, so
 adding a pair is a compile error until it is mapped.
 
-### ★ The fee disclosure names a split that does not exist
+### ~~The fee disclosure names a split that does not exist~~ — WITHDRAWN
 
-The UI states "1% — 69% CD yield / 11% bonus pool / 20% treasury". Actual:
+**This finding was wrong and the "fix" was a regression. Reverted.**
+
+There are two distinct 1% fees, and I collapsed them:
 
 ```
-HEARTH_FEE_BPS          = 100  // 1.0% Hearth taker fee
-HEARTH_CD_SHARE_PCT     = 70   // 70% → CD yield pool
-HEARTH_MAKER_REBATE_BPS = 30   // 30% → maker rebate
+SWAP_FEE_RATE_BPS          = 100   // atomic swap, 1% of claim/refund
+SWAP_FEE_CD_SHARE_PCT      = 69
+SWAP_FEE_BONUS_VAULT_PCT   = 11
+SWAP_FEE_TREASURY_SHARE_PCT= 20
+
+HEARTH_FEE_BPS             = 100   // Hearth taker fee, also 1%
+HEARTH_CD_SHARE_PCT        = 70
+HEARTH_MAKER_REBATE_BPS    = 30
 ```
 
-70/30, with no bonus pool and no treasury share. The panel also appears on the
-cross-chain swap screen, where the Hearth taker fee does not apply at all.
-**Fixed**, with the constant names cited in the copy.
+`swap_amount_row.dart` is the **atomic-swap** widget, so its original
+69/11/20 was correct. I found `HEARTH_CD_SHARE_PCT = 70` first, assumed one
+fee, and rewrote correct copy into wrong copy. Restored, with both constant
+sets cited so the next reader does not repeat it.
+
+Lesson for the rest of this report: two constants that share a rate are not
+the same fee.
 
 ---
 
@@ -255,3 +266,149 @@ Tests: `swap_pair_expansion_test.dart` rewritten to exercise the **lookups**
 7. **`lib/services/fuego_daemon_client.dart`** is now unused and marked
    deprecated. Deleting it needs your say-so.
 8. **`AGENTS.md`** still documents 12 pairs and a stale POLYGON known-issue.
+
+---
+
+# Round 3 — SDK, ETH SPV, orderbook
+
+Added after the round-2 commit. `cargo build` and `cargo test` run here, so
+everything in this section is compiled and tested rather than reasoned about:
+**79 tests pass** in `fuego-sdk`.
+
+## fuego-sdk brought in line with the C++
+
+**`SwapPair`: 12 → 29 ids.** The enum stopped at Polygon, so `from_id`
+returned `None` for two thirds of the daemon's pairs. Now ids 0-28 with
+`ticker()`, `daemon_name()`, `is_staged()` and `registered()`.
+
+**`ChainType`: 13 → 30** (29 pairs plus Fuego), with `decimals()` and
+`evm_chain_id()`. The old `expected_chain_id()` in `evm.rs` returned `0` for
+every chain past Polygon; the table now lives on `ChainType` and
+`verify_payment_proof` errors rather than comparing against zero.
+
+**`PaymentProof.amount`: u64 → u128.** Wei caps a `u64` at ~18.44 ETH, so the
+amount check failed closed on every larger lock — on an 18-decimal chain that
+is most of them.
+
+**`bitcoin.rs` reads Bitcoin Core 22's field.** It only looked at
+`scriptPubKey.addresses`, removed in Core 22.0 in favour of
+`scriptPubKey.address`. Against any modern node no BTC-family lock could
+verify. Accepts both now.
+
+**`orderbook.rs` speaks the real AMM contract.** It was GET-ing
+`/amm_quote?sell_xfg=&amount=` and parsing `xfg_reserve` / `heat_reserve` /
+`xfg_heat_ratio` / `output_amount` — none of which fuegod serializes. Now
+POSTs `{input_amount, direction}` and parses `COMMAND_RPC_AMM_QUOTE` /
+`COMMAND_RPC_AMM_POOL_INFO`. `PoolInfo::heat_for_burn()` applies the same
+`xfg_burned * spot_price / COIN` rule consensus enforces.
+
+## ETH SPV is now a real proof
+
+`verify_merkle` was `proof.block_hash == header.hash && height > 0` — a
+restatement of what the RPC just said. Replaced with receipt-trie
+verification:
+
+- `chain/mpt.rs` — RLP (Yellow Paper App. B), hex-prefix (App. C),
+  Merkle-Patricia trie (App. D) and the EIP-2718 typed-receipt envelope. No
+  new dependency; an SPV check is the wrong place to inherit someone else's
+  encoder.
+- `EvmChain::collect_receipts` pulls every receipt in the block
+  (`eth_getBlockReceipts`, falling back to per-tx fetches) and carries them in
+  `merkle_path`.
+- `verify_merkle` rebuilds the trie and compares the root to the header's
+  `receiptsRoot`.
+- `verify_payment_proof` **calls it** — it never did — and also checks the
+  receipt sits at the claimed index.
+
+Verification of the verifier, since "our SPV works now" is a high-severity
+claim:
+
+1. Known constants: the empty-trie root `56e81f17…b421`, and the published
+   `doe`/`dog`/`dogglesworth` root `8aad789d…68d3`.
+2. An independent Python implementation written from the spec — not ported
+   from the Rust — reproduces that same published root, then agrees with the
+   Rust on **308/308** generated cases spanning branch-with-value nodes,
+   values either side of the 32-byte inline/hash boundary, and the dense
+   `rlp(index)` key sets a receipt trie actually uses.
+3. Forgery tests: flipping a status, altering a log, reordering, adding or
+   dropping a receipt each change the root; legacy and typed receipts encode
+   differently.
+
+**What it still does not prove.** The header comes from the same RPC and is
+not checked against a header chain, so this is inclusion in the block the RPC
+named — not proof that block is canonical. A lying node is still believed.
+Closing that needs a header store with a checkpoint, as the UTXO side has.
+The adapter's doc comment says so, and the UI should stop saying "SPV
+verified" until it lands.
+
+## Orderbook
+
+There were two models for one endpoint:
+
+- `heat_amm.dart` `OrderBookState`/`OrderBookLevel` — matches
+  `COMMAND_RPC_GET_ORDER_BOOK` exactly. **Correct.** This is the one the
+  Hearth tab renders.
+- `swap_models.dart` `OrderBookStateSdk`/`OrderLevelSdk` — parsed
+  `last_price` and `volume_24h`, neither of which exists in that response,
+  and dropped `spread` and `height`, which do. Filled by
+  `DexCubit.loadOrderbook()`, which nothing called and no widget read, over a
+  method name (`getorderbook`) the walletd proxy does not route. Removed.
+
+The surviving model rendered raw atomic integers: a 1 XFG level displayed as
+`10000000`, price and spread likewise off by 10^7, and the depth bars scaled
+on those raw strings. Now typed (`priceAtomic`/`amountAtomic`) with descaled
+display getters; `bestBid`/`bestAsk` are computed rather than assuming the
+daemon's ordering; the column headed "Total" shows ΗΞΔŦ depth instead of the
+order count.
+
+## "Redemption" removed
+
+There is no redemption for ΗΞΔŦ. Wallet-side the concept is the **mint
+price**: `mintPriceNum/Denom`, `mintRate*`, `formattedMintPrice`. The daemon's
+JSON keys are still `redemption_*`, so the parse reads those and prefers
+`mint_*` when present — a daemon rename needs no wallet change. Tests cover
+both key sets.
+
+## Final chain swap pair status
+
+29 ids in `SwapPair` (0-28). 25 have a registered chain client; four are
+staged and cannot swap.
+
+| ids | pairs | status |
+|---|---|---|
+| 0-16, 18-23, 25, 26 | SOL ETH XMR BCH ARB BASE KMD BNB DCR BTC LTC POLY GLEEC RHC AVAX CRO BOB UNI XPL DOGE DASH ZEC PLS MON OP | **live** — `registerChain` called |
+| 17, 24, 27, 28 | SIA ZANO TON DOT | **staged** — "not yet registered" |
+
+Six display tickers are not what `swapPairFromString` accepts:
+
+| ticker | daemon name |
+|---|---|
+| KMD | `KMD_SPV` |
+| POLY | `POLYGON` |
+| RHC | `ROBINHOOD` |
+| UNI | `UNICHAIN` |
+| XPL | `PLASMA` |
+| PLS | `PULSEX` |
+| MON | `MONAD` |
+| OP | `OPTIMISM` |
+
+`KMD`, `POLY` and `OP` are accepted as aliases; `RHC`, `UNI`, `XPL`, `PLS`
+and `MON` are **not** — those five peer swaps could never have initiated.
+Both the Dart `SwapPairSdk` and the Rust `SwapPair` now carry `daemonName` /
+`daemon_name()` separately from the ticker, and tests assert the divergence.
+
+## Still open after round 3
+
+1. **EVM header authenticity** — the gap described above. The single largest
+   remaining hole in cross-chain verification.
+2. **Monad chain id**: `chains.yaml` 143 vs `ChainClientConfig.cpp` 185.
+3. **`_encodeLockCall`/`_encodeClaimCall`/`_encodeRefundCall`** still encode
+   selectors matching no known HTLC ABI, with no receiver and no contract id.
+   Unreachable from the UI; needs the real contract ABI, which is in neither
+   repository.
+4. **`kHeatPegUsd = 1.58`** still hardcoded. `COMMAND_RPC_GET_FUEGO_PRICE`
+   already has a `heat_peg_usd` field — use it.
+5. **DOGE/DASH/ZEC reserve proofs** — live pairs, no verified P2PKH version
+   bytes, so they take the explicit unsupported branch.
+6. **Dart is still unverified.** No Flutter toolchain here. The Rust is
+   compiled and tested; the Dart is reviewed only.

@@ -115,6 +115,49 @@ impl EvmRpcClient {
         parse_hex_u128(&hex).ok_or_else(|| SdkError::Network(format!("Invalid balance: {hex}")))
     }
 
+    /// All receipts in a block, as raw JSON, in index order.
+    ///
+    /// `eth_getBlockReceipts` is the one call that makes a real receipt-trie
+    /// check possible: rebuilding the trie needs every receipt, not just ours.
+    /// Falls back to per-transaction fetches on nodes that do not serve it.
+    pub async fn get_block_receipts(&self, block_hash: &str) -> Result<Vec<serde_json::Value>> {
+        let v: serde_json::Value = self
+            .eth_call("eth_getBlockReceipts", &[serde_json::json!(block_hash)])
+            .await?;
+        let arr = v
+            .as_array()
+            .ok_or_else(|| SdkError::Network("eth_getBlockReceipts did not return a list".into()))?;
+        Ok(arr.clone())
+    }
+
+    /// Transaction hashes of a block, in index order.
+    pub async fn get_block_tx_hashes(&self, block_hash: &str) -> Result<Vec<String>> {
+        let block: serde_json::Value = self
+            .eth_call(
+                "eth_getBlockByHash",
+                &[serde_json::json!(block_hash), serde_json::json!(false)],
+            )
+            .await?;
+        let txs = block["transactions"]
+            .as_array()
+            .ok_or_else(|| SdkError::Network("block has no transactions list".into()))?;
+        Ok(txs
+            .iter()
+            .filter_map(|t| t.as_str().map(|s| s.to_string()))
+            .collect())
+    }
+
+    /// One receipt as raw JSON.
+    pub async fn get_receipt_json(&self, tx_hash: &str) -> Result<serde_json::Value> {
+        let v: serde_json::Value = self
+            .eth_call("eth_getTransactionReceipt", &[serde_json::json!(tx_hash)])
+            .await?;
+        if v.is_null() {
+            return Err(SdkError::Network(format!("receipt {tx_hash} not found")));
+        }
+        Ok(v)
+    }
+
     pub async fn get_chain_id(&self) -> Result<u64> {
         let hex: String = self.eth_call("eth_chainId", &[]).await?;
         parse_hex_u64(&hex).ok_or_else(|| SdkError::Network(format!("Invalid chain ID: {hex}")))
@@ -205,10 +248,16 @@ fn parse_hex_u64(hex_str: &str) -> Option<u64> {
     u64::from_str_radix(clean, 16).ok()
 }
 
-/// Public wrapper for `parse_hex_u64` (used by the EVM adapter to compare
-/// the on-chain tx value in wei against the proof amount).
+/// Public wrapper for `parse_hex_u64`.
 pub fn parse_hex_u64_public(hex_str: &str) -> Option<u64> {
     parse_hex_u64(hex_str)
+}
+
+/// Public `u128` parse — used by the EVM adapter to compare the on-chain tx
+/// value in wei against the proof amount. Wei does not fit a `u64` above
+/// ~18.44 ETH.
+pub fn parse_hex_u128_public(hex_str: &str) -> Option<u128> {
+    parse_hex_u128(hex_str)
 }
 
 fn parse_hex_u128(hex_str: &str) -> Option<u128> {

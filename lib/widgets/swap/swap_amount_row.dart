@@ -55,7 +55,7 @@ class SwapAmountRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Hearth taker fee — 1%',
+                  'Protocol fee — 1%',
                   style: TextStyle(
                     color: AppTheme.textPrimary,
                     fontSize: 14,
@@ -64,8 +64,7 @@ class SwapAmountRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'HEARTH_FEE_BPS = 100 (1.0%), split as HEARTH_CD_SHARE_PCT '
-                  'and HEARTH_MAKER_REBATE_BPS in the chain parameters:',
+                  'Every atomic swap pays a flat 1% protocol fee, split transparently:',
                   style: TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 11,
@@ -73,15 +72,19 @@ class SwapAmountRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _feeSplitRow('70%', 'CD yield pool', AppTheme.primaryColor),
+                // SWAP_FEE_RATE_BPS = 100 (1% of the claim/refund amount),
+                // split SWAP_FEE_CD_SHARE_PCT 69 / SWAP_FEE_BONUS_VAULT_PCT 11
+                // / SWAP_FEE_TREASURY_SHARE_PCT 20 (CryptoNoteConfig.h:148-197).
+                // This is the ATOMIC SWAP split. Hearth's is a different fee
+                // and a different split — HEARTH_FEE_BPS 100, 70/30.
+                _feeSplitRow('69%', 'CD yield', AppTheme.primaryColor),
                 const SizedBox(height: 6),
-                _feeSplitRow('30%', 'Maker rebate', AppTheme.successColor),
+                _feeSplitRow('11%', 'Bonus vault', AppTheme.successColor),
+                const SizedBox(height: 6),
+                _feeSplitRow('20%', 'Treasury reserve', AppTheme.warningColor),
                 const SizedBox(height: 12),
                 const Text(
-                  'This is the Hearth AMM fee. A cross-chain atomic swap is not '
-                  'an Hearth trade and does not pay it; counterparty-chain '
-                  'network fees are separate and shown when the daemon reports '
-                  'them.',
+                  'The fee is taken from the XFG leg. Counterparty-chain network fees are separate and shown when the daemon reports them.',
                   style: TextStyle(
                     color: AppTheme.textMuted,
                     fontSize: 10,

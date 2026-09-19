@@ -2,6 +2,7 @@ pub mod bitcoin;
 pub mod btc_rpc;
 pub mod evm;
 pub mod evm_rpc;
+pub mod mpt;
 
 pub use bitcoin::BitcoinChain;
 pub use btc_rpc::BtcRpcClient;
@@ -11,8 +12,12 @@ pub use evm_rpc::EvmRpcClient;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
-/// Supported chains for SPV verification.
-/// Matches actual fuego-suite + Flutter wallet supported chains.
+/// Chains the swap daemon can carry a counterparty leg on, plus Fuego.
+///
+/// One variant per `XfgSwap::SwapPair` (fuego-suite
+/// `src/SwapDaemon/SwapTypes.h:77`). This enum previously listed 13 chains
+/// against the daemon's 29, so `from_symbol` returned `None` for two thirds
+/// of them and `EvmChain::new` rejected every EVM chain added after Polygon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChainType {
     Fuego,
@@ -28,6 +33,23 @@ pub enum ChainType {
     Bitcoin,
     Litecoin,
     Polygon,
+    Gleec,
+    Robinhood,
+    Avalanche,
+    Cronos,
+    Bob,
+    Sia,
+    Unichain,
+    Plasma,
+    Dogecoin,
+    Dash,
+    Zcash,
+    PulseChain,
+    Zano,
+    Monad,
+    Optimism,
+    Ton,
+    Polkadot,
 }
 
 impl ChainType {
@@ -46,6 +68,23 @@ impl ChainType {
             Self::Bitcoin => "Bitcoin",
             Self::Litecoin => "Litecoin",
             Self::Polygon => "Polygon",
+            Self::Gleec => "Gleec Chain",
+            Self::Robinhood => "Robinhood Chain",
+            Self::Avalanche => "Avalanche",
+            Self::Cronos => "Cronos",
+            Self::Bob => "BOB",
+            Self::Sia => "Sia",
+            Self::Unichain => "Unichain",
+            Self::Plasma => "Plasma",
+            Self::Dogecoin => "Dogecoin",
+            Self::Dash => "Dash",
+            Self::Zcash => "Zcash",
+            Self::PulseChain => "PulseChain",
+            Self::Zano => "Zano",
+            Self::Monad => "Monad",
+            Self::Optimism => "Optimism",
+            Self::Ton => "TON",
+            Self::Polkadot => "Polkadot",
         }
     }
 
@@ -64,15 +103,97 @@ impl ChainType {
             Self::Bitcoin => "BTC",
             Self::Litecoin => "LTC",
             Self::Polygon => "POLY",
+            Self::Gleec => "GLEEC",
+            Self::Robinhood => "RHC",
+            Self::Avalanche => "AVAX",
+            Self::Cronos => "CRO",
+            Self::Bob => "BOB",
+            Self::Sia => "SIA",
+            Self::Unichain => "UNI",
+            Self::Plasma => "XPL",
+            Self::Dogecoin => "DOGE",
+            Self::Dash => "DASH",
+            Self::Zcash => "ZEC",
+            Self::PulseChain => "PLS",
+            Self::Zano => "ZANO",
+            Self::Monad => "MON",
+            Self::Optimism => "OP",
+            Self::Ton => "TON",
+            Self::Polkadot => "DOT",
+        }
+    }
+
+    /// Base-unit decimals. Used to scale an on-chain amount; getting it wrong
+    /// is a power-of-ten error in a value the counterparty verifies.
+    pub fn decimals(&self) -> u8 {
+        match self {
+            Self::Fuego => 7,
+            Self::Solana => 9,
+            Self::Ethereum => 18,
+            Self::Monero => 12,
+            Self::BitcoinCash => 8,
+            Self::Arbitrum => 18,
+            Self::Base => 18,
+            Self::Komodo => 8,
+            Self::Bnb => 18,
+            Self::Decred => 8,
+            Self::Bitcoin => 8,
+            Self::Litecoin => 8,
+            Self::Polygon => 18,
+            Self::Gleec => 18,
+            Self::Robinhood => 18,
+            Self::Avalanche => 18,
+            Self::Cronos => 18,
+            Self::Bob => 18,
+            Self::Sia => 24,
+            Self::Unichain => 18,
+            Self::Plasma => 18,
+            Self::Dogecoin => 8,
+            Self::Dash => 8,
+            Self::Zcash => 8,
+            Self::PulseChain => 18,
+            Self::Zano => 12,
+            Self::Monad => 18,
+            Self::Optimism => 18,
+            Self::Ton => 9,
+            Self::Polkadot => 10,
         }
     }
 
     pub fn is_bitcoin_family(&self) -> bool {
-        matches!(self, Self::BitcoinCash | Self::Komodo | Self::Decred | Self::Bitcoin | Self::Litecoin)
+        matches!(self, Self::BitcoinCash | Self::Komodo | Self::Decred | Self::Bitcoin | Self::Litecoin | Self::Dogecoin | Self::Dash | Self::Zcash)
     }
 
     pub fn is_evm(&self) -> bool {
-        matches!(self, Self::Ethereum | Self::Arbitrum | Self::Base | Self::Bnb | Self::Polygon)
+        matches!(self, Self::Ethereum | Self::Arbitrum | Self::Base | Self::Bnb | Self::Polygon | Self::Gleec | Self::Robinhood | Self::Avalanche | Self::Cronos | Self::Bob | Self::Unichain | Self::Plasma | Self::PulseChain | Self::Monad | Self::Optimism)
+    }
+
+    /// Canonical EVM chain id, or `None` for a non-EVM chain.
+    ///
+    /// Values match `chains.yaml` in the wallet, which is what the wallet's
+    /// RPC layer is generated from. NOTE: fuego-suite's
+    /// `ChainClientConfig.cpp` defaults `monad_chain_id` to 185 while
+    /// `chains.yaml` says 143 — one of the two is wrong, and a mismatch makes
+    /// the wrong-network guard reject every Monad proof.
+    pub fn evm_chain_id(&self) -> Option<u64> {
+        match self {
+            Self::Ethereum => Some(1),
+            Self::Arbitrum => Some(42161),
+            Self::Base => Some(8453),
+            Self::Bnb => Some(56),
+            Self::Polygon => Some(137),
+            Self::Gleec => Some(11169),
+            Self::Robinhood => Some(4663),
+            Self::Avalanche => Some(43114),
+            Self::Cronos => Some(25),
+            Self::Bob => Some(60808),
+            Self::Unichain => Some(130),
+            Self::Plasma => Some(9745),
+            Self::PulseChain => Some(369),
+            Self::Monad => Some(143),
+            Self::Optimism => Some(10),
+            _ => None,
+        }
     }
 
     pub fn all() -> &'static [ChainType] {
@@ -90,11 +211,29 @@ impl ChainType {
             Self::Bitcoin,
             Self::Litecoin,
             Self::Polygon,
+            Self::Gleec,
+            Self::Robinhood,
+            Self::Avalanche,
+            Self::Cronos,
+            Self::Bob,
+            Self::Sia,
+            Self::Unichain,
+            Self::Plasma,
+            Self::Dogecoin,
+            Self::Dash,
+            Self::Zcash,
+            Self::PulseChain,
+            Self::Zano,
+            Self::Monad,
+            Self::Optimism,
+            Self::Ton,
+            Self::Polkadot,
         ]
     }
 
+    /// Accepts tickers and the daemon's own aliases.
     pub fn from_symbol(sym: &str) -> Option<Self> {
-        match sym.to_uppercase().as_str() {
+        match sym.trim().to_uppercase().as_str() {
             "XFG" => Some(Self::Fuego),
             "SOL" => Some(Self::Solana),
             "ETH" => Some(Self::Ethereum),
@@ -102,12 +241,29 @@ impl ChainType {
             "BCH" => Some(Self::BitcoinCash),
             "ARB" => Some(Self::Arbitrum),
             "BASE" => Some(Self::Base),
-            "KMD" => Some(Self::Komodo),
+            "KMD" | "KMD_SPV" => Some(Self::Komodo),
             "BNB" | "BSC" => Some(Self::Bnb),
             "DCR" => Some(Self::Decred),
             "BTC" => Some(Self::Bitcoin),
             "LTC" => Some(Self::Litecoin),
             "POLY" | "POLYGON" => Some(Self::Polygon),
+            "GLEEC" => Some(Self::Gleec),
+            "RHC" | "ROBINHOOD" => Some(Self::Robinhood),
+            "AVAX" => Some(Self::Avalanche),
+            "CRO" => Some(Self::Cronos),
+            "BOB" => Some(Self::Bob),
+            "SC" | "SIA" => Some(Self::Sia),
+            "UNI" | "UNICHAIN" => Some(Self::Unichain),
+            "PLASMA" | "XPL" => Some(Self::Plasma),
+            "DOGE" => Some(Self::Dogecoin),
+            "DASH" => Some(Self::Dash),
+            "ZEC" => Some(Self::Zcash),
+            "PLS" | "PULS" | "PULSEX" => Some(Self::PulseChain),
+            "ZANO" => Some(Self::Zano),
+            "MON" | "MONAD" => Some(Self::Monad),
+            "OP" | "OPTIMISM" => Some(Self::Optimism),
+            "TON" => Some(Self::Ton),
+            "DOT" | "POLKADOT" => Some(Self::Polkadot),
             _ => None,
         }
     }
@@ -143,7 +299,10 @@ pub struct MerkleProof {
 pub struct PaymentProof {
     pub chain: ChainType,
     pub tx_hash: String,
-    pub amount: u64,
+    /// Base units. `u128`, not `u64`: wei caps a `u64` at ~18.44 ETH, so any
+    /// larger lock on an 18-decimal chain could not be represented and the
+    /// amount check failed closed on every one of them.
+    pub amount: u128,
     pub from_address: String,
     pub to_address: String,
     pub confirmations: u32,
@@ -188,7 +347,7 @@ pub trait ChainSpv: Send + Sync {
         tx_hash: &str,
         from_address: &str,
         to_address: &str,
-        amount: u64,
+        amount: u128,
     ) -> Result<PaymentProof>;
 
     /// Verify a payment proof (merkle + confirmations).

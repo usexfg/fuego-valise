@@ -35,7 +35,7 @@ class FuegoDaemonClient {
 
   // ── ΗΞΔŦ Stablecoin ──
 
-  /// Get ΗΞΔŦ metrics: supply, redemption price, treasury, CD yield
+  /// Get ΗΞΔŦ metrics: supply, mint price, treasury, CD yield
   Future<HeatMetrics> getHeatMetrics() async {
     final result = await _daemonGet('/heat_metrics');
     return HeatMetrics.fromJson(result);

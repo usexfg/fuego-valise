@@ -118,21 +118,46 @@ void main() {
 
   group('HeatMetrics', () {
     test('APY is null when the daemon does not report a rate', () {
-      // on_get_heat_metrics assigns every field EXCEPT redemption_rate_num
-      // and redemption_rate_denom, so a zero denominator means "unreported".
+      // on_get_heat_metrics assigns every field EXCEPT the rate pair, so a
+      // zero denominator means "unreported".
       final m = HeatMetrics.fromJson({'status': 'OK'});
       expect(m.currentApy, isNull);
       expect(m.cdYield, '—');
     });
 
-    test('reports the rate when the daemon fills it', () {
+    test('reads the daemon legacy redemption_* keys', () {
+      // There is no redemption for ΗΞΔŦ — the wallet calls this the mint
+      // price — but the daemon's JSON keys still say redemption_*, so the
+      // parse must keep accepting them.
       final m = HeatMetrics.fromJson({
         'redemption_rate_num': 5,
         'redemption_rate_denom': 100,
+        'redemption_price_num': 1,
+        'redemption_price_denom': 10,
         'status': 'OK',
       });
       expect(m.currentApy, closeTo(5.0, 1e-9));
       expect(m.cdYield, '5.00%');
+      expect(m.mintPriceValue, closeTo(0.1, 1e-9));
+      expect(m.formattedMintPrice, '0.100000 ΗΞΔŦ/XFG');
+    });
+
+    test('prefers mint_* keys when the daemon sends them', () {
+      final m = HeatMetrics.fromJson({
+        'mint_price_num': 1,
+        'mint_price_denom': 4,
+        'redemption_price_num': 9,
+        'redemption_price_denom': 1,
+        'status': 'OK',
+      });
+      expect(m.mintPriceValue, closeTo(0.25, 1e-9));
+    });
+
+    test('no mint price reported reads as unknown, not zero', () {
+      final m = HeatMetrics.fromJson({'status': 'OK'});
+      expect(m.mintPriceValue, isNull);
+      expect(m.mintPrice, '—');
+      expect(m.formattedMintPrice, '—');
     });
 
     test('balances render in display units', () {

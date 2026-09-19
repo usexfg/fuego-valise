@@ -97,14 +97,27 @@ display tickers for five pairs — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`,
 - `COIN = 10^7` for **both** XFG and ΗΞΔŦ.
 - `amm_quote.input_amount` is a uint64 of atomic units.
 - `spot_price` is HEAT-per-XFG × COIN, so the human ratio is `spot_price / COIN`.
+- **There is no redemption for ΗΞΔŦ.** XFG is burned to mint it; nothing
+  converts it back. The daemon's JSON keys still read `redemption_price_*` /
+  `redemption_rate_*` — that naming is legacy. Wallet-side the concept is the
+  **mint price**, and `HeatMetrics` accepts `mint_*` keys as well so a daemon
+  rename needs no wallet change.
 - `mint_heat` takes `xfg_burned` **only**. walletd derives the ΗΞΔŦ side as
   `xfg_burned * spot_price / COIN`, matching `HeatMintEngine::validateMint`,
   which rejects `heatOutputs > expectedHeatFor(xfgBurned, price)`. Naming the
   ΗΞΔŦ amount client-side gets the mint rejected below parity and silently
   under-mints above it.
 - `place_limit_order.price` is a human decimal; walletd scales it by COIN.
-- Hearth taker fee: `HEARTH_FEE_BPS = 100` (1%), split
-  `HEARTH_CD_SHARE_PCT = 70` / `HEARTH_MAKER_REBATE_BPS = 30`.
+## Two different 1% fees — do not mix them up
+
+| | Constant | Rate | Split |
+|---|---|---|---|
+| **Atomic swap** | `SWAP_FEE_RATE_BPS = 100` | 1% of the claim/refund amount | `SWAP_FEE_CD_SHARE_PCT 69` / `SWAP_FEE_BONUS_VAULT_PCT 11` / `SWAP_FEE_TREASURY_SHARE_PCT 20` |
+| **Hearth** | `HEARTH_FEE_BPS = 100` | 1% taker fee | `HEARTH_CD_SHARE_PCT 70` / `HEARTH_MAKER_REBATE_BPS 30` |
+
+Both are 1%, and that is the whole trap: they are separate fees on separate
+paths with different splits. `swap_amount_row.dart` is the atomic-swap widget
+and shows 69/11/20.
 - Network fee: `MINIMUM_FEE = MINIMUM_FEE_8KH = 8000` (0.0008 XFG). The 0.008
   figure is the retired V2 fee.
 
@@ -138,17 +151,40 @@ display tickers for five pairs — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`,
 
 Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
-- `types.rs`: SwapPair enum (12 pairs), SwapOffer, SwapPrice, SwapTrade, SwapStatus
-- `chain/mod.rs`: ChainType enum (13 chains including Fuego), ChainSpv trait
+- `types.rs`: `SwapPair` — all **29** ids (0-28), with `ticker()`,
+  `daemon_name()`, `is_staged()`, `registered()`
+- `chain/mod.rs`: `ChainType` — one variant per pair plus Fuego, with
+  `decimals()` and `evm_chain_id()`
+- `chain/mpt.rs`: RLP + Merkle-Patricia Trie + EIP-2718 receipt encoding
 - `chain/bitcoin.rs`: Bitcoin-family SPV adapter (BTC, LTC, BCH, KMD, DCR)
-- `chain/evm.rs`: EVM chain adapter (ETH, ARB, BASE, BNB, POLYGON)
-- `chain/btc_rpc.rs`: Bitcoin JSON-RPC client
-- `chain/evm_rpc.rs`: Ethereum JSON-RPC client
+- `chain/evm.rs`: EVM adapter with receipt-trie verification
+- `chain/btc_rpc.rs` / `chain/evm_rpc.rs`: JSON-RPC clients
+- `orderbook.rs`: fuegod orderbook + Hearth AMM client
 
-### ChainType Methods
-- `is_bitcoin_family()`: BitcoinCash, Komodo, Decred, Bitcoin, Litecoin
-- `is_evm()`: Ethereum, Arbitrum, Base, Bnb, Polygon
-- `from_symbol()`: Accepts "BSC" as alias for Bnb, "POLYGON"/"POLY" for Polygon
+### ChainType methods
+- `is_bitcoin_family()`: BCH, KMD, DCR, BTC, LTC, DOGE, DASH, ZEC (8)
+- `is_evm()`: ETH, ARB, BASE, BNB, POLY, GLEEC, RHC, AVAX, CRO, BOB, UNI,
+  XPL, PLS, MON, OP (15)
+- `decimals()`: base-unit decimals per chain
+- `evm_chain_id()`: canonical id, `None` for non-EVM
+- `from_symbol()`: tickers plus the daemon's aliases (`BSC`, `POLYGON`,
+  `KMD_SPV`, `POLKADOT`, …)
+
+### EVM verification
+`verify_merkle` rebuilds the block's receipt trie from every receipt in the
+block and compares the root against the header's `receiptsRoot`, so a receipt
+cannot be invented and `verify_payment_proof` now calls it.
+
+**It does not prove the header is canonical.** The header comes from the same
+RPC and is not checked against a stored header chain. A node that lies about
+which block is canonical is still believed. Do not call this full SPV until a
+header store with a checkpoint lands, the way the UTXO side has one.
+
+### Known upstream conflict
+`chains.yaml` gives Monad `chainId: 143`; fuego-suite
+`ChainClientConfig.cpp` defaults `monad_chain_id` to **185**. They cannot both
+be right, and a mismatch makes the wrong-network guard reject every Monad
+proof. The SDK follows `chains.yaml`.
 
 ## CI / Build
 

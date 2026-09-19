@@ -44,7 +44,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       _rateError = null;
     });
     try {
-      // The mint rate is the live pool ratio, not the redemption price.
+      // The mint rate is the live pool ratio.
       // walletd sizes the mint as `xfg_burned * spot_price / COIN`, and
       // SimpleWallet's `mint_heat` uses `reserveHeat / reserveXfg` from
       // /amm_pool_info. Quoting anything else misstates what the user gets.

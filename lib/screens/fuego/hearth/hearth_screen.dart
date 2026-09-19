@@ -453,13 +453,30 @@ children: [
       );
     }
     final book = state.orderBookState!;
-    final maxTotal = book.asks.isNotEmpty
-        ? book.asks.map((e) => double.tryParse(e.amount) ?? 0).reduce((a, b) => a > b ? a : b)
-        : 1.0;
-    final maxBidTotal = book.bids.isNotEmpty
-        ? book.bids.map((e) => double.tryParse(e.amount) ?? 0).reduce((a, b) => a > b ? a : b)
-        : 1.0;
-    final globalMax = maxTotal > maxBidTotal ? maxTotal : maxBidTotal;
+    if (book.isEmpty) {
+      return const Center(
+        child: Text(
+          'Order book is empty',
+          style: TextStyle(color: HearthTheme.textMuted, fontSize: 13),
+        ),
+      );
+    }
+    // Depth bars scale on the descaled amounts. The old code parsed the raw
+    // atomic string, so a 1 XFG level read as 10,000,000.
+    final maxAsk = book.asks.isNotEmpty
+        ? book.asks.map((e) => e.amount).reduce((a, b) => a > b ? a : b)
+        : 0.0;
+    final maxBid = book.bids.isNotEmpty
+        ? book.bids.map((e) => e.amount).reduce((a, b) => a > b ? a : b)
+        : 0.0;
+    final globalMax = maxAsk > maxBid ? maxAsk : maxBid;
+
+    // Asks ascend by price; rendering them reversed puts the best ask next to
+    // the spread bar. Sort explicitly — the daemon does not promise an order.
+    final asks = [...book.asks]
+      ..sort((a, b) => a.priceAtomic.compareTo(b.priceAtomic));
+    final bids = [...book.bids]
+      ..sort((a, b) => b.priceAtomic.compareTo(a.priceAtomic));
 
     return Column(
       children: [
@@ -467,19 +484,17 @@ children: [
         Expanded(
           flex: 4,
           child: ListView.builder(
-            itemCount: book.asks.length,
+            itemCount: asks.length,
             reverse: true,
-            itemBuilder: (context, i) =>
-                _depthRow(book.asks[i], false, globalMax),
+            itemBuilder: (context, i) => _depthRow(asks[i], false, globalMax),
           ),
         ),
         _spreadBar(book, state),
         Expanded(
           flex: 4,
           child: ListView.builder(
-            itemCount: book.bids.length,
-            itemBuilder: (context, i) =>
-                _depthRow(book.bids[i], true, globalMax),
+            itemCount: bids.length,
+            itemBuilder: (context, i) => _depthRow(bids[i], true, globalMax),
           ),
         ),
       ],
@@ -517,8 +532,7 @@ children: [
   }
 
   Widget _depthRow(OrderBookLevel level, bool isBid, double globalMax) {
-    final amount = double.tryParse(level.amount) ?? 0.0;
-    final pct = globalMax > 0 ? (amount / globalMax).clamp(0.0, 1.0) : 0.0;
+    final pct = globalMax > 0 ? (level.amount / globalMax).clamp(0.0, 1.0) : 0.0;
     final color = isBid ? HearthTheme.bidPrimary : HearthTheme.askPrimary;
     final depthColor = isBid ? HearthTheme.bidDepth : HearthTheme.askDepth;
     return Stack(
@@ -538,7 +552,7 @@ children: [
             children: [
               Expanded(
                 child: Text(
-                  level.price,
+                  level.priceDisplay,
                   style: HearthTheme.mono(
                     size: 12,
                     weight: FontWeight.w600,
@@ -548,7 +562,7 @@ children: [
               ),
               Expanded(
                 child: Text(
-                  level.amount,
+                  level.amountDisplay,
                   style: HearthTheme.mono(
                     size: 11,
                     color: HearthTheme.textSecondary,
@@ -558,7 +572,9 @@ children: [
               ),
               Expanded(
                 child: Text(
-                  '${level.orderCount}',
+                  // The header calls this column Total, so show the level's
+                  // ΗΞΔŦ depth, not the order count.
+                  level.totalHeat.toStringAsFixed(4),
                   style: HearthTheme.mono(
                     size: 11,
                     color: HearthTheme.textMuted,
@@ -574,7 +590,14 @@ children: [
   }
 
   Widget _spreadBar(OrderBookState book, HearthState state) {
-    final spot = book.bestAsk?.price ?? book.spread;
+    // Mid when both sides are present, else the best quote, else the daemon's
+    // spread — all in ΗΞΔŦ per XFG, never the raw atomic integer.
+    final mid = book.mid;
+    final spot = mid != null
+        ? mid.toStringAsFixed(7)
+        : (book.bestAsk?.priceDisplay ??
+            book.bestBid?.priceDisplay ??
+            book.spreadDisplay);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: const BoxDecoration(

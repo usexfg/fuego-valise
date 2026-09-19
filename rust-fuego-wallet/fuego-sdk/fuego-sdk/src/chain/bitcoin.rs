@@ -122,7 +122,7 @@ impl ChainSpv for BitcoinChain {
         tx_hash: &str,
         from_address: &str,
         to_address: &str,
-        amount: u64,
+        amount: u128,
     ) -> Result<PaymentProof> {
         let merkle = self.get_merkle_proof(tx_hash).await?;
         let header = self.get_header(merkle.block_height).await?;
@@ -181,13 +181,20 @@ impl ChainSpv for BitcoinChain {
             let value_sat = vout
                 .get("value")
                 .and_then(|v| v.as_f64())
-                .map(|v| (v * 1e8).round() as u64);
-            let addresses: Vec<&str> = vout
-                .get("scriptPubKey")
+                .map(|v| (v * 1e8).round() as u128);
+            // Bitcoin Core 22.0 replaced `scriptPubKey.addresses` (array) with
+            // `scriptPubKey.address` (single). Reading only the old field made
+            // this check fail against every modern node, so no BTC-family lock
+            // could verify. Accept both.
+            let spk = vout.get("scriptPubKey");
+            let mut addresses: Vec<&str> = spk
                 .and_then(|s| s.get("addresses"))
                 .and_then(|a| a.as_array())
                 .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
                 .unwrap_or_default();
+            if let Some(single) = spk.and_then(|s| s.get("address")).and_then(|a| a.as_str()) {
+                addresses.push(single);
+            }
             if value_sat == Some(proof.amount) && addresses.iter().any(|a| *a == proof.to_address) {
                 pays_expected = true;
                 break;
