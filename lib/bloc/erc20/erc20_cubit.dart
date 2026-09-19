@@ -107,7 +107,7 @@ class Erc20Cubit extends Cubit<Erc20State> {
     try {
       final Map<String, List<Erc20Balance>> next = {};
       for (final chain in EvmChainKey.values) {
-        final tokens = await CustomTokenStore.instance.tokensForChain(chain.key);
+        final tokens = await CustomTokenStore.instance.forChain(chain.key);
         final List<Erc20Balance> balances = [];
         for (final token in tokens) {
           try {
@@ -140,7 +140,7 @@ class Erc20Cubit extends Cubit<Erc20State> {
     final addr = state.address;
     if (addr == null || addr.isEmpty) return;
     final k = chainKey.toLowerCase();
-    final tokens = await CustomTokenStore.instance.tokensForChain(k);
+    final tokens = await CustomTokenStore.instance.forChain(k);
     if (tokens.isEmpty) return;
     emit(state.copyWith(isLoading: true, clearError: true));
     try {

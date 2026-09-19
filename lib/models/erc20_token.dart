@@ -55,6 +55,41 @@ enum EvmChainKey {
   }
 }
 
+/// What an entry actually is.
+///
+/// This replaces the old `isNativeStable` boolean, which had to carry two
+/// unrelated meanings at once: "is a dollar stable" and "is the canonical
+/// one on this chain". A bridged stable (USDC.e, oUSDT) and a non-stable
+/// token both read `false` under that boolean, which is wrong — the first
+/// is a dollar, the second is not.
+enum Erc20Kind {
+  /// Canonical dollar stable issued natively on that chain.
+  nativeStable,
+
+  /// Dollar stable, but a bridged / wrapped / mesh representation.
+  bridgedStable,
+
+  /// Not a dollar stable. Registry entries, every user-added contract, and
+  /// the default — an entry that declares nothing is never claimed to be a
+  /// dollar.
+  token;
+
+  bool get isStable => this != Erc20Kind.token;
+}
+
+/// Which slice of a token list to return.
+enum Erc20Filter {
+  all,
+  stables,
+  tokens;
+
+  bool accepts(Erc20Kind kind) => switch (this) {
+        Erc20Filter.all => true,
+        Erc20Filter.stables => kind.isStable,
+        Erc20Filter.tokens => !kind.isStable,
+      };
+}
+
 /// Single ERC20 token definition.
 class Erc20Token {
   final String address; // 0x checksum or lowercase — both accepted
@@ -62,7 +97,7 @@ class Erc20Token {
   final String name;
   final int decimals; // expected decimals — runtime query may override
   final EvmChainKey chain;
-  final bool isNativeStable; // true for canonical USDT/USDC on that chain
+  final Erc20Kind kind;
 
   const Erc20Token({
     required this.address,
@@ -70,11 +105,18 @@ class Erc20Token {
     required this.name,
     required this.decimals,
     required this.chain,
-    this.isNativeStable = true,
+    this.kind = Erc20Kind.token,
   });
 
   String get chainKey => chain.key;
   int get chainId => chain.chainId;
+
+  /// A dollar stable, native or bridged.
+  bool get isStable => kind.isStable;
+
+  /// The canonical native stable on this chain — not a bridged variant and
+  /// not a non-stable token.
+  bool get isNativeStable => kind == Erc20Kind.nativeStable;
 
   /// Lowercase address for comparison.
   String get lcAddress => address.toLowerCase();
@@ -86,6 +128,7 @@ class Erc20Token {
         'decimals': decimals,
         'chain': chainKey,
         'chainId': chainId,
+        'kind': kind.name,
       };
 
   @override
@@ -104,8 +147,8 @@ class Erc20Token {
 /// Registry of well-known tokens per EVM chain.
 ///
 /// Contract addresses are mainnet. For bridged variants the canonical
-/// native stable is listed first. Entries that are not dollar stables carry
-/// `isNativeStable: false`.
+/// native stable is listed first. Every entry carries an [Erc20Kind]; query
+/// with [Erc20Filter] to keep dollar stables and everything else apart.
 class Erc20Registry {
   // ETH mainnet
   static const usdtEth = Erc20Token(
@@ -114,6 +157,7 @@ class Erc20Registry {
     name: 'Tether USD',
     decimals: 6,
     chain: EvmChainKey.eth,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcEth = Erc20Token(
     address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
@@ -121,6 +165,7 @@ class Erc20Registry {
     name: 'USD Coin',
     decimals: 6,
     chain: EvmChainKey.eth,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Arbitrum One
@@ -130,6 +175,7 @@ class Erc20Registry {
     name: 'Tether USD (Arb)',
     decimals: 6,
     chain: EvmChainKey.arb,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcArb = Erc20Token(
     address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
@@ -137,6 +183,7 @@ class Erc20Registry {
     name: 'USD Coin (Arb)',
     decimals: 6,
     chain: EvmChainKey.arb,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcArbNative = Erc20Token(
     address: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8',
@@ -144,7 +191,7 @@ class Erc20Registry {
     name: 'USD Coin (Bridged)',
     decimals: 6,
     chain: EvmChainKey.arb,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
 
   // Base
@@ -154,6 +201,7 @@ class Erc20Registry {
     name: 'USD Coin (Base)',
     decimals: 6,
     chain: EvmChainKey.base,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdtBase = Erc20Token(
     address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
@@ -161,6 +209,7 @@ class Erc20Registry {
     name: 'Tether USD (Base)',
     decimals: 6,
     chain: EvmChainKey.base,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Venice AI (VVV) on Base — not a stablecoin. Access token for private
@@ -172,7 +221,7 @@ class Erc20Registry {
     name: 'Venice Token',
     decimals: 18,
     chain: EvmChainKey.base,
-    isNativeStable: false,
+    kind: Erc20Kind.token,
   );
 
   // BNB Chain — BEP20 stablecoins use 18 decimals on BSC
@@ -182,6 +231,7 @@ class Erc20Registry {
     name: 'Tether USD (BSC)',
     decimals: 18,
     chain: EvmChainKey.bsc,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcBsc = Erc20Token(
     address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
@@ -189,6 +239,7 @@ class Erc20Registry {
     name: 'USD Coin (BSC)',
     decimals: 18,
     chain: EvmChainKey.bsc,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Polygon PoS
@@ -198,6 +249,7 @@ class Erc20Registry {
     name: 'Tether USD (Polygon)',
     decimals: 6,
     chain: EvmChainKey.poly,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcPoly = Erc20Token(
     address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
@@ -205,6 +257,7 @@ class Erc20Registry {
     name: 'USD Coin (Polygon)',
     decimals: 6,
     chain: EvmChainKey.poly,
+    kind: Erc20Kind.nativeStable,
   );
 
   // OP Mainnet
@@ -214,6 +267,7 @@ class Erc20Registry {
     name: 'Tether USD (OP)',
     decimals: 6,
     chain: EvmChainKey.op,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcOp = Erc20Token(
     address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
@@ -221,6 +275,7 @@ class Erc20Registry {
     name: 'USD Coin (OP)',
     decimals: 6,
     chain: EvmChainKey.op,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcOpBridged = Erc20Token(
     address: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
@@ -228,7 +283,7 @@ class Erc20Registry {
     name: 'USD Coin (Bridged, OP)',
     decimals: 6,
     chain: EvmChainKey.op,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
 
   // Avalanche C-Chain
@@ -238,6 +293,7 @@ class Erc20Registry {
     name: 'Tether USD (Avalanche)',
     decimals: 6,
     chain: EvmChainKey.avax,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcAvax = Erc20Token(
     address: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
@@ -245,6 +301,7 @@ class Erc20Registry {
     name: 'USD Coin (Avalanche)',
     decimals: 6,
     chain: EvmChainKey.avax,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Cronos — native Circle USDC launched Jun 2026; old bridged relabeled USDC.e
@@ -254,6 +311,7 @@ class Erc20Registry {
     name: 'Tether USD (Cronos)',
     decimals: 6,
     chain: EvmChainKey.cro,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcCro = Erc20Token(
     address: '0x3D7F2C478aAfdB65542BCB44bCeeC05849999d2D',
@@ -261,6 +319,7 @@ class Erc20Registry {
     name: 'USD Coin (Cronos)',
     decimals: 6,
     chain: EvmChainKey.cro,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Monad — USDT is the LayerZero OFT "USDT0"
@@ -270,6 +329,7 @@ class Erc20Registry {
     name: 'USD Coin (Monad)',
     decimals: 6,
     chain: EvmChainKey.monad,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdt0Monad = Erc20Token(
     address: '0xe7cd86e13AC4309349F30B3435a9d337750fC82D',
@@ -277,6 +337,7 @@ class Erc20Registry {
     name: 'Tether USD (Monad, OFT)',
     decimals: 6,
     chain: EvmChainKey.monad,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Plasma (XPL) — native Tether-issued USDT0, zero-gas P2P transfers
@@ -286,6 +347,7 @@ class Erc20Registry {
     name: 'Tether USD (Plasma)',
     decimals: 6,
     chain: EvmChainKey.xpl,
+    kind: Erc20Kind.nativeStable,
   );
 
   // PulseChain — ONLY the redeemable bridged versions; forked pUSDT/pUSDC
@@ -296,6 +358,7 @@ class Erc20Registry {
     name: 'Tether USD (Bridged to PulseChain)',
     decimals: 6,
     chain: EvmChainKey.pls,
+    kind: Erc20Kind.nativeStable,
   );
   static const eusdcPls = Erc20Token(
     address: '0x15d38573d2feeb82e7ad5187ab8c1d52810b1f07',
@@ -303,6 +366,7 @@ class Erc20Registry {
     name: 'USD Coin (Bridged to PulseChain)',
     decimals: 6,
     chain: EvmChainKey.pls,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Unichain
@@ -312,6 +376,7 @@ class Erc20Registry {
     name: 'USD Coin (Unichain)',
     decimals: 6,
     chain: EvmChainKey.uni,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdt0Uni = Erc20Token(
     address: '0x9151434b16b9763660705744891fa906f660ecc5',
@@ -319,6 +384,7 @@ class Erc20Registry {
     name: 'Tether USD (Unichain, OFT)',
     decimals: 6,
     chain: EvmChainKey.uni,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Robinhood Chain — Paxos USDG is the canonical dollar stable there;
@@ -329,6 +395,7 @@ class Erc20Registry {
     name: 'Global Dollar (Robinhood Chain)',
     decimals: 6,
     chain: EvmChainKey.rh,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Linea / ZKsync Era — Circle-verified native USDC
@@ -338,6 +405,7 @@ class Erc20Registry {
     name: 'USD Coin (Linea)',
     decimals: 6,
     chain: EvmChainKey.linea,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcZksync = Erc20Token(
     address: '0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4',
@@ -345,6 +413,7 @@ class Erc20Registry {
     name: 'USD Coin (ZKsync Era)',
     decimals: 6,
     chain: EvmChainKey.zksync,
+    kind: Erc20Kind.nativeStable,
   );
 
   // OpenUSDT (oUSDT) — Velodrome/Chainlink/Hyperlane collab. SuperchainERC20
@@ -358,7 +427,7 @@ class Erc20Registry {
     name: 'OpenUSDT (Optimism)',
     decimals: 6,
     chain: EvmChainKey.op,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
   static const ousdtBase = Erc20Token(
     address: _ousdtAddress,
@@ -366,7 +435,7 @@ class Erc20Registry {
     name: 'OpenUSDT (Base)',
     decimals: 6,
     chain: EvmChainKey.base,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
   static const ousdtBob = Erc20Token(
     address: _ousdtAddress,
@@ -374,7 +443,7 @@ class Erc20Registry {
     name: 'OpenUSDT (BOB)',
     decimals: 6,
     chain: EvmChainKey.bob,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
   static const ousdtUni = Erc20Token(
     address: _ousdtAddress,
@@ -382,7 +451,7 @@ class Erc20Registry {
     name: 'OpenUSDT (Unichain)',
     decimals: 6,
     chain: EvmChainKey.uni,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
   static const ousdtInk = Erc20Token(
     address: _ousdtAddress,
@@ -390,7 +459,7 @@ class Erc20Registry {
     name: 'OpenUSDT (Ink)',
     decimals: 6,
     chain: EvmChainKey.ink,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
 
   // HyperEVM / Ink / Plume — Circle-verified native USDC
@@ -400,6 +469,7 @@ class Erc20Registry {
     name: 'USD Coin (HyperEVM)',
     decimals: 6,
     chain: EvmChainKey.hyperevm,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcInk = Erc20Token(
     address: '0x2D270e6886d130D724215A266106e6832161EAEd',
@@ -407,6 +477,7 @@ class Erc20Registry {
     name: 'USD Coin (Ink)',
     decimals: 6,
     chain: EvmChainKey.ink,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcPlume = Erc20Token(
     address: '0x222365EF19F7947e5484218551B56bb3965Aa7aF',
@@ -414,6 +485,7 @@ class Erc20Registry {
     name: 'USD Coin (Plume)',
     decimals: 6,
     chain: EvmChainKey.plume,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Soneium — Sony OP-Stack L2 (1868), bridged stables + oUSDT mesh
@@ -423,6 +495,7 @@ class Erc20Registry {
     name: 'Tether USD (Soneium)',
     decimals: 6,
     chain: EvmChainKey.soneium,
+    kind: Erc20Kind.nativeStable,
   );
   static const usdcSoneiumBridged = Erc20Token(
     address: '0xbA9986D2381edf1DA03B0B9c1f8b00dc4AacC369',
@@ -430,7 +503,7 @@ class Erc20Registry {
     name: 'USD Coin (Bridged, Soneium)',
     decimals: 6,
     chain: EvmChainKey.soneium,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
   static const ousdtSoneium = Erc20Token(
     address: _ousdtAddress,
@@ -438,7 +511,7 @@ class Erc20Registry {
     name: 'OpenUSDT (Soneium)',
     decimals: 6,
     chain: EvmChainKey.soneium,
-    isNativeStable: false,
+    kind: Erc20Kind.bridgedStable,
   );
 
   // Sei — native Circle USDC (1329)
@@ -448,6 +521,7 @@ class Erc20Registry {
     name: 'USD Coin (Sei)',
     decimals: 6,
     chain: EvmChainKey.sei,
+    kind: Erc20Kind.nativeStable,
   );
 
   // Rootstock, Gnosis, Flare, Kaia, Scroll, Abstract, Doma, Beam,
@@ -478,13 +552,32 @@ class Erc20Registry {
     usdcSei,
   ];
 
-  static List<Erc20Token> forChain(String chainKey) {
+  /// Every dollar stable, native and bridged.
+  static List<Erc20Token> get stables =>
+      all.where((t) => t.isStable).toList();
+
+  /// Everything that is not a dollar stable.
+  static List<Erc20Token> get tokens =>
+      all.where((t) => !t.isStable).toList();
+
+  /// Registry entries for one chain. [filter] defaults to everything —
+  /// callers that mean "stables only" must say so, so the two lists cannot
+  /// quietly merge again.
+  static List<Erc20Token> forChain(
+    String chainKey, {
+    Erc20Filter filter = Erc20Filter.all,
+  }) {
     final k = chainKey.toLowerCase();
-    return all.where((t) => t.chainKey == k).toList();
+    return all
+        .where((t) => t.chainKey == k && filter.accepts(t.kind))
+        .toList();
   }
 
-  static List<Erc20Token> forChainKey(EvmChainKey chain) =>
-      all.where((t) => t.chain == chain).toList();
+  static List<Erc20Token> forChainKey(
+    EvmChainKey chain, {
+    Erc20Filter filter = Erc20Filter.all,
+  }) =>
+      all.where((t) => t.chain == chain && filter.accepts(t.kind)).toList();
 
   static Erc20Token? find(String chainKey, String symbol) {
     final k = chainKey.toLowerCase();

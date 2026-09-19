@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/erc20_token.dart';
 
@@ -6,7 +7,10 @@ import '../models/erc20_token.dart';
 ///
 /// Custom tokens are indistinguishable from registry tokens at the service
 /// layer — they are plain [Erc20Token]s merged into per-chain lists by
-/// [tokensForChain]. Registry entries always win on (chain,address) collision.
+/// [forChain]. Registry entries always win on (chain,address) collision.
+///
+/// Every stored entry is [Erc20Kind.token]: a contract the user pasted in has
+/// not been checked against an issuer, so it never joins the stable list.
 class CustomTokenStore {
   CustomTokenStore._();
   static final CustomTokenStore instance = CustomTokenStore._();
@@ -31,7 +35,7 @@ class CustomTokenStore {
                   decimals: (e['decimals'] as num?)?.toInt() ?? 18,
                   chain: EvmChainKey.fromKey((e['chain'] as String?) ?? '') ??
                       EvmChainKey.eth,
-                  isNativeStable: false,
+                  kind: Erc20Kind.token,
                 ))
             .where((t) => t.address.isNotEmpty)
             .toList();
@@ -71,20 +75,28 @@ class CustomTokenStore {
     return _customs.where((t) => t.chainKey == k).toList();
   }
 
-  /// Registry tokens + user tokens for a chain, deduped by lowercase
+  /// Registry entries + user entries for a chain, deduped by lowercase
   /// address with the registry taking precedence.
-  Future<List<Erc20Token>> tokensForChain(String chainKey) async {
+  ///
+  /// [filter] selects the slice. [Erc20Filter.stables] returns registry
+  /// stables only — a user-added contract is never one.
+  Future<List<Erc20Token>> forChain(
+    String chainKey, {
+    Erc20Filter filter = Erc20Filter.all,
+  }) async {
     final k = chainKey.toLowerCase();
-    final registry = Erc20Registry.forChain(k);
+    final registry = Erc20Registry.forChain(k, filter: filter);
     final customs = await customsFor(k);
-    final seen = registry.map((t) => t.lcAddress).toSet();
-    final extra = customs.where((t) => !seen.contains(t.lcAddress)).toList();
+    final seen = Erc20Registry.forChain(k).map((t) => t.lcAddress).toSet();
+    final extra = customs
+        .where((t) => !seen.contains(t.lcAddress) && filter.accepts(t.kind))
+        .toList();
     return [...registry, ...extra];
   }
 
   Future<bool> exists(String chainKey, String address) async {
     final lc = address.toLowerCase();
-    final tokens = await tokensForChain(chainKey);
+    final tokens = await forChain(chainKey);
     return tokens.any((t) => t.lcAddress == lc);
   }
 
@@ -105,4 +117,11 @@ class CustomTokenStore {
   }
 
   bool isRegistry(Erc20Token token) => Erc20Registry.findByAddress(token.chainKey, token.address) != null;
+
+  /// Drop the in-memory cache so the next read re-parses SharedPreferences.
+  @visibleForTesting
+  void resetForTest() {
+    _customs = [];
+    _loaded = false;
+  }
 }

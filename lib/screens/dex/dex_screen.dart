@@ -31,6 +31,10 @@ class _DexScreenState extends State<DexScreen>
   final _xmrAddressController = TextEditingController();
   List<Candlestick>? _candles;
 
+  /// Which slice the inline ERC20 panel shows. Stables first — that is what
+  /// the panel has always listed.
+  Erc20Filter _erc20Filter = Erc20Filter.stables;
+
   @override
   void initState() {
     super.initState();
@@ -1400,11 +1404,18 @@ class _DexScreenState extends State<DexScreen>
   }
 
   // ── ERC20 balances inline (EVM chains) ──────────────────────────────
+  //
+  // Stables and everything else are separate lists behind a two-chip switch.
+  // Stables is the default, so the panel opens on exactly what it always
+  // showed; a non-stable can never appear under a "Stablecoins" heading.
   Widget _buildErc20Balances(DexState state) {
     final chainKey = _evmChainKey(state.selectedChain);
     if (chainKey == null) return const SizedBox.shrink();
-    final tokens = Erc20Registry.forChain(chainKey);
-    if (tokens.isEmpty) return const SizedBox.shrink();
+    final stables = Erc20Registry.forChain(chainKey, filter: Erc20Filter.stables);
+    final others = Erc20Registry.forChain(chainKey, filter: Erc20Filter.tokens);
+    if (stables.isEmpty && others.isEmpty) return const SizedBox.shrink();
+    final showStables = _erc20Filter == Erc20Filter.stables;
+    final shown = showStables ? stables : others;
     final derived = _deriveEvmAddress(_takerKeyController.text.trim());
     final hasAddr = derived != null && derived.isNotEmpty;
     return Container(
@@ -1421,7 +1432,10 @@ class _DexScreenState extends State<DexScreen>
             children: [
               const Icon(Icons.account_balance_wallet, size: 14, color: AppTheme.textMuted),
               const SizedBox(width: 6),
-              Text('Tokens on ${chainKey.toUpperCase()}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(
+                '${showStables ? 'Stablecoins' : 'Tokens'} on ${chainKey.toUpperCase()}',
+                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TokenOverviewScreen())),
@@ -1430,10 +1444,38 @@ class _DexScreenState extends State<DexScreen>
             ],
           ),
           const SizedBox(height: 8),
-          if (!hasAddr)
-            const Text('Enter your EVM private key above to preview token balances (key stays local).', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
-          if (hasAddr)
-            ...tokens.map((t) => _Erc20BalanceTile(chainKey: chainKey, token: t, holder: derived)),
+          Row(
+            children: [
+              _Erc20FilterChip(
+                label: 'Stables',
+                count: stables.length,
+                selected: showStables,
+                onTap: () => setState(() => _erc20Filter = Erc20Filter.stables),
+              ),
+              const SizedBox(width: 6),
+              _Erc20FilterChip(
+                label: 'Tokens',
+                count: others.length,
+                selected: !showStables,
+                onTap: () => setState(() => _erc20Filter = Erc20Filter.tokens),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (shown.isEmpty)
+            Text(
+              showStables
+                  ? 'No stablecoin verified on ${chainKey.toUpperCase()} yet.'
+                  : 'No tokens listed on ${chainKey.toUpperCase()} — add one under Manage.',
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
+            )
+          else if (!hasAddr)
+            Text(
+              'Enter your EVM private key above to preview ${showStables ? 'stablecoin' : 'token'} balances (key stays local).',
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
+            )
+          else
+            ...shown.map((t) => _Erc20BalanceTile(chainKey: chainKey, token: t, holder: derived)),
         ],
       ),
     );
@@ -1766,6 +1808,51 @@ class _DexScreenState extends State<DexScreen>
           ],
         ),
       );
+}
+
+/// Two-state chip for the inline ERC20 panel. Shows the count so an empty
+/// slice is visible before it is opened.
+class _Erc20FilterChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _Erc20FilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primaryColor.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? AppTheme.primaryColor.withValues(alpha: 0.4)
+                : AppTheme.surfaceColor,
+          ),
+        ),
+        child: Text(
+          '$label ($count)',
+          style: TextStyle(
+            color: selected ? AppTheme.primaryColor : AppTheme.textMuted,
+            fontSize: 10,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Erc20BalanceTile extends StatefulWidget {

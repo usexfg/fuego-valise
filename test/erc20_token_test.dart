@@ -23,6 +23,8 @@ void main() {
       expect(t.name, 'Venice Token');
       expect(t.decimals, 18);
       expect(t.chainId, 8453);
+      expect(t.kind, Erc20Kind.token);
+      expect(t.isStable, isFalse);
       expect(t.isNativeStable, isFalse);
       // 1 VVV must scale by 1e18, not the 6 the Base stables use.
       expect(Erc20Amount.toBaseUnits('1', t.decimals),
@@ -56,6 +58,89 @@ void main() {
       expect(Erc20Registry.forChain('base').length, 4); // USDC + USDT + oUSDT + VVV
       expect(Erc20Registry.forChain('eth').length, 2);
       expect(Erc20Registry.forChain('rsk'), isEmpty); // chain-only until verified
+    });
+
+    test('stables and tokens are disjoint and together are all', () {
+      final stables = Erc20Registry.stables;
+      final tokens = Erc20Registry.tokens;
+      expect(stables.length + tokens.length, Erc20Registry.all.length);
+      for (final t in stables) {
+        expect(tokens, isNot(contains(t)), reason: '${t.symbol} in both lists');
+      }
+    });
+
+    test('the stable list is dollars only — VVV is not in it', () {
+      expect(Erc20Registry.stables.map((t) => t.symbol), isNot(contains('VVV')));
+      expect(Erc20Registry.tokens.map((t) => t.symbol), contains('VVV'));
+      // Every curated stable is a dollar ticker; nothing else has crept in.
+      for (final t in Erc20Registry.stables) {
+        expect(t.symbol, matches(RegExp(r'^(e|o)?USD[TCG](0|\.e)?$')),
+            reason: '${t.symbol} on ${t.chainKey} is listed as a stable');
+      }
+    });
+
+    test('per-chain slices partition the chain list', () {
+      for (final c in EvmChainKey.values) {
+        final all = Erc20Registry.forChainKey(c);
+        final st = Erc20Registry.forChainKey(c, filter: Erc20Filter.stables);
+        final tk = Erc20Registry.forChainKey(c, filter: Erc20Filter.tokens);
+        expect(st.length + tk.length, all.length, reason: c.key);
+      }
+      expect(Erc20Registry.forChain('base', filter: Erc20Filter.stables).length, 3);
+      expect(Erc20Registry.forChain('base', filter: Erc20Filter.tokens).length, 1);
+    });
+
+    test('bridged stables are stable but not native', () {
+      // The old boolean made a bridged dollar and a non-dollar token
+      // indistinguishable. They are different things.
+      final ousdt = Erc20Registry.find('base', 'oUSDT')!;
+      expect(ousdt.kind, Erc20Kind.bridgedStable);
+      expect(ousdt.isStable, isTrue);
+      expect(ousdt.isNativeStable, isFalse);
+
+      final usdc = Erc20Registry.find('base', 'USDC')!;
+      expect(usdc.kind, Erc20Kind.nativeStable);
+      expect(usdc.isNativeStable, isTrue);
+    });
+
+    test('Erc20Filter.accepts matches the kind it names', () {
+      for (final k in Erc20Kind.values) {
+        expect(Erc20Filter.all.accepts(k), isTrue);
+        expect(Erc20Filter.stables.accepts(k), k != Erc20Kind.token);
+        expect(Erc20Filter.tokens.accepts(k), k == Erc20Kind.token);
+      }
+    });
+
+    test('an entry that declares no kind is not treated as a dollar', () {
+      // Fail-safe default: forgetting `kind:` on a new registry entry lands
+      // it in the token list, never in the stable list.
+      const undeclared = Erc20Token(
+        address: '0x0000000000000000000000000000000000000001',
+        symbol: 'NEW',
+        name: 'Forgot to say what this is',
+        decimals: 18,
+        chain: EvmChainKey.eth,
+      );
+      expect(undeclared.kind, Erc20Kind.token);
+      expect(undeclared.isStable, isFalse);
+      expect(Erc20Filter.stables.accepts(undeclared.kind), isFalse);
+    });
+
+    test('every registry entry declares its kind deliberately', () {
+      // 31 native dollars + 9 bridged dollars + VVV.
+      final byKind = <Erc20Kind, int>{};
+      for (final t in Erc20Registry.all) {
+        byKind[t.kind] = (byKind[t.kind] ?? 0) + 1;
+      }
+      expect(byKind[Erc20Kind.nativeStable], 31);
+      expect(byKind[Erc20Kind.bridgedStable], 9);
+      expect(byKind[Erc20Kind.token], 1);
+    });
+
+    test('toJson carries the kind', () {
+      expect(Erc20Registry.find('base', 'VVV')!.toJson()['kind'], 'token');
+      expect(Erc20Registry.find('base', 'USDC')!.toJson()['kind'], 'nativeStable');
+      expect(Erc20Registry.find('base', 'oUSDT')!.toJson()['kind'], 'bridgedStable');
     });
 
     test('findByAddress case insensitive', () {

@@ -20,6 +20,10 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
   final _amountCtrl = TextEditingController();
   EvmChainKey _chain = EvmChainKey.eth;
 
+  /// This is the manage-everything screen, so it opens on All; the chips
+  /// below isolate stables from the rest.
+  Erc20Filter _filter = Erc20Filter.all;
+
   @override
   void dispose() {
     _addrCtrl.dispose();
@@ -36,7 +40,7 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
       child: Scaffold(
         backgroundColor: AppTheme.backgroundColor,
         appBar: AppBar(
-          title: const Text('Stablecoins'),
+          title: const Text('Tokens'),
           backgroundColor: AppTheme.backgroundColor,
         ),
         body: BlocBuilder<Erc20Cubit, Erc20State>(
@@ -46,6 +50,8 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
               _addressField(context, state),
               const SizedBox(height: 12),
               _chainSelector(context),
+              const SizedBox(height: 10),
+              _filterRow(state),
               const SizedBox(height: 12),
               if (state.error != null)
                 Container(
@@ -168,14 +174,70 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
     );
   }
 
+  /// Counts per slice for the chips. Registry + whatever the user added,
+  /// so an empty "Tokens" chip is honest about there being nothing there.
+  ({int all, int stables, int tokens}) _counts(Erc20State state) {
+    final balances = state.balancesFor(_chain.key);
+    final source = balances.isNotEmpty
+        ? balances.map((b) => b.token)
+        : Erc20Registry.forChainKey(_chain);
+    final stables = source.where((t) => t.isStable).length;
+    return (all: source.length, stables: stables, tokens: source.length - stables);
+  }
+
+  Widget _filterRow(Erc20State state) {
+    final c = _counts(state);
+    Widget chip(String label, int count, Erc20Filter f) => Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: ChoiceChip(
+            label: Text('$label ($count)', style: const TextStyle(fontSize: 11)),
+            selected: _filter == f,
+            onSelected: (_) => setState(() => _filter = f),
+            backgroundColor: AppTheme.surfaceColor,
+            selectedColor: AppTheme.primaryColor.withValues(alpha: 0.2),
+            labelStyle: TextStyle(
+              color: _filter == f ? AppTheme.primaryColor : AppTheme.textMuted,
+              fontWeight: _filter == f ? FontWeight.w700 : FontWeight.w500,
+            ),
+            side: BorderSide(
+              color: _filter == f
+                  ? AppTheme.primaryColor.withValues(alpha: 0.4)
+                  : AppTheme.surfaceColor,
+            ),
+            showCheckmark: false,
+          ),
+        );
+    return Row(
+      children: [
+        chip('All', c.all, Erc20Filter.all),
+        chip('Stables', c.stables, Erc20Filter.stables),
+        chip('Tokens', c.tokens, Erc20Filter.tokens),
+      ],
+    );
+  }
+
   List<Widget> _tokenRows(BuildContext context, Erc20State state) {
     final balances = state.balancesFor(_chain.key);
     // Show merged registry+custom tokens for chain even before first load
-    final tokens = balances.isNotEmpty
+    final all = balances.isNotEmpty
         ? balances
         : Erc20Registry.forChainKey(_chain)
             .map((t) => Erc20Balance(token: t, raw: BigInt.zero, decimals: t.decimals, display: 0))
             .toList();
+    final tokens = all.where((b) => _filter.accepts(b.token.kind)).toList();
+    if (tokens.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text(
+            _filter == Erc20Filter.stables
+                ? 'No stablecoin verified on ${_chain.key.toUpperCase()} yet.'
+                : 'Nothing here for ${_chain.key.toUpperCase()} — use Add Token.',
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+        ),
+      ];
+    }
     return tokens.map((b) {
       final token = b.token;
       final isSelected = state.selectedToken == token;
@@ -376,7 +438,7 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
       name: nameCtrl.text.trim().isEmpty ? symCtrl.text.trim() : nameCtrl.text.trim(),
       decimals: int.tryParse(decCtrl.text.trim()) ?? 18,
       chain: dialogChain,
-      isNativeStable: false,
+      kind: Erc20Kind.token,
     );
     final dup = await CustomTokenStore.instance.exists(dialogChain.key, token.address);
     if (dup) {
