@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
 import '../../core/constants.dart';
-import '../../models/heat_amm.dart';
+import '../../models/hearth.dart';
 import '../../utils/theme.dart';
 import '../../utils/xfg_ticker.dart' as xt;
 
@@ -22,7 +22,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
   bool _isLoading = false;
   bool _isLoadingRate = true;
   String? _errorMessage;
-  PoolInfo? _pool;
+  HearthPool? _pool;
   String? _rateError;
 
   @override

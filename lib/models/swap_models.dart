@@ -395,7 +395,7 @@ class SwapPriceSdk {
   }
 }
 
-// NOTE: the orderbook model lives in `heat_amm.dart` as OrderBookState /
+// NOTE: the orderbook model lives in `hearth.dart` as OrderBookState /
 // OrderBookLevel, which matches `COMMAND_RPC_GET_ORDER_BOOK` exactly (bids,
 // asks, spread, height, status; levels of price/amount/orderCount).
 //

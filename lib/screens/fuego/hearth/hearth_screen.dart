@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../bloc/hearth/hearth_cubit.dart';
 import '../../../models/candlestick.dart';
-import '../../../models/heat_amm.dart';
+import '../../../models/hearth.dart';
 import '../../../services/price_history_service.dart';
 import '../../../core/constants.dart';
 import '../../../utils/hearth_theme.dart';
@@ -266,7 +266,7 @@ children: [
     return '${v.toStringAsFixed(0)} HΞ∆T';
   }
 
-  Widget _buildPoolStats(PoolInfo pool) {
+  Widget _buildPoolStats(HearthPool pool) {
     return Container(
       color: HearthTheme.bgDeep,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -952,7 +952,7 @@ children: [
     );
   }
 
-  Widget _quoteDisplay(AmmQuote quote, HearthState state) {
+  Widget _quoteDisplay(HearthQuote quote, HearthState state) {
     // HEAT side of the trade in display units: the quote output when selling
     // XFG, otherwise what the user typed.
     final heatDisplay =

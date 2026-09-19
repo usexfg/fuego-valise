@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fuego/core/constants.dart';
-import 'package:fuego/models/heat_amm.dart';
+import 'package:fuego/models/hearth.dart';
 
 /// XFG and ΗΞΔŦ both use COIN = 10^7 (fuego-suite `CryptoNoteConfig.h`:
 /// "1 HEAT = 10^CRYPTONOTE_DISPLAY_DECIMAL_POINT = 10,000,000 atomic").
@@ -76,13 +76,13 @@ void main() {
     expect(parseAtomic(txFeeXfg.toStringAsFixed(7)), txFee);
   });
 
-  group('PoolInfo scaling', () {
-    PoolInfo pool({
+  group('HearthPool scaling', () {
+    HearthPool pool({
       required int xfg,
       required int heat,
       required int spot,
     }) =>
-        PoolInfo.fromJson({
+        HearthPool.fromJson({
           'reserve_xfg': xfg,
           'reserve_heat': heat,
           'total_lp_shares': 1000,
@@ -171,9 +171,9 @@ void main() {
     });
   });
 
-  group('AmmQuote', () {
+  group('HearthQuote', () {
     test('output and fee render in display units, impact as percent', () {
-      final q = AmmQuote.fromJson({
+      final q = HearthQuote.fromJson({
         'expected_output': 15000000,
         'price_impact_bps': 125,
         'fee': 100000,
@@ -187,7 +187,7 @@ void main() {
     });
 
     test('a zero output is surfaced, not printed as 0', () {
-      final q = AmmQuote.fromJson({'status': 'OK'});
+      final q = HearthQuote.fromJson({'status': 'OK'});
       expect(q.outputAtomic, isNull);
       expect(q.outputAmount, '—');
     });

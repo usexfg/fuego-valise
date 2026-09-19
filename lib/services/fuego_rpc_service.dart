@@ -411,7 +411,7 @@ class FuegoRPCService {
   }
 
 
-  // ── Hearth AMM / orderbook ──────────────────────────────────────────
+  // ── Hearth — the XFG/ΗΞΔŦ pool and orderbook ────────────────────────
   //
   // Everything here goes through the local fuego_walletd proxy on
   // `walletRpcPort`, never straight at a remote fuegod:
@@ -430,11 +430,11 @@ class FuegoRPCService {
 
   Future<Map<String, dynamic>> heatMetrics() => _makeRPCCall('heat_metrics', {});
 
-  Future<Map<String, dynamic>> ammPoolInfo() => _makeRPCCall('amm_pool_info', {});
+  Future<Map<String, dynamic>> hearthPool() => _makeRPCCall('amm_pool_info', {});
 
   /// [inputAmountAtomic] is atomic units; [direction] is 0 = XFG→HEAT,
   /// 1 = HEAT→XFG, matching `COMMAND_RPC_AMM_QUOTE::request`.
-  Future<Map<String, dynamic>> ammQuote({
+  Future<Map<String, dynamic>> hearthQuote({
     required int inputAmountAtomic,
     required bool sellXfg,
   }) =>
@@ -457,7 +457,7 @@ class FuegoRPCService {
   Future<Map<String, dynamic>> mintHeat({required int xfgBurnedAtomic}) =>
       _makeRPCCall('mint_heat', {'xfg_burned': xfgBurnedAtomic});
 
-  Future<Map<String, dynamic>> ammSwap({
+  Future<Map<String, dynamic>> hearthSwap({
     required bool sellXfg,
     required int inputAmountAtomic,
     required int minOutputAtomic,
@@ -468,7 +468,7 @@ class FuegoRPCService {
         'min_output': minOutputAtomic.toString(),
       });
 
-  Future<Map<String, dynamic>> ammAddLiquidity({
+  Future<Map<String, dynamic>> hearthAddLiquidity({
     required int xfgAmountAtomic,
     required int heatAmountAtomic,
   }) =>
@@ -477,7 +477,7 @@ class FuegoRPCService {
         'heat_amount': heatAmountAtomic.toString(),
       });
 
-  Future<Map<String, dynamic>> ammRemoveLiquidity({
+  Future<Map<String, dynamic>> hearthRemoveLiquidity({
     required int shares,
     required int minXfgAtomic,
     required int minHeatAtomic,

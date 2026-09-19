@@ -15,9 +15,9 @@ Ground truth cited below:
 | Which pairs have a client | `src/SwapDaemon/SwapDaemon.cpp` (`registerChain`) |
 | HEAT atomic scale, pool seed, fees | `src/CryptoNoteConfig.h:255-310` |
 | HEAT mint rule | `src/CryptoNoteCore/HeatMintEngine.cpp:20-22,107-115` |
-| AMM/metrics RPC shapes | `src/Rpc/CoreRpcServerCommandsDefinitions.h:2461-2558` |
+| Hearth / ΗΞΔŦ RPC shapes | `src/Rpc/CoreRpcServerCommandsDefinitions.h:2461-2558` |
 | Body-not-query request parsing | `src/Rpc/RpcServer.cpp:74-88` (`jsonMethod`) |
-| Wallet-side AMM methods | `src/Wallet/WalletRpcServer.cpp:179-190` |
+| Wallet-side Hearth methods | `src/Wallet/WalletRpcServer.cpp:179-190` |
 
 ---
 
@@ -194,7 +194,7 @@ not exist in the struct — the real field is `vault_heat_swf`. **Fixed.**
 
 ## Round-1 findings downgraded by the C++
 
-- **M7 (two incompatible AMM contracts)** — not symmetric. The Dart field names
+- **M7 (two incompatible Hearth contracts)** — not symmetric. The Dart field names
   are correct against `CoreRpcServerCommandsDefinitions.h`; the Rust SDK's
   `orderbook.rs` is stale. Downgraded to a cleanup, not a correctness risk.
 - **M8 (fee dropped by `sendHeat`/`heatMint`)** — the walletd proxy's
@@ -244,7 +244,7 @@ Tests: `swap_pair_expansion_test.dart` rewritten to exercise the **lookups**
 ## Still open
 
 1. **`rust-fuego-wallet/fuego-sdk` is stale against the C++.** `ChainType` has
-   13 chains vs 29; `orderbook.rs` speaks a dead AMM contract;
+   13 chains vs 29; `orderbook.rs` speaks a dead Hearth contract;
    `PaymentProof.amount` is `u64`, capping EVM verification at ~18.44 units of
    an 18-decimal coin; `bitcoin.rs` reads `scriptPubKey.addresses`, removed in
    Bitcoin Core 22. Not on the wallet's runtime path, so not fixed here — but
@@ -295,11 +295,11 @@ is most of them.
 `scriptPubKey.address`. Against any modern node no BTC-family lock could
 verify. Accepts both now.
 
-**`orderbook.rs` speaks the real AMM contract.** It was GET-ing
+**`orderbook.rs` speaks Hearth's real contract.** It was GET-ing
 `/amm_quote?sell_xfg=&amount=` and parsing `xfg_reserve` / `heat_reserve` /
 `xfg_heat_ratio` / `output_amount` — none of which fuegod serializes. Now
 POSTs `{input_amount, direction}` and parses `COMMAND_RPC_AMM_QUOTE` /
-`COMMAND_RPC_AMM_POOL_INFO`. `PoolInfo::heat_for_burn()` applies the same
+`COMMAND_RPC_AMM_POOL_INFO`. `HearthPool::heat_for_burn()` applies the same
 `xfg_burned * spot_price / COIN` rule consensus enforces.
 
 ## ETH SPV is now a real proof

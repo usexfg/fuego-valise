@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/core.dart';
-import '../../models/heat_amm.dart';
+import '../../models/hearth.dart';
 import '../../models/subaddress.dart';
 import '../../services/fuego_rpc_service.dart';
 import '../../services/fuego_vault_service.dart';
@@ -506,8 +506,8 @@ class WalletCubit extends Cubit<WalletState> {
   }
 
   /// Live pool state — the source of the mint rate.
-  Future<PoolInfo> getPoolInfo() async =>
-      PoolInfo.fromJson(await _requireRpc().ammPoolInfo());
+  Future<HearthPool> getPoolInfo() async =>
+      HearthPool.fromJson(await _requireRpc().hearthPool());
 
   /// Fetch ΗΞΔŦ metrics: supply, mint price, treasury, CD yield.
   /// Goes through the wallet proxy — fuegod's `/heat_metrics` handler reads a

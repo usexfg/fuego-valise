@@ -93,9 +93,16 @@ impl OrderbookClient {
         self.get("/get_fuego_price").await
     }
 
-    // ── AMM / Hearth ──────────────────────────────────────────────────
+    // ── Hearth ────────────────────────────────────────────────────────
+    //
+    // Hearth is the pool. The `amm_` in the endpoint names is fuegod's own
+    // shorthand for it — `RpcServer.cpp:210` labels the block
+    // "HEAT / Hearth AMM endpoints", and both endpoints call
+    // `getAmmPoolInfo()` and return `hearth_twap`. There is one pool, so the
+    // wire names stay as the daemon spells them and everything on this side
+    // is named Hearth.
 
-    /// Hearth AMM quote.
+    /// Hearth quote.
     ///
     /// `COMMAND_RPC_AMM_QUOTE::request` is `{input_amount: u64, direction: u8}`
     /// read from the request BODY — fuegod's `jsonMethod` handler calls
@@ -105,7 +112,7 @@ impl OrderbookClient {
     ///
     /// `input_amount` is atomic units (COIN = 10^7 for both XFG and HEAT);
     /// `direction` is 0 for XFG→HEAT and 1 for HEAT→XFG.
-    pub async fn get_amm_quote(&self, sell_xfg: bool, input_amount: u64) -> Result<AmmQuote> {
+    pub async fn get_hearth_quote(&self, sell_xfg: bool, input_amount: u64) -> Result<HearthQuote> {
         self.post(
             "/amm_quote",
             serde_json::json!({
@@ -116,7 +123,7 @@ impl OrderbookClient {
         .await
     }
 
-    pub async fn get_pool_info(&self) -> Result<PoolInfo> {
+    pub async fn get_hearth_pool(&self) -> Result<HearthPool> {
         self.post("/amm_pool_info", serde_json::json!({})).await
     }
 
@@ -197,7 +204,7 @@ pub struct ActiveSwapsResponse {
 /// (`sell_xfg` / `input_amount` / `output_amount` / `price_impact`) matched no
 /// struct fuegod serializes, so every field deserialized as missing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AmmQuote {
+pub struct HearthQuote {
     /// Atomic units.
     #[serde(default)]
     pub expected_output: u64,
@@ -213,7 +220,7 @@ pub struct AmmQuote {
 /// Response of `/amm_pool_info` — `COMMAND_RPC_AMM_POOL_INFO::response`
 /// (`CoreRpcServerCommandsDefinitions.h:2538-2557`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PoolInfo {
+pub struct HearthPool {
     #[serde(default)]
     pub reserve_xfg: u64,
     #[serde(default)]
@@ -233,7 +240,7 @@ pub struct PoolInfo {
     pub status: String,
 }
 
-impl PoolInfo {
+impl HearthPool {
     /// HEAT per XFG.
     pub fn heat_per_xfg(&self) -> f64 {
         self.spot_price as f64 / 10_000_000.0

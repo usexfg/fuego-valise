@@ -939,7 +939,7 @@ fn assemble_outputs_and_sign(
     })
 }
 
-/// Build and sign an AMM swap XFG→HEAT (direction 0): XFG KeyInputs in,
+/// Build and sign a Hearth swap XFG→ΗΞΔŦ (direction 0): XFG KeyInputs in,
 /// HEAT commitment outputs (HEAT_TERM bills) + XFG change out, 0xF6 auth.
 /// The pool gains the input delta and pays the HEAT output at settlement.
 #[allow(clippy::too_many_arguments)]
@@ -1002,7 +1002,7 @@ pub fn build_swap_xfg_to_heat_transaction(
     )
 }
 
-/// Build and sign an AMM swap HEAT→XFG (direction 1): HEAT commitment
+/// Build and sign a Hearth swap ΗΞΔŦ→XFG (direction 1): HEAT commitment
 /// inputs in, XFG key output + HEAT change commitment out, 0xF6 auth.
 #[allow(clippy::too_many_arguments)]
 pub fn build_swap_heat_to_xfg_transaction(

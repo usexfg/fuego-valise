@@ -78,14 +78,21 @@ display tickers for five pairs — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`,
 - `swf_heat_balance` does not exist in that response; the SWF figure is
   `vault_heat_swf`.
 - `rust-fuego-wallet/fuego-sdk` is stale against the C++: 13 chains vs 29, an
-  AMM contract that matches no RPC struct, `u64` payment-proof amounts, and a
-  `scriptPubKey.addresses` read removed in Bitcoin Core 22.
+  Hearth contract that matches no RPC struct, `u64` payment-proof amounts, and
+  a `scriptPubKey.addresses` read removed in Bitcoin Core 22.
 
 ### Resolved
 - POLYGON is present in `swapPairToString()` / `swapPairFromString()`
   (`SwapTypes.cpp:91`, `:45-46`). The earlier note was stale.
 
 ## Hearth / ΗΞΔŦ RPC contract
+
+Hearth is the pool — there is only one. fuegod spells its endpoints
+`amm_quote` / `amm_pool_info` and the wallet methods `amm_swap` /
+`amm_add_liquidity` / `amm_remove_liquidity`; that `amm_` is the daemon's
+shorthand for Hearth (`RpcServer.cpp:210`: "HEAT / Hearth AMM endpoints").
+Wire names stay as fuegod spells them; every wallet-side and SDK identifier
+is named Hearth.
 
 **Everything goes through `fuego_walletd` on 18189.** Never straight at fuegod.
 
@@ -159,7 +166,7 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 - `chain/bitcoin.rs`: Bitcoin-family SPV adapter (BTC, LTC, BCH, KMD, DCR)
 - `chain/evm.rs`: EVM adapter with receipt-trie verification
 - `chain/btc_rpc.rs` / `chain/evm_rpc.rs`: JSON-RPC clients
-- `orderbook.rs`: fuegod orderbook + Hearth AMM client
+- `orderbook.rs`: fuegod orderbook + Hearth client
 
 ### ChainType methods
 - `is_bitcoin_family()`: BCH, KMD, DCR, BTC, LTC, DOGE, DASH, ZEC (8)

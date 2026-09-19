@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/constants.dart';
-import '../../models/heat_amm.dart';
+import '../../models/hearth.dart';
 import '../../services/fuego_rpc_service.dart';
 
 enum OrderType { market, limit }
@@ -20,8 +20,8 @@ class HearthResult {
 class HearthState {
   final bool isLoading;
   final bool isSubmitting;
-  final PoolInfo? pool;
-  final AmmQuote? quote;
+  final HearthPool? pool;
+  final HearthQuote? quote;
 
   /// Atomic input the [quote] was produced for; a quote is only spendable
   /// against the amount it was requested with.
@@ -50,8 +50,8 @@ class HearthState {
   HearthState copyWith({
     bool? isLoading,
     bool? isSubmitting,
-    PoolInfo? pool,
-    AmmQuote? quote,
+    HearthPool? pool,
+    HearthQuote? quote,
     int? quoteInputAtomic,
     bool? quoteSellXfg,
     bool clearQuote = false,
@@ -84,10 +84,10 @@ class HearthState {
   }
 }
 
-/// Hearth AMM + orderbook.
+/// Hearth — the XFG/ΗΞΔŦ pool and orderbook.
 ///
 /// Reads and writes both go through [FuegoRPCService], i.e. the local
-/// fuego_walletd proxy. The AMM write methods (`swap`, `add_liq`,
+/// fuego_walletd proxy. The Hearth write methods (`swap`, `add_liq`,
 /// `remove_liq`, `place_limit_order`, `mint_heat`) are wallet methods — fuegod
 /// does not implement them — and the read endpoints need a JSON body, which a
 /// GET with query parameters never supplies.
@@ -99,7 +99,7 @@ class HearthCubit extends Cubit<HearthState> {
   Future<void> loadPool() async {
     emit(state.copyWith(isLoading: true, clearError: true));
     try {
-      final pool = PoolInfo.fromJson(await _rpc.ammPoolInfo());
+      final pool = HearthPool.fromJson(await _rpc.hearthPool());
       OrderBookState? book;
       try {
         book = OrderBookState.fromJson(await _rpc.orderbookState());
@@ -138,8 +138,8 @@ class HearthCubit extends Cubit<HearthState> {
       return;
     }
     try {
-      final quote = AmmQuote.fromJson(
-        await _rpc.ammQuote(inputAmountAtomic: atomic, sellXfg: sellXfg),
+      final quote = HearthQuote.fromJson(
+        await _rpc.hearthQuote(inputAmountAtomic: atomic, sellXfg: sellXfg),
       );
       emit(state.copyWith(
         quote: quote,
@@ -171,7 +171,7 @@ class HearthCubit extends Cubit<HearthState> {
     }
     emit(state.copyWith(isSubmitting: true, clearError: true));
     try {
-      final r = await _rpc.ammSwap(
+      final r = await _rpc.hearthSwap(
         sellXfg: sellXfg,
         inputAmountAtomic: input,
         minOutputAtomic: minOut,
@@ -230,7 +230,7 @@ class HearthCubit extends Cubit<HearthState> {
     }
     emit(state.copyWith(isSubmitting: true, clearError: true));
     try {
-      final r = await _rpc.ammAddLiquidity(
+      final r = await _rpc.hearthAddLiquidity(
         xfgAmountAtomic: xfg,
         heatAmountAtomic: heat,
       );
@@ -267,7 +267,7 @@ class HearthCubit extends Cubit<HearthState> {
     }
     emit(state.copyWith(isSubmitting: true, clearError: true));
     try {
-      final r = await _rpc.ammRemoveLiquidity(
+      final r = await _rpc.hearthRemoveLiquidity(
         shares: shares,
         minXfgAtomic: minXfg,
         minHeatAtomic: minHeat,

@@ -9,7 +9,7 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../models/network_config.dart';
-import '../models/heat_amm.dart';
+import '../models/hearth.dart';
 class FuegoDaemonClient {
   final Dio _dio;
   String _baseUrl;
@@ -46,10 +46,10 @@ class FuegoDaemonClient {
     return _jsonRpc('mint_heat', {'amount': xfgAmount});
   }
 
-  // ── Hearth AMM ──
+  // ── Hearth ──
 
-  /// Get a swap quote from the Hearth AMM
-  Future<AmmQuote> getAmmQuote({
+  /// Get a swap quote from Hearth
+  Future<HearthQuote> getHearthQuote({
     required bool sellXfg,
     required String amount,
   }) async {
@@ -60,16 +60,16 @@ class FuegoDaemonClient {
         'direction': sellXfg ? 0 : 1,
       },
     );
-    return AmmQuote.fromJson(result);
+    return HearthQuote.fromJson(result);
   }
 
   /// Get pool information: reserves, spot price, total LP shares
-  Future<PoolInfo> getPoolInfo() async {
+  Future<HearthPool> getPoolInfo() async {
     final result = await _daemonGet('/amm_pool_info');
-    return PoolInfo.fromJson(result);
+    return HearthPool.fromJson(result);
   }
 
-  /// Execute a swap on the Hearth AMM
+  /// Execute a swap on Hearth
   Future<Map<String, dynamic>> swap({
     required bool sellXfg,
     required String inputAmount,
@@ -82,7 +82,7 @@ class FuegoDaemonClient {
     });
   }
 
-  /// Add liquidity to the Hearth AMM pool
+  /// Add liquidity to the Hearth pool
   Future<Map<String, dynamic>> addLiquidity({
     required String xfgAmount,
     required String heatAmount,
@@ -93,7 +93,7 @@ class FuegoDaemonClient {
     });
   }
 
-  /// Remove liquidity from the Hearth AMM pool
+  /// Remove liquidity from the Hearth pool
   Future<Map<String, dynamic>> removeLiquidity({
     required String shares,
     required String minXfg,

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../bloc/wallet/wallet_cubit.dart';
-import '../../../models/heat_amm.dart';
+import '../../../models/hearth.dart';
 import '../../../utils/theme.dart';
 import 'mint_heat_dialog.dart';
 

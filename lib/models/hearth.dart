@@ -1,12 +1,19 @@
 import '../core/constants.dart';
 
-/// Models for the Hearth AMM / orderbook subsystem.
+/// Hearth — the XFG/ΗΞΔŦ pool and orderbook.
+///
+/// There is one pool and its name is Hearth. fuegod spells the endpoints
+/// `/amm_quote` and `/amm_pool_info`, which is its own shorthand for the same
+/// thing (`RpcServer.cpp:210` heads that block "HEAT / Hearth AMM endpoints",
+/// and both handlers call `getAmmPoolInfo()` and return `hearth_twap`). The
+/// wire names stay as the daemon spells them; everything here is named
+/// Hearth.
 ///
 /// Field names and types match the fuego-suite C++ response structs exactly.
 /// See: CoreRpcServerCommandsDefinitions.h lines 2448-2497 (HeatMetrics),
-///      CoreRpcServerCommandsDefinitions.h lines 1613-1653 (PoolInfo),
+///      CoreRpcServerCommandsDefinitions.h lines 1613-1653 (HearthPool),
 ///      CoreRpcServerCommandsDefinitions.h lines 1047-1087 (OrderBookState),
-///      CoreRpcServerCommandsDefinitions.h lines 2500+ (AmmQuote).
+///      CoreRpcServerCommandsDefinitions.h lines 2500+ (HearthQuote).
 
 /// Response to `/get_heat_metrics`
 /// C++: COMMAND_RPC_GET_HEAT_METRICS (CoreRpcServerCommandsDefinitions.h:2448-2497)
@@ -255,21 +262,21 @@ class OrderBookState {
 
 /// Response to `/amm_quote`
 /// C++: COMMAND_RPC_AMM_QUOTE (CoreRpcServerCommandsDefinitions.h:2500+)
-class AmmQuote {
+class HearthQuote {
   final String expectedOutput;
   final String priceImpactBps;
   final String fee;
   final String status;
 
-  const AmmQuote({
+  const HearthQuote({
     required this.expectedOutput,
     required this.priceImpactBps,
     required this.fee,
     required this.status,
   });
 
-  factory AmmQuote.fromJson(Map<String, dynamic> json) {
-    return AmmQuote(
+  factory HearthQuote.fromJson(Map<String, dynamic> json) {
+    return HearthQuote(
       expectedOutput: json['expected_output']?.toString() ?? '0',
       priceImpactBps: json['price_impact_bps']?.toString() ?? '0',
       fee: json['fee']?.toString() ?? '0',
@@ -301,7 +308,7 @@ class AmmQuote {
 
 /// Response to `/amm_pool_info`
 /// C++: COMMAND_RPC_AMM_POOL_INFO (CoreRpcServerCommandsDefinitions.h:1613-1653)
-class PoolInfo {
+class HearthPool {
   final int reserveXfg;
   final int reserveHeat;
   final int totalLpShares;
@@ -310,7 +317,7 @@ class PoolInfo {
   final int hearthTwap;
   final String status;
 
-  const PoolInfo({
+  const HearthPool({
     required this.reserveXfg,
     required this.reserveHeat,
     required this.totalLpShares,
@@ -320,8 +327,8 @@ class PoolInfo {
     required this.status,
   });
 
-  factory PoolInfo.fromJson(Map<String, dynamic> json) {
-    return PoolInfo(
+  factory HearthPool.fromJson(Map<String, dynamic> json) {
+    return HearthPool(
       reserveXfg: _u64(json['reserve_xfg']),
       reserveHeat: _u64(json['reserve_heat']),
       totalLpShares: _u64(json['total_lp_shares']),
