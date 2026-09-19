@@ -1,0 +1,7 @@
+# Revisions to skip in `git blame` — whole-tree mechanical reformats, no
+# behaviour change. Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# dart format lib/ test/ with the CI-pinned Flutter 3.44.4 (Dart 3.12.2)
+# formatter.
+8ac51c1e7cd213ad6b1f13927dea3a3918b75173
