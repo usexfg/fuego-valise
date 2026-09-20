@@ -266,12 +266,17 @@ void main() {
       expect(pool(spot: 20000000).mintPrice, 20000000);
     });
 
-    test('falls back to the launch ratio when the pool has no price', () {
-      // The chicken-and-egg: accumulateTwap only samples a non-empty pool,
-      // and the pool cannot hold ΗΞΔŦ before any is minted. Without this the
-      // first mint is impossible and the pool can never be seeded.
-      expect(pool().mintPrice, heatLaunchMintPrice);
-      expect(pool().mintPrice, 1000000);
+    test('never invents a launch ratio when the daemon reports no price', () {
+      // The launch ratio reaches the client only via mint_price, which the
+      // daemon withdraws once the pool has ever priced. Guessing it locally
+      // would price a transient fetch failure at a stale 10:1.
+      expect(pool().mintPrice, isNull);
+      expect(pool().heatPerXfg, isNull);
+    });
+
+    test('takes the launch ratio when the daemon reports it', () {
+      // During bootstrap the daemon reports the launch ratio itself.
+      expect(pool(reported: heatLaunchMintPrice).mintPrice, 1000000);
     });
 
     test('the launch ratio is 10 XFG per ΗΞΔŦ on the canonical scale', () {

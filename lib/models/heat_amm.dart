@@ -1,5 +1,3 @@
-import '../core/constants.dart' show heatLaunchMintPrice;
-
 /// Models for the Hearth AMM / orderbook subsystem.
 ///
 /// Field names and types match the fuego-suite C++ response structs exactly.
@@ -282,16 +280,20 @@ class PoolInfo {
   /// The price a HEAT mint is validated against, on the canonical scale:
   /// HEAT atomics per XFG atomic × COIN (AmmPool.cpp ammGetSpotPrice).
   ///
-  /// Prefers the daemon's reported value. Falls back to Blockchain.cpp's
-  /// own order for a daemon predating the field: the rolling 8-block TWAP,
-  /// the AMM spot price while that window fills, then the fixed launch ratio
-  /// — the pool cannot hold ΗΞΔŦ before any is minted, so without that last
-  /// step no first mint is possible.
+  /// Prefers the daemon's reported value, which already resolves the whole
+  /// selection — including the fixed launch ratio during bootstrap, and its
+  /// withdrawal once the pool has ever priced.
+  ///
+  /// Falls back to the TWAP then spot only for a daemon predating the field.
+  /// Deliberately never falls back to the launch ratio on its own: the
+  /// client cannot tell a genuine bootstrap from a node that failed to
+  /// report, and quoting a stale 10:1 against a live market either gets the
+  /// mint rejected or silently shortchanges the minter, since consensus only
+  /// checks that the ΗΞΔŦ claimed is not too high. Null means no quote.
   int? get mintPrice {
     if (reportedMintPrice > 0) return reportedMintPrice;
     if (hearthTwap > 0) return hearthTwap;
     if (spotPrice > 0) return spotPrice;
-    if (heatLaunchMintPrice > 0) return heatLaunchMintPrice;
     return null;
   }
 
