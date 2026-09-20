@@ -310,13 +310,12 @@ void main() {
       expect(minted, lessThanOrEqualTo(burnAtomic * price / atomicPerCoin));
     });
 
-    test('the mint premium is disabled, matching HEAT_MINT_PREMIUM_BPS', () {
-      // When re-enabled, the mintable amount shrinks by 1 / (1 + bps/1e4):
-      // validateMint requires xfgBurned >= minXfg * (1 + bps/1e4).
-      expect(heatMintPremiumBps, 0);
-      const base = 1000000;
-      const bps = 50; // hypothetical 0.5%
-      expect(base * 10000 ~/ (10000 + bps), lessThan(base));
+    test('a mint costs exactly the price, with no premium on top', () {
+      // The mandatory mint premium is gone: burning N XFG mints exactly
+      // N * price / COIN, so a quote never has to hold anything back.
+      const burn = 10 * atomicPerCoin;
+      final price = pool(spot: atomicPerCoin).mintPrice!;
+      expect(burn * price ~/ atomicPerCoin, burn);
     });
   });
 

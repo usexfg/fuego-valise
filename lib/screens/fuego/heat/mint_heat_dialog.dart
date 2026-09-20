@@ -154,10 +154,7 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         throw StateError('No pool price available');
       }
       final xfgAtomicAmt = (xfg * xfgAtomic).round();
-      var heatAtomic = xfgAtomicAmt * price ~/ xfgAtomic;
-      if (heatMintPremiumBps > 0) {
-        heatAtomic = heatAtomic * 10000 ~/ (10000 + heatMintPremiumBps);
-      }
+      final heatAtomic = xfgAtomicAmt * price ~/ xfgAtomic;
       if (heatAtomic <= 0) {
         throw StateError('Amount too small to mint any ΗΞΔŦ at this price');
       }

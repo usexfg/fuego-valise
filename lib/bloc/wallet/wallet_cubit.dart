@@ -507,12 +507,7 @@ class WalletCubit extends Cubit<WalletState> {
     // division rounds down, which is required: consensus rejects
     // `heatOutputs > expectedHeat`, so landing one atomic unit over the cap
     // fails the whole transaction.
-    var heatAtomic = burnAtomic * mintPrice ~/ atomicPerCoin;
-    // When a mint premium is in force the minter must burn more than the base
-    // cost, so the mintable amount shrinks by that factor.
-    if (heatMintPremiumBps > 0) {
-      heatAtomic = heatAtomic * 10000 ~/ (10000 + heatMintPremiumBps);
-    }
+    final heatAtomic = burnAtomic * mintPrice ~/ atomicPerCoin;
     if (heatAtomic <= 0) {
       throw StateError('Amount too small to mint any ΗΞΔŦ at the current price');
     }

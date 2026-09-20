@@ -44,13 +44,6 @@ const int cdCreationFeeBps = 10;
 
 // ── HEAT mint ──
 
-/// CryptoNoteConfig.h HEAT_MINT_PREMIUM_BPS — the premium a minter must burn
-/// on top of the base mint cost. Disabled for launch; when non-zero,
-/// HeatMintEngine::validateMint requires
-/// `xfgBurned >= minXfg * (1 + bps/10000)`, so the mintable HEAT shrinks by
-/// that factor.
-const int heatMintPremiumBps = 0;
-
 /// CryptoNoteConfig.h HEAT_LAUNCH_RATIO_NUM/DENOM — 10 XFG per 1 ΗΞΔŦ — on
 /// the canonical mint price scale (ΗΞΔŦ atomics per XFG atomic x COIN).
 ///
