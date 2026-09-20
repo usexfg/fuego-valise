@@ -63,40 +63,51 @@ appear available and fail at lock time.
 
 ---
 
-## Candidates: the 18 wallet-only chains
+## Candidates: the drop-in chains
 
 `chains.yaml` carries 33 EVM chains in two tiers. `tier: swap` (15) have a
 `SwapPair` id; `tier: wallet` (18) do not, so they are ERC-20 only — balances,
 send, approve, custom tokens, no atomic swap.
 
-| Chain | Chain ID | Registry tokens | Notes for swap promotion |
-|---|---|---|---|
-| Linea | 59144 | USDC | zkEVM; standard EVM RPC |
-| ZKsync Era | 324 | USDC | **Native AA / different tx envelope** — `EthRpcClient` may not sign correctly; verify before committing |
-| HyperEVM | 999 | USDC | Dual-VM chain; confirm EVM block finality semantics |
-| Ink | 57073 | USDC, oUSDT | OP Stack, like Optimism |
-| Plume | 98866 | USDC | Standard EVM |
-| Soneium | 1868 | USDT, USDC.e, oUSDT | OP Stack, like Optimism |
-| Sei | 1329 | USDC | EVM + Cosmos dual; use the EVM RPC only |
-| Rootstock | 30 | — | Bitcoin sidechain, EVM-compatible; gas is RBTC |
-| Gnosis | 100 | — | Gas is xDAI, **not** an 18-decimal ETH-like premium token — check the price seed carefully |
-| Flare | 14 | — | Standard EVM |
-| Kaia | 8217 | — | Klaytn successor; EVM-compatible, own gas model |
-| Scroll | 534352 | — | zkEVM |
-| Abstract | 2741 | — | ZK Stack, same AA caveat as ZKsync |
-| Doma | 97477 | — | Verify chain id and finality before wiring |
-| Beam | 4337 | — | Avalanche subnet |
-| Moonriver | 1285 | — | Substrate EVM (Frontier); `eth_*` RPC works |
-| peaq | 3338 | — | Substrate EVM |
-| Tempo | 4217 | — | **No native gas token** — `eth_getBalance` returns a constant. Fee estimation and refund accounting both assume a payable native asset; this one needs design work, not just wiring |
+Eight of those 18 are drop-ins: ordinary EVM chains exposing standard `eth_*`
+RPC with standard transaction types, where `EthChainClient` should work with
+no changes beyond the wiring in Part A.
+
+| Chain | Chain ID | Gas token | Registry tokens | Note |
+|---|---|---|---|---|
+| Linea | 59144 | ETH | USDC | zkEVM, standard RPC |
+| Scroll | 534352 | ETH | — | zkEVM, standard RPC |
+| Ink | 57073 | ETH | USDC, oUSDT | OP Stack — copy the Optimism client verbatim |
+| Soneium | 1868 | ETH | USDT, USDC.e, oUSDT | OP Stack — same |
+| Plume | 98866 | PLUME | USDC | Standard EVM |
+| Flare | 14 | FLR | — | Standard EVM |
+| Moonriver | 1285 | MOVR | — | Substrate EVM (Frontier); `eth_*` works |
+| peaq | 3338 | PEAQ | — | Substrate EVM |
+
+**"Drop-in" is a classification from each chain's architecture, not a tested
+deployment.** Confirm against the chain's own RPC docs before wiring —
+specifically that `eth_sendRawTransaction` accepts type-2 (EIP-1559) or legacy
+transactions as `EthRpcClient` builds them, and that `eth_getTransactionReceipt`
+returns a standard receipt. The four ETH-gas chains can seed their price off
+ETH; the four with their own gas token each need a real seed in
+`PriceOracle.cpp`, and a wrong seed is a mispriced quote, not a crash.
 
 "Registry tokens" is whether `Erc20Registry` already carries a verified
 stablecoin there (`lib/models/erc20_token.dart`). It is unrelated to swap
 capability — the swap leg moves the **native** asset.
 
-The easy set is Linea, Ink, Plume, Soneium, Flare, Moonriver, peaq, Scroll:
-ordinary EVM chains where `EthChainClient` should work unchanged. ZKsync,
-Abstract and Tempo are not drop-ins.
+### Deferred
+
+The other ten are not drop-ins and are out of scope here. Recorded so nobody
+re-derives it: **ZKsync Era** (324) and **Abstract** (2741) use ZK Stack native
+account abstraction with a different transaction envelope, so `EthRpcClient`
+signing needs verifying first. **Tempo** (4217) has no native gas token —
+`eth_getBalance` returns a constant — and both fee estimation and refund
+accounting assume a payable native asset, so it needs design work. **Gnosis**
+(100), **Rootstock** (30) and **Kaia** (8217) each have a distinct gas model
+(xDAI, RBTC, own fee scheme). **HyperEVM** (999), **Sei** (1329), **Doma**
+(97477) and **Beam** (4337) need their EVM finality semantics confirmed before
+a timelock can be sized against them.
 
 ---
 
