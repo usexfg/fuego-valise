@@ -108,42 +108,91 @@ class AppTheme {
         shadowColor: Colors.black26,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          elevation: 2,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        style: ButtonStyle(
+          backgroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+            if (states.contains(MaterialState.disabled)) return cardColor;
+            if (states.contains(MaterialState.pressed)) return primaryDark;
+            if (states.contains(MaterialState.hovered)) return primaryLight;
+            return primaryColor;
+          }),
+          foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+            if (states.contains(MaterialState.disabled)) return textMuted;
+            return Colors.white;
+          }),
+          overlayColor: MaterialStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(MaterialState.pressed)) return Colors.white.withOpacity(0.10);
+            return Colors.transparent;
+          }),
+          elevation: MaterialStateProperty.resolveWith<double>((states) {
+            if (states.contains(MaterialState.hovered)) return 4;
+            return 2;
+          }),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           ),
-          textStyle: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+          shape: MaterialStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
+          textStyle: MaterialStateProperty.all(
+            const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          mouseCursor: MaterialStateProperty.resolveWith<MouseCursor>((states) {
+            if (states.contains(MaterialState.disabled)) return SystemMouseCursors.forbidden;
+            return SystemMouseCursors.click;
+          }),
+          animationDuration: const Duration(milliseconds: 200),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: primaryColor,
-          side: const BorderSide(color: primaryColor),
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        style: ButtonStyle(
+          foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+            if (states.contains(MaterialState.hovered)) return primaryLight;
+            return primaryColor;
+          }),
+          backgroundColor: MaterialStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(MaterialState.pressed)) return primaryColor.withOpacity(0.15);
+            if (states.contains(MaterialState.hovered)) return primaryColor.withOpacity(0.08);
+            return Colors.transparent;
+          }),
+          side: MaterialStateProperty.resolveWith<BorderSide>((states) {
+            if (states.contains(MaterialState.hovered)) {
+              return const BorderSide(color: primaryLight, width: 1.5);
+            }
+            return const BorderSide(color: primaryColor);
+          }),
+          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           ),
-          textStyle: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
+          shape: MaterialStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
+          textStyle: MaterialStateProperty.all(
+            const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+          ),
+          mouseCursor: MaterialStateProperty.all(SystemMouseCursors.click),
+          animationDuration: const Duration(milliseconds: 200),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: accentColor,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+        style: ButtonStyle(
+          foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+            if (states.contains(MaterialState.hovered)) return primaryColor;
+            return accentColor;
+          }),
+          overlayColor: MaterialStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(MaterialState.pressed)) return accentColor.withOpacity(0.15);
+            if (states.contains(MaterialState.hovered)) return accentColor.withOpacity(0.08);
+            return Colors.transparent;
+          }),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
+          textStyle: MaterialStateProperty.all(
+            const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          ),
+          mouseCursor: MaterialStateProperty.all(SystemMouseCursors.click),
+          animationDuration: const Duration(milliseconds: 200),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

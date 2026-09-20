@@ -171,7 +171,7 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EVM Wallets'),
+        title: const Text('EVM Vault'),
         actions: [
           IconButton(
             tooltip: 'Refresh balances',
@@ -189,7 +189,7 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreate,
         icon: const Icon(Icons.add),
-        label: const Text('New wallet'),
+        label: const Text('New Account'),
       ),
     );
   }
@@ -213,21 +213,20 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
             size: 58, color: AppTheme.primaryColor),
         const SizedBox(height: 18),
         const Text(
-          'No EVM wallets saved',
+          'No accounts on this device',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.textPrimary, fontSize: 21),
         ),
         const SizedBox(height: 10),
         const Text(
-          'Create one account and view it across every supported EVM network.',
+          'One account. Every supported EVM network.',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.textSecondary),
         ),
         const SizedBox(height: 24),
-        ElevatedButton.icon(
+        ElevatedButton(
           onPressed: _openCreate,
-          icon: const Icon(Icons.add),
-          label: const Text('Create EVM wallet'),
+          child: const Text('New Account'),
         ),
       ],
     );
@@ -262,9 +261,38 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
                   ),
                 ),
                 if (isActive)
-                  const Chip(
-                    label: Text('Active'),
-                    visualDensity: VisualDensity.compact,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.primaryColor.withOpacity(0.35)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 6,
+                          height: 6,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Active',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.primaryColor,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 PopupMenuButton<String>(
                   onSelected: (value) {
@@ -275,7 +303,7 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
                     if (!isActive)
                       const PopupMenuItem(
                         value: 'select',
-                        child: Text('Use this wallet'),
+                        child: Text('Set active'),
                       ),
                     const PopupMenuItem(
                       value: 'remove',
@@ -326,7 +354,7 @@ class _EvmWalletsScreenState extends State<EvmWalletsScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Text('Balance', style: TextStyle(color: AppTheme.textMuted)),
+                const Text('Holdings', style: TextStyle(color: AppTheme.textMuted)),
                 const Spacer(),
                 if (isLoading)
                   const SizedBox(

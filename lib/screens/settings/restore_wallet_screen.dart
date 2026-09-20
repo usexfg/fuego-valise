@@ -227,7 +227,7 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Import Wallet'),
+        title: const Text('Restore Vault'),
         elevation: 0,
         backgroundColor: Colors.transparent,
         leading: IconButton(
@@ -361,13 +361,13 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
+              color: AppTheme.warningColor.withOpacity(0.08),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              border: Border.all(color: AppTheme.warningColor.withOpacity(0.25)),
             ),
             child: const Row(
               children: [
-                Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                Icon(Icons.warning_amber_rounded, size: 16, color: AppTheme.warningColor),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -616,7 +616,7 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
           const Icon(Icons.check_circle, size: 64, color: AppTheme.successColor),
           const SizedBox(height: 24),
           const Text(
-            'Wallet Imported!',
+            'Vault Restored.',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w600,
@@ -626,7 +626,7 @@ class _RestoreWalletScreenState extends State<RestoreWalletScreen> {
           const SizedBox(height: 8),
           const Text(
             'Keep this seed phrase safe. It is the only way to restore this '
-            'wallet if you ever need to import it again.',
+            'vault if you need it again.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
           ),

@@ -236,7 +236,7 @@ class _WalletsScreenState extends State<WalletsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Wallets'),
+        title: const Text('Vault'),
         elevation: 0,
         backgroundColor: Colors.transparent,
       ),
@@ -247,32 +247,22 @@ class _WalletsScreenState extends State<WalletsScreen> {
           const SizedBox(height: 24),
           SizedBox(
             height: 52,
-            child: ElevatedButton.icon(
+            child: ElevatedButton(
               onPressed: _openCreate,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text(
-                'Create New Wallet',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              child: const Text(
+                'New Vault',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
           const SizedBox(height: 12),
           SizedBox(
             height: 52,
-            child: OutlinedButton.icon(
+            child: OutlinedButton(
               onPressed: _openRestore,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primaryColor,
-                side: const BorderSide(color: AppTheme.primaryColor),
-              ),
-              icon: const Icon(Icons.download_outlined),
-              label: const Text(
-                'Import Wallet (Mnemonic)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              child: const Text(
+                'Restore from Phrase',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
             ),
           ),
@@ -301,6 +291,8 @@ class _WalletsScreenState extends State<WalletsScreen> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
+          hoverColor: AppTheme.primaryColor.withOpacity(0.06),
+          splashColor: AppTheme.primaryColor.withOpacity(0.12),
           onTap: isActive ? null : () => _switchTo(entry),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -338,7 +330,7 @@ class _WalletsScreenState extends State<WalletsScreen> {
                           const SizedBox(height: 2),
                           Text(
                             entry.address.isEmpty
-                                ? 'Address shown after unlock'
+                                ? 'Shown on activation'
                                 : _truncate(entry.address),
                             style: const TextStyle(
                               fontSize: 12,
@@ -356,24 +348,33 @@ class _WalletsScreenState extends State<WalletsScreen> {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: AppTheme.successColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
+                          color: AppTheme.primaryColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppTheme.primaryColor.withOpacity(0.35),
+                          ),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.check_circle,
-                              size: 14,
-                              color: AppTheme.successColor,
+                            SizedBox(
+                              width: 6,
+                              height: 6,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
                             ),
-                            SizedBox(width: 4),
+                            SizedBox(width: 6),
                             Text(
                               'Active',
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.successColor,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.primaryColor,
+                                letterSpacing: 0.5,
                               ),
                             ),
                           ],

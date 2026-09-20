@@ -216,7 +216,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create New Wallet'),
+        title: const Text('New Vault'),
         elevation: 0,
         backgroundColor: Colors.transparent,
         leading: IconButton(
@@ -300,7 +300,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            _hasExistingWallets ? 'Add Another Wallet' : 'Create Your Wallet',
+            _hasExistingWallets ? 'Add Another Vault' : 'Open Your Vault',
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w600,
@@ -310,11 +310,9 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           const SizedBox(height: 12),
           Text(
             _hasExistingWallets
-                ? 'A new wallet will be generated and saved alongside your '
-                      'existing wallets. You can switch between them at any '
-                      'time from Settings > Wallets.'
-                : 'A brand-new wallet will be generated and saved on this '
-                      'device.',
+                ? 'A new vault will be generated alongside your existing '
+                      'vaults. Switch between them from Settings > Vault.'
+                : 'A new vault will be generated and held on this device.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 15,
@@ -649,7 +647,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           const Icon(Icons.check_circle, size: 64, color: AppTheme.successColor),
           const SizedBox(height: 24),
           const Text(
-            'Wallet Created!',
+            'Vault Secured.',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w600,
@@ -658,8 +656,8 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Write down your new seed phrase and store it somewhere safe. '
-            'It is the only way to restore this wallet.',
+            'Write down your seed phrase and keep it somewhere safe. '
+            'It is the only way to restore this vault.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15, color: AppTheme.textSecondary),
           ),
