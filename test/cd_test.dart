@@ -205,7 +205,7 @@ void main() {
     });
   });
 
-  group('HeatMetrics redemption price', () {
+  group('HeatMetrics pool ratio', () {
     HeatMetrics metrics({required int num_, int denom = 1000000}) =>
         HeatMetrics.fromJson({
           'redemption_price_num': num_,
@@ -218,16 +218,16 @@ void main() {
           'treasury_balance': 50000000,
         });
 
-    test('price is XFG per HEAT, per Core.cpp, and display only', () {
-      // redemptionPriceNum = reserveXfg * 1e6 / reserveHeat, denom = 1e6.
+    test('pool ratio is XFG per ΗΞΔŦ, per Core.cpp, and display only', () {
+      // reserveXfg * 1e6 / reserveHeat, denom = 1e6. Named a pool ratio, not
+      // a redemption price: ΗΞΔŦ does not redeem back to XFG.
       expect(metrics(num_: 500000).xfgPerHeat, 0.5);
-      expect(metrics(num_: 500000).formattedRedemptionPrice,
-          '0.500000 XFG/HEAT');
+      expect(metrics(num_: 500000).formattedPoolRatio, '0.500000 XFG/ΗΞΔŦ');
     });
 
-    test('an undefined price is null, not zero or one', () {
+    test('an undefined ratio is null, not zero or one', () {
       expect(metrics(num_: 0).xfgPerHeat, isNull);
-      expect(metrics(num_: 0).formattedRedemptionPrice, '—');
+      expect(metrics(num_: 0).formattedPoolRatio, '—');
       expect(metrics(num_: 500000, denom: 0).xfgPerHeat, isNull);
     });
 
@@ -242,25 +242,46 @@ void main() {
   });
 
   group('PoolInfo mint price', () {
-    PoolInfo pool({int twap = 0, int spot = 0}) => PoolInfo.fromJson({
+    PoolInfo pool({int twap = 0, int spot = 0, int reported = 0}) =>
+        PoolInfo.fromJson({
           'reserve_xfg': 10000000,
           'reserve_heat': 20000000,
           'total_lp_shares': 100,
           'spot_price': spot,
           'epoch_swap_fees': 0,
           'hearth_twap': twap,
+          'mint_price': reported,
         });
 
-    test('prefers the rolling TWAP, as Blockchain.cpp does', () {
-      // V11+: TWAP when the rolling window holds >= 2 samples, else spot.
+    test('prefers the daemon\'s reported mint price', () {
+      // Blockchain::getMintPrice is the single source of truth; the client
+      // must not re-derive it when the daemon reports one.
+      expect(pool(reported: 50000000, twap: 30000000, spot: 20000000).mintPrice,
+          50000000);
+    });
+
+    test('falls back TWAP then spot, as Blockchain.cpp orders them', () {
+      // An older daemon leaves mint_price unset.
       expect(pool(twap: 30000000, spot: 20000000).mintPrice, 30000000);
       expect(pool(spot: 20000000).mintPrice, 20000000);
     });
 
-    test('is null when neither price exists, so the quote fails closed', () {
-      // Consensus: "HEAT mint rejected: no pool price available".
-      expect(pool().mintPrice, isNull);
-      expect(pool().heatPerXfg, isNull);
+    test('falls back to the launch ratio when the pool has no price', () {
+      // The chicken-and-egg: accumulateTwap only samples a non-empty pool,
+      // and the pool cannot hold ΗΞΔŦ before any is minted. Without this the
+      // first mint is impossible and the pool can never be seeded.
+      expect(pool().mintPrice, heatLaunchMintPrice);
+      expect(pool().mintPrice, 1000000);
+    });
+
+    test('the launch ratio is 10 XFG per ΗΞΔŦ on the canonical scale', () {
+      // HEAT_LAUNCH_RATIO_NUM/DENOM = 10/1 XFG per ΗΞΔŦ, inverted onto
+      // HEAT-per-XFG x COIN: COIN / 10.
+      expect(heatLaunchRatioXfgPerHeat, 10);
+      expect(heatLaunchMintPrice, atomicPerCoin ~/ 10);
+      // Burning 10 XFG at the launch ratio mints exactly 1 ΗΞΔŦ.
+      const burn = 10 * atomicPerCoin;
+      expect(burn * heatLaunchMintPrice ~/ atomicPerCoin, atomicPerCoin);
     });
 
     test('is on the canonical scale: HEAT per XFG x COIN', () {

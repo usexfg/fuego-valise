@@ -51,6 +51,15 @@ const int cdCreationFeeBps = 10;
 /// that factor.
 const int heatMintPremiumBps = 0;
 
+/// CryptoNoteConfig.h HEAT_LAUNCH_RATIO_NUM/DENOM — 10 XFG per 1 ΗΞΔŦ — on
+/// the canonical mint price scale (ΗΞΔŦ atomics per XFG atomic x COIN).
+///
+/// The Hearth pool cannot hold ΗΞΔŦ before any is minted, and minting needs
+/// a price, so at launch there is no pool price to mint against. This fixed
+/// ratio breaks that deadlock until the pool carries one of its own.
+const int heatLaunchRatioXfgPerHeat = 10;
+const int heatLaunchMintPrice = atomicPerCoin ~/ heatLaunchRatioXfgPerHeat;
+
 /// Format atomic units to XFG string.
 String formatXfg(int atomic) {
   return (atomic / atomicPerCoin).toStringAsFixed(decimalPlaces);

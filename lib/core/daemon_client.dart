@@ -286,11 +286,12 @@ class FuegoDaemonClient {
     return await _get('/status');
   }
 
-  /// Fetch raw ΗΞΔŦ metrics (supply, redemption price, treasury, vault
-  /// balances) from the daemon's `/heat_metrics` endpoint.
+  /// Fetch raw ΗΞΔŦ metrics (supply, pool ratio, treasury, vault balances)
+  /// from the daemon's `/heat_metrics` endpoint.
   ///
-  /// The redemption price here is a pool ratio for display. It is NOT the
-  /// price a mint is validated against — see [getAmmPoolInfoRaw].
+  /// Its `redemption_price_*` fields are a pool ratio for display, despite
+  /// the wire name — ΗΞΔŦ does not redeem back to XFG. The price a mint is
+  /// validated against comes from [getAmmPoolInfoRaw].
   Future<Map<String, dynamic>> getHeatMetricsRaw() async {
     return await _get('/heat_metrics');
   }

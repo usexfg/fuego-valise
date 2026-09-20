@@ -111,9 +111,9 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       return;
     }
 
-    // Without a redemption price there is no valid mint: consensus rejects
-    // on `redemptionPrice.isZero()`. Quoting zero HEAT and submitting anyway
-    // burns XFG for a transaction that cannot be accepted.
+    // Without a mint price there is no valid mint: consensus rejects on a
+    // zero price. Quoting zero ΗΞΔŦ and submitting anyway burns XFG for a
+    // transaction that cannot be accepted.
     if (estimatedHeat == null) {
       setState(() => _errorMessage =
           'No pool price available — the Hearth pool has no price yet. '
@@ -761,7 +761,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Minting burns XFG to create ΗΞΔŦ at the current TWAP redemption rate. '
+                            'Minting burns XFG to create ΗΞΔŦ at the current mint price. '
                             'The rate is updated each block. This action cannot be undone.',
                             style: TextStyle(
                               color: AppTheme.textSecondary,

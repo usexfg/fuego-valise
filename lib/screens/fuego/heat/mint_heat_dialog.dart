@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/constants.dart';
+import '../../../services/fuego_daemon_client.dart';
 import '../../../services/fuego_rpc_service.dart';
 import '../../../utils/theme.dart';
 import '../../../utils/xfg_ticker.dart';
 
+/// Unreferenced. [MintHeatScreen] is the maintained mint path — it requires
+/// a PIN and reports pool state. This dialog is kept only because it is still
+/// imported by the equally unreferenced heat_screen.dart; do not wire it up
+/// without adding PIN authorisation first.
 class MintHeatDialog extends StatefulWidget {
   const MintHeatDialog({super.key});
 
@@ -69,7 +75,7 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Burn XFG to mint ΗΞΔŦ at the PI redemption price.',
+          Text('Burn XFG to mint ΗΞΔŦ at the current mint price.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
           const SizedBox(height: 12),
           TextField(
@@ -90,7 +96,7 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text('ΗΞΔŦ received depends on PI redemption price',
+          const Text('ΗΞΔŦ received depends on the current mint price',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
           if (_error != null)
             Padding(
@@ -138,17 +144,30 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
     setState(() { _submitting = true; _error = null; });
     try {
       final rpc = context.read<FuegoRPCService>();
+      final daemon = context.read<FuegoDaemonClient>();
+      // Consensus validates heatMinted <= xfgBurned * mintPrice / COIN
+      // (HeatMintEngine::expectedHeatFor). A hardcoded 1:1 is rejected above
+      // parity and silently shortchanges the minter below it.
+      final pool = await daemon.getPoolInfo();
+      final price = pool.mintPrice;
+      if (price == null) {
+        throw StateError('No pool price available');
+      }
       final xfgAtomicAmt = (xfg * xfgAtomic).round();
-      // heat_minted = xfg_burned (1:1 at launch, server validates ratio)
+      var heatAtomic = xfgAtomicAmt * price ~/ xfgAtomic;
+      if (heatMintPremiumBps > 0) {
+        heatAtomic = heatAtomic * 10000 ~/ (10000 + heatMintPremiumBps);
+      }
+      if (heatAtomic <= 0) {
+        throw StateError('Amount too small to mint any ΗΞΔŦ at this price');
+      }
       final result = await rpc.heatMint(
         xfgBurned: xfgAtomicAmt,
-        heatMinted: xfgAtomicAmt,
-        fee: 0,
-        mixin: 4,
+        heatMinted: heatAtomic,
       );
       setState(() {
         _txHash = result['tx_hash'] as String?;
-        _heatReceived = (xfgAtomicAmt / xfgAtomic).toStringAsFixed(7);
+        _heatReceived = (heatAtomic / xfgAtomic).toStringAsFixed(7);
         _submitting = false;
       });
     } catch (e) {

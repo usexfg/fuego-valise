@@ -1,3 +1,5 @@
+import '../core/constants.dart' show heatLaunchMintPrice;
+
 /// Models for the Hearth AMM / orderbook subsystem.
 ///
 /// Field names and types match the fuego-suite C++ response structs exactly.
@@ -13,8 +15,8 @@ class HeatMetrics {
   final int heatOnDeposit;
   final int burnedXfg;
   final int totalBurnedXfg;
-  final int redemptionPriceNum;
-  final int redemptionPriceDenom;
+  final int poolRatioNum;
+  final int poolRatioDenom;
   final int treasuryBalance;
   final int treasuryCounterXfg;
   final int swfBurnedXfgPendingHeat;
@@ -33,8 +35,8 @@ class HeatMetrics {
     required this.heatOnDeposit,
     required this.burnedXfg,
     required this.totalBurnedXfg,
-    required this.redemptionPriceNum,
-    required this.redemptionPriceDenom,
+    required this.poolRatioNum,
+    required this.poolRatioDenom,
     required this.treasuryBalance,
     required this.treasuryCounterXfg,
     required this.swfBurnedXfgPendingHeat,
@@ -55,8 +57,10 @@ class HeatMetrics {
       heatOnDeposit: _u64(json['heat_on_deposit']),
       burnedXfg: _u64(json['burned_xfg']),
       totalBurnedXfg: _u64(json['total_burned_xfg']),
-      redemptionPriceNum: _u64(json['redemption_price_num']),
-      redemptionPriceDenom: _u64(json['redemption_price_denom']),
+      // Wire names are the daemon's; the concept is a pool ratio, not a
+      // redemption — ΗΞΔŦ does not redeem back to XFG.
+      poolRatioNum: _u64(json['redemption_price_num']),
+      poolRatioDenom: _u64(json['redemption_price_denom']),
       treasuryBalance: _u64(json['treasury_balance']),
       treasuryCounterXfg: _u64(json['treasury_counter_xfg']),
       swfBurnedXfgPendingHeat: _u64(json['swf_burned_xfg_pending_heat']),
@@ -72,27 +76,27 @@ class HeatMetrics {
     );
   }
 
-  /// Redemption price in **XFG per HEAT**, for display only.
+  /// The Hearth pool's XFG-per-ΗΞΔŦ ratio, for display.
   ///
-  /// Core.cpp computes `redemptionPriceNum = reserveXfg * 1e6 / reserveHeat`
-  /// with `redemptionPriceDenom = 1e6`, so num/denom is XFG per HEAT.
+  /// Core.cpp computes it as `reserveXfg * 1e6 / reserveHeat` with a 1e6
+  /// denominator. It is a pool ratio, not a redemption right: ΗΞΔŦ does not
+  /// redeem back to XFG.
   ///
-  /// This is NOT the price a mint is validated against. Since v11 the chain
-  /// uses `mintPrice` — the rolling 8-block TWAP, or the AMM spot price when
-  /// the window is too short — on the canonical scale (HEAT atomics per XFG
-  /// atomic × COIN), and fails closed when it is zero. Quoting a mint from
-  /// this field instead drifts from the TWAP and gets the transaction
-  /// rejected. Use [PoolInfo.mintPrice].
+  /// It is also not the price a mint is validated against — that is
+  /// [PoolInfo.mintPrice], which is the 8-block TWAP (spot while the window
+  /// fills, the launch ratio before the pool has a price) on the canonical
+  /// scale. Quoting a mint from this ratio instead drifts from the TWAP and
+  /// gets the transaction rejected.
   double? get xfgPerHeat {
-    if (redemptionPriceDenom == 0 || redemptionPriceNum == 0) return null;
-    return redemptionPriceNum / redemptionPriceDenom;
+    if (poolRatioDenom == 0 || poolRatioNum == 0) return null;
+    return poolRatioNum / poolRatioDenom;
   }
 
-  /// Redemption price as a display string, or '—' when undefined.
-  String get formattedRedemptionPrice {
-    final price = xfgPerHeat;
-    if (price == null) return '—';
-    return '${price.toStringAsFixed(6)} XFG/HEAT';
+  /// Pool ratio as a display string, or '—' when the pool has no ΗΞΔŦ.
+  String get formattedPoolRatio {
+    final ratio = xfgPerHeat;
+    if (ratio == null) return '—';
+    return '${ratio.toStringAsFixed(6)} XFG/ΗΞΔŦ';
   }
 
   /// HEAT in circulation, in HEAT.
@@ -243,6 +247,12 @@ class PoolInfo {
   final int spotPrice;
   final int epochSwapFees;
   final int hearthTwap;
+
+  /// The daemon's own answer for the price a mint is validated against
+  /// (Blockchain::getMintPrice). Zero on a daemon predating the field, where
+  /// [mintPrice] re-derives it locally.
+  final int reportedMintPrice;
+
   final String status;
 
   const PoolInfo({
@@ -252,6 +262,7 @@ class PoolInfo {
     required this.spotPrice,
     required this.epochSwapFees,
     required this.hearthTwap,
+    this.reportedMintPrice = 0,
     required this.status,
   });
 
@@ -263,6 +274,7 @@ class PoolInfo {
       spotPrice: _u64(json['spot_price']),
       epochSwapFees: _u64(json['epoch_swap_fees']),
       hearthTwap: _u64(json['hearth_twap']),
+      reportedMintPrice: _u64(json['mint_price']),
       status: json['status'] as String? ?? '',
     );
   }
@@ -270,13 +282,16 @@ class PoolInfo {
   /// The price a HEAT mint is validated against, on the canonical scale:
   /// HEAT atomics per XFG atomic × COIN (AmmPool.cpp ammGetSpotPrice).
   ///
-  /// Mirrors Blockchain.cpp's v11+ selection: the rolling 8-block TWAP when
-  /// the window holds at least two samples, otherwise the AMM spot price.
-  /// Null when neither is available — consensus fails closed there
-  /// ("HEAT mint rejected: no pool price available"), so a quote must too.
+  /// Prefers the daemon's reported value. Falls back to Blockchain.cpp's
+  /// own order for a daemon predating the field: the rolling 8-block TWAP,
+  /// the AMM spot price while that window fills, then the fixed launch ratio
+  /// — the pool cannot hold ΗΞΔŦ before any is minted, so without that last
+  /// step no first mint is possible.
   int? get mintPrice {
+    if (reportedMintPrice > 0) return reportedMintPrice;
     if (hearthTwap > 0) return hearthTwap;
     if (spotPrice > 0) return spotPrice;
+    if (heatLaunchMintPrice > 0) return heatLaunchMintPrice;
     return null;
   }
 

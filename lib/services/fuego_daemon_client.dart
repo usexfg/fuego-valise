@@ -25,9 +25,9 @@ class FuegoDaemonClient {
     _baseUrl = 'http://$host:${port ?? _networkConfig.daemonRpcPort}';
   }
 
-  // ── ΗΞΔŦ Stablecoin ──
+  // ── ΗΞΔŦ ──
 
-  /// Get ΗΞΔŦ metrics: supply, redemption price, treasury, CD yield
+  /// Get ΗΞΔŦ metrics: supply, pool ratio, treasury, vault balances
   Future<HeatMetrics> getHeatMetrics() async {
     final result = await _daemonGet('/heat_metrics');
     return HeatMetrics.fromJson(result);

@@ -91,12 +91,12 @@ class _HeatScreenState extends State<HeatScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const Text('Redemption', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            const Text('Hearth pool', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _metricColumn('XFG per ΗΞΔŦ', m.formattedRedemptionPrice, AppTheme.primaryColor),
+                _metricColumn('Pool ratio', m.formattedPoolRatio, AppTheme.primaryColor),
                 _metricColumn('On deposit', m.onDeposit, AppTheme.accentColor),
               ],
             ),

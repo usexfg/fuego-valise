@@ -525,7 +525,7 @@ class WalletCubit extends Cubit<WalletState> {
     return result;
   }
 
-  /// Fetch ΗΞΔŦ metrics: supply, redemption price, treasury, vault balances.
+  /// Fetch ΗΞΔŦ metrics: supply, pool ratio, treasury, vault balances.
   Future<HeatMetrics> getHeatMetrics() async =>
       HeatMetrics.fromJson(await _daemon.getHeatMetricsRaw());
 
