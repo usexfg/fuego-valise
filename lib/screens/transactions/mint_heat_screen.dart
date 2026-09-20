@@ -77,17 +77,15 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
   /// HEAT received per whole XFG burned, for display.
   double? get _heatPerXfg => _pool?.heatPerXfg;
 
-  /// Quote on the chain's own terms:
-  /// `expectedHeat = xfgBurned * mintPrice / COIN`, truncated down. Computed
-  /// in atomic units so the displayed figure is the one the transaction will
-  /// carry.
+  /// Quote on the chain's own terms, less drift headroom. Computed in atomic
+  /// units so the displayed figure is exactly what the transaction carries.
   double? get _estimatedHeat {
     final price = _mintPrice;
     if (price == null) return null;
     final xfg = double.tryParse(_amountController.text) ?? 0;
     if (xfg <= 0) return 0;
-    final burnAtomic = (xfg * atomicPerCoin).round();
-    return (burnAtomic * price ~/ atomicPerCoin) / atomicPerCoin;
+    return heatMintableFor((xfg * atomicPerCoin).round(), price) /
+        atomicPerCoin;
   }
 
   void _onAmountChanged() {

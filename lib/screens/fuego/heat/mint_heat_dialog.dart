@@ -154,7 +154,7 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         throw StateError('No pool price available');
       }
       final xfgAtomicAmt = (xfg * xfgAtomic).round();
-      final heatAtomic = xfgAtomicAmt * price ~/ xfgAtomic;
+      final heatAtomic = heatMintableFor(xfgAtomicAmt, price);
       if (heatAtomic <= 0) {
         throw StateError('Amount too small to mint any ΗΞΔŦ at this price');
       }

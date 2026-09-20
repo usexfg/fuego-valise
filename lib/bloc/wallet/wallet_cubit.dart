@@ -502,12 +502,9 @@ class WalletCubit extends Cubit<WalletState> {
     if (_rpcService == null) {
       throw StateError('Wallet RPC service not available');
     }
-    // Integer arithmetic on the chain's own scale, matching
-    // expectedHeatFor(xfgBurned, price) = xfgBurned * price / COIN. Truncating
-    // division rounds down, which is required: consensus rejects
-    // `heatOutputs > expectedHeat`, so landing one atomic unit over the cap
-    // fails the whole transaction.
-    final heatAtomic = burnAtomic * mintPrice ~/ atomicPerCoin;
+    // Integer arithmetic on the chain's own scale, with drift headroom so a
+    // price tick down between here and inclusion does not void the mint.
+    final heatAtomic = heatMintableFor(burnAtomic, mintPrice);
     if (heatAtomic <= 0) {
       throw StateError('Amount too small to mint any ΗΞΔŦ at the current price');
     }

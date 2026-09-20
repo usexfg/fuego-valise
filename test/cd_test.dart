@@ -315,12 +315,79 @@ void main() {
       expect(minted, lessThanOrEqualTo(burnAtomic * price / atomicPerCoin));
     });
 
-    test('a mint costs exactly the price, with no premium on top', () {
-      // The mandatory mint premium is gone: burning N XFG mints exactly
-      // N * price / COIN, so a quote never has to hold anything back.
+    test('a mint costs the price, with no premium on top', () {
+      // The mandatory mint premium is gone: the only thing held back is
+      // drift headroom.
       const burn = 10 * atomicPerCoin;
       final price = pool(spot: atomicPerCoin).mintPrice!;
       expect(burn * price ~/ atomicPerCoin, burn);
+    });
+  });
+
+  group('mint quote headroom', () {
+    // Consensus rejects a claim ABOVE the price at the including block and
+    // (with HEAT_MINT_SHORTFALL_TOLERANCE_BPS = 500) one more than 5% below.
+    const shortfallToleranceBps = 500;
+
+    int expectedAt(int burn, int price) => burn * price ~/ atomicPerCoin;
+    bool accepted(int burn, int minted, int priceAtInclusion) {
+      final expected = expectedAt(burn, priceAtInclusion);
+      if (minted > expected) return false;
+      final floor = expected * (10000 - shortfallToleranceBps) ~/ 10000;
+      return minted >= floor;
+    }
+
+    test('headroom stays inside the consensus shortfall tolerance', () {
+      // Otherwise the wallet's own headroom would trip the floor.
+      expect(heatMintQuoteHeadroomBps, lessThan(shortfallToleranceBps));
+    });
+
+    test('quoting at the exact price fails on ANY downward drift', () {
+      // The reason headroom exists. This is the pre-existing upper bound,
+      // and it is exact.
+      const burn = 100 * atomicPerCoin;
+      final price = heatLaunchMintPrice;
+      final naive = expectedAt(burn, price); // no headroom
+      expect(accepted(burn, naive, price), isTrue);
+      // A tenth of a percent down is enough to void it.
+      expect(accepted(burn, naive, price * 999 ~/ 1000), isFalse);
+    });
+
+    test('headroom absorbs a downward tick', () {
+      const burn = 100 * atomicPerCoin;
+      final price = heatLaunchMintPrice;
+      final quoted = heatMintableFor(burn, price);
+      // Accepted at the quoted price and all the way down to the headroom.
+      expect(accepted(burn, quoted, price), isTrue);
+      expect(accepted(burn, quoted, price * 995 ~/ 1000), isTrue);
+      expect(accepted(burn, quoted, price * 991 ~/ 1000), isTrue);
+    });
+
+    test('headroom still leaves room for an upward tick', () {
+      const burn = 100 * atomicPerCoin;
+      final price = heatLaunchMintPrice;
+      final quoted = heatMintableFor(burn, price);
+      // Price rising means the quote is under expected — fine until the
+      // shortfall floor, several percent up.
+      expect(accepted(burn, quoted, price * 102 ~/ 100), isTrue);
+      expect(accepted(burn, quoted, price * 104 ~/ 100), isTrue);
+    });
+
+    test('headroom costs exactly what it says', () {
+      const burn = 100 * atomicPerCoin;
+      final price = heatLaunchMintPrice;
+      final full = expectedAt(burn, price);
+      final quoted = heatMintableFor(burn, price);
+      expect(full - quoted, full * heatMintQuoteHeadroomBps ~/ 10000);
+    });
+
+    test('a wrong ratio is still caught in both directions', () {
+      const burn = 100 * atomicPerCoin;
+      final price = heatLaunchMintPrice;
+      // The old hardcoded 1:1 — ten times too much at the launch ratio.
+      expect(accepted(burn, burn, price), isFalse);
+      // Ten times too little, which consensus used to accept silently.
+      expect(accepted(burn, expectedAt(burn, price) ~/ 10, price), isFalse);
     });
   });
 
