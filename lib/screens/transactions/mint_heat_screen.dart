@@ -23,6 +23,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
   bool _isLoadingRate = true;
   String? _errorMessage;
   HeatMetrics? _metrics;
+  PoolInfo? _pool;
   String? _rateError;
 
   @override
@@ -44,10 +45,17 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       _rateError = null;
     });
     try {
-      final metrics = await context.read<WalletCubit>().getHeatMetrics();
+      final cubit = context.read<WalletCubit>();
+      // Pool info carries the mint price; metrics carry supply and treasury
+      // figures for display.
+      final results = await Future.wait([
+        cubit.getHeatMetrics(),
+        cubit.getPoolInfo(),
+      ]);
       if (mounted) {
         setState(() {
-          _metrics = metrics;
+          _metrics = results[0] as HeatMetrics;
+          _pool = results[1] as PoolInfo;
           _isLoadingRate = false;
         });
       }
@@ -61,20 +69,29 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
     }
   }
 
-  /// HEAT received per XFG burned. Null when the redemption price is
-  /// undefined (empty HEAT reserve), in which case consensus rejects the
-  /// mint outright and there is nothing to quote.
-  double? get _heatPerXfg => _metrics?.heatPerXfg;
+  /// The price consensus validates a mint against: the rolling 8-block TWAP,
+  /// or the AMM spot price when the window is too short. Null when neither
+  /// exists — the chain fails closed there, so the quote must too.
+  int? get _mintPrice => _pool?.mintPrice;
 
-  /// Consensus mints `xfgBurned / redemptionPrice` where redemptionPrice is
-  /// XFG per HEAT (HeatMintEngine::validateMint), so the quote multiplies by
-  /// the inverse. Multiplying by the price itself was wrong by a factor of
-  /// the price squared.
+  /// HEAT received per whole XFG burned, for display.
+  double? get _heatPerXfg => _pool?.heatPerXfg;
+
+  /// Quote on the chain's own terms:
+  /// `expectedHeat = xfgBurned * mintPrice / COIN`, truncated down, less any
+  /// mint premium. Computed in atomic units so the displayed figure is the
+  /// one the transaction will carry.
   double? get _estimatedHeat {
-    final rate = _heatPerXfg;
-    if (rate == null) return null;
+    final price = _mintPrice;
+    if (price == null) return null;
     final xfg = double.tryParse(_amountController.text) ?? 0;
-    return xfg * rate;
+    if (xfg <= 0) return 0;
+    final burnAtomic = (xfg * atomicPerCoin).round();
+    var heatAtomic = burnAtomic * price ~/ atomicPerCoin;
+    if (heatMintPremiumBps > 0) {
+      heatAtomic = heatAtomic * 10000 ~/ (10000 + heatMintPremiumBps);
+    }
+    return heatAtomic / atomicPerCoin;
   }
 
   void _onAmountChanged() {
@@ -99,8 +116,8 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
     // burns XFG for a transaction that cannot be accepted.
     if (estimatedHeat == null) {
       setState(() => _errorMessage =
-          'Redemption price unavailable — the Hearth pool has no ΗΞΔŦ '
-          'reserve. Minting is not possible until it does.');
+          'No pool price available — the Hearth pool has no price yet. '
+          'Minting is not possible until it does.');
       return;
     }
 
@@ -165,7 +182,8 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Rate: 1 XFG = ${(_heatPerXfg ?? 0).toStringAsFixed(4)} ΗΞΔŦ (TWAP)',
+                    'Rate: 1 XFG = ${(_heatPerXfg ?? 0).toStringAsFixed(4)} ΗΞΔŦ '
+                    '(${_pool!.hearthTwap > 0 ? "TWAP" : "spot"})',
                     style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -268,17 +286,17 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       final cubit = context.read<WalletCubit>();
       final amountStr = _amountController.text.trim();
       final xfgAmount = double.tryParse(amountStr) ?? 0;
-      final rate = _heatPerXfg;
-      if (rate == null) {
-        throw StateError('Redemption price unavailable');
+      final price = _mintPrice;
+      if (price == null) {
+        throw StateError('Mint price unavailable');
       }
       // Snapshot the quote: the field stays editable during the await, and
       // the success dialog must report what was actually minted.
-      final quotedHeat = xfgAmount * rate;
+      final quotedHeat = _estimatedHeat ?? 0;
 
       final result = await cubit.mintHeat(
         xfgAmount: xfgAmount,
-        heatPerXfg: rate,
+        mintPrice: price,
         pin: pin,
       );
 
@@ -544,7 +562,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                                   ),
                                   Flexible(
                                     child: Text(
-                                      _heatPerXfg == null
+                                      _mintPrice == null
                                           ? 'Unavailable'
                                           : '1 XFG = ${_heatPerXfg!.toStringAsFixed(4)} ΗΞΔŦ',
                                       maxLines: 1,
@@ -693,7 +711,7 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ||
                               availableXfg <= 0 ||
-                              _heatPerXfg == null
+                              _mintPrice == null
                           ? null
                           : _showConfirmDialog,
                       style: ElevatedButton.styleFrom(

@@ -72,26 +72,20 @@ class HeatMetrics {
     );
   }
 
-  /// Redemption price in **XFG per HEAT**.
+  /// Redemption price in **XFG per HEAT**, for display only.
   ///
   /// Core.cpp computes `redemptionPriceNum = reserveXfg * 1e6 / reserveHeat`
-  /// with `redemptionPriceDenom = 1e6`, so num/denom is XFG per HEAT — not
-  /// HEAT per XFG. Null when the pool has no HEAT reserve, in which case the
-  /// price is undefined and HeatMintEngine::validateMint rejects any mint
-  /// (`redemptionPrice.isZero()`).
+  /// with `redemptionPriceDenom = 1e6`, so num/denom is XFG per HEAT.
+  ///
+  /// This is NOT the price a mint is validated against. Since v11 the chain
+  /// uses `mintPrice` — the rolling 8-block TWAP, or the AMM spot price when
+  /// the window is too short — on the canonical scale (HEAT atomics per XFG
+  /// atomic × COIN), and fails closed when it is zero. Quoting a mint from
+  /// this field instead drifts from the TWAP and gets the transaction
+  /// rejected. Use [PoolInfo.mintPrice].
   double? get xfgPerHeat {
     if (redemptionPriceDenom == 0 || redemptionPriceNum == 0) return null;
     return redemptionPriceNum / redemptionPriceDenom;
-  }
-
-  /// HEAT received per XFG burned — the inverse of [xfgPerHeat].
-  /// Consensus mints `xfgBurned / redemptionPrice`
-  /// (HeatMintEngine::validateMint), so this is the factor a mint quote
-  /// multiplies by.
-  double? get heatPerXfg {
-    final price = xfgPerHeat;
-    if (price == null || price == 0) return null;
-    return 1.0 / price;
   }
 
   /// Redemption price as a display string, or '—' when undefined.
@@ -273,7 +267,27 @@ class PoolInfo {
     );
   }
 
-  /// Spot price (HEAT per XFG, atomic units) as a display string.
+  /// The price a HEAT mint is validated against, on the canonical scale:
+  /// HEAT atomics per XFG atomic × COIN (AmmPool.cpp ammGetSpotPrice).
+  ///
+  /// Mirrors Blockchain.cpp's v11+ selection: the rolling 8-block TWAP when
+  /// the window holds at least two samples, otherwise the AMM spot price.
+  /// Null when neither is available — consensus fails closed there
+  /// ("HEAT mint rejected: no pool price available"), so a quote must too.
+  int? get mintPrice {
+    if (hearthTwap > 0) return hearthTwap;
+    if (spotPrice > 0) return spotPrice;
+    return null;
+  }
+
+  /// HEAT minted per whole XFG burned, for display.
+  double? get heatPerXfg {
+    final price = mintPrice;
+    if (price == null) return null;
+    return price / _atomicPerCoin;
+  }
+
+  /// Spot price (HEAT per XFG × COIN) as a display string.
   String get price => spotPrice.toString();
 
   /// XFG reserve (atomic units) as a display string.

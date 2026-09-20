@@ -286,10 +286,21 @@ class FuegoDaemonClient {
     return await _get('/status');
   }
 
-  /// Fetch raw ΗΞΔŦ metrics (supply, TWAP redemption price, treasury, CD
-  /// yield) from the daemon's `/heat_metrics` endpoint.
+  /// Fetch raw ΗΞΔŦ metrics (supply, redemption price, treasury, vault
+  /// balances) from the daemon's `/heat_metrics` endpoint.
+  ///
+  /// The redemption price here is a pool ratio for display. It is NOT the
+  /// price a mint is validated against — see [getAmmPoolInfoRaw].
   Future<Map<String, dynamic>> getHeatMetricsRaw() async {
     return await _get('/heat_metrics');
+  }
+
+  /// Fetch raw Hearth pool state from `/amm_pool_info`, which carries the
+  /// price minting is actually validated against: `hearth_twap`
+  /// (Blockchain::getRollingTwap) with `spot_price`
+  /// (ammGetSpotPrice) as the fallback.
+  Future<Map<String, dynamic>> getAmmPoolInfoRaw() async {
+    return await _get('/amm_pool_info');
   }
 
   /// Scan blockchain for outputs belonging to our keys.

@@ -218,30 +218,17 @@ void main() {
           'treasury_balance': 50000000,
         });
 
-    test('price is XFG per HEAT, per Core.cpp', () {
+    test('price is XFG per HEAT, per Core.cpp, and display only', () {
       // redemptionPriceNum = reserveXfg * 1e6 / reserveHeat, denom = 1e6.
-      // reserveXfg 2, reserveHeat 4 gives 0.5 XFG per HEAT.
       expect(metrics(num_: 500000).xfgPerHeat, 0.5);
       expect(metrics(num_: 500000).formattedRedemptionPrice,
           '0.500000 XFG/HEAT');
     });
 
-    test('heatPerXfg inverts the price, matching validateMint', () {
-      // Consensus mints xfgBurned / redemptionPrice, so burning at 0.5
-      // XFG/HEAT yields 2 HEAT per XFG. Multiplying by the price instead
-      // would have quoted 0.5 — wrong by the price squared.
-      expect(metrics(num_: 500000).heatPerXfg, 2.0);
-      expect(metrics(num_: 2000000).heatPerXfg, 0.5);
-      expect(metrics(num_: 1000000).heatPerXfg, 1.0);
-    });
-
     test('an undefined price is null, not zero or one', () {
-      // Core.cpp sets num = 0 when reserveHeat is 0, and validateMint rejects
-      // a zero price. Quoting 1:1 there would burn XFG for a rejected tx.
       expect(metrics(num_: 0).xfgPerHeat, isNull);
-      expect(metrics(num_: 0).heatPerXfg, isNull);
       expect(metrics(num_: 0).formattedRedemptionPrice, '—');
-      expect(metrics(num_: 500000, denom: 0).heatPerXfg, isNull);
+      expect(metrics(num_: 500000, denom: 0).xfgPerHeat, isNull);
     });
 
     test('amounts render as coin decimals, not atomic units', () {
@@ -252,15 +239,63 @@ void main() {
       expect(m.poolXfg, '1');
       expect(m.poolHeat, '2');
     });
+  });
 
-    test('a mint quote rounds down to stay under the consensus cap', () {
-      // validateMint rejects heatMinted > expectedHeat, so the client must
-      // never round up past it.
-      final rate = metrics(num_: 3000000).heatPerXfg!;
-      const burnAtomic = 10000000; // 1 XFG
-      final minted = (burnAtomic * rate).floor();
-      expect(minted, lessThanOrEqualTo((burnAtomic / 3).ceil()));
+  group('PoolInfo mint price', () {
+    PoolInfo pool({int twap = 0, int spot = 0}) => PoolInfo.fromJson({
+          'reserve_xfg': 10000000,
+          'reserve_heat': 20000000,
+          'total_lp_shares': 100,
+          'spot_price': spot,
+          'epoch_swap_fees': 0,
+          'hearth_twap': twap,
+        });
+
+    test('prefers the rolling TWAP, as Blockchain.cpp does', () {
+      // V11+: TWAP when the rolling window holds >= 2 samples, else spot.
+      expect(pool(twap: 30000000, spot: 20000000).mintPrice, 30000000);
+      expect(pool(spot: 20000000).mintPrice, 20000000);
+    });
+
+    test('is null when neither price exists, so the quote fails closed', () {
+      // Consensus: "HEAT mint rejected: no pool price available".
+      expect(pool().mintPrice, isNull);
+      expect(pool().heatPerXfg, isNull);
+    });
+
+    test('is on the canonical scale: HEAT per XFG x COIN', () {
+      // ammGetSpotPrice = reserveHeat * COIN / reserveXfg. With 2 HEAT of
+      // reserve against 1 XFG that is 2 HEAT per XFG, scaled by COIN.
+      expect(pool(spot: 20000000).heatPerXfg, 2.0);
+      expect(pool(spot: 5000000).heatPerXfg, 0.5);
+      expect(pool(spot: atomicPerCoin).heatPerXfg, 1.0);
+    });
+
+    test('quote multiplies by price / COIN, matching expectedHeatFor', () {
+      // expectedHeatFor(xfgBurned, price) = xfgBurned * price / COIN.
+      // Burning 1 XFG at 2 HEAT/XFG mints 2 HEAT.
+      const burnAtomic = atomicPerCoin;
+      final price = pool(spot: 20000000).mintPrice!;
+      expect(burnAtomic * price ~/ atomicPerCoin, 2 * atomicPerCoin);
+    });
+
+    test('quote truncates down so it cannot exceed the consensus cap', () {
+      // A price of 1/3 HEAT per XFG leaves a remainder; rounding up would
+      // put heatOutputs one atomic unit over expectedHeat and be rejected.
+      final price = pool(spot: 3333333).mintPrice!;
+      const burnAtomic = atomicPerCoin;
+      final minted = burnAtomic * price ~/ atomicPerCoin;
       expect(minted, 3333333);
+      expect(minted, lessThanOrEqualTo(burnAtomic * price / atomicPerCoin));
+    });
+
+    test('the mint premium is disabled, matching HEAT_MINT_PREMIUM_BPS', () {
+      // When re-enabled, the mintable amount shrinks by 1 / (1 + bps/1e4):
+      // validateMint requires xfgBurned >= minXfg * (1 + bps/1e4).
+      expect(heatMintPremiumBps, 0);
+      const base = 1000000;
+      const bps = 50; // hypothetical 0.5%
+      expect(base * 10000 ~/ (10000 + bps), lessThan(base));
     });
   });
 

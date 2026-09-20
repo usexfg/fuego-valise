@@ -470,15 +470,15 @@ class WalletCubit extends Cubit<WalletState> {
 
   /// Mint ΗΞΔŦ by burning XFG. Amount in display units.
   ///
-  /// [heatPerXfg] is the inverse of the redemption price, which the caller
-  /// reads from HeatMetrics. Consensus validates
-  /// `heatMinted <= xfgBurned / redemptionPrice`
-  /// (HeatMintEngine::validateMint), so the ratio is not ours to assume: a
-  /// hardcoded 1:1 is rejected above parity and silently shortchanges the
+  /// [mintPrice] is the chain's mint price on its canonical scale (HEAT
+  /// atomics per XFG atomic × COIN), from [PoolInfo.mintPrice]. Consensus
+  /// validates `heatMinted <= xfgBurned * mintPrice / COIN`
+  /// (HeatMintEngine::expectedHeatFor), so the ratio is not ours to assume:
+  /// a hardcoded 1:1 is rejected above parity and silently shortchanges the
   /// user below it, since the check is one-sided.
   Future<Map<String, dynamic>> mintHeat({
     required double xfgAmount,
-    required double heatPerXfg,
+    required int mintPrice,
     required String pin,
   }) async {
     if (!state.isUnlocked && !(_vault?.isUnlocked ?? false)) {
@@ -491,8 +491,8 @@ class WalletCubit extends Cubit<WalletState> {
     if (xfgAmount <= 0) {
       throw ArgumentError('Amount must be positive');
     }
-    if (heatPerXfg <= 0) {
-      throw ArgumentError('Redemption price unavailable');
+    if (mintPrice <= 0) {
+      throw ArgumentError('Mint price unavailable');
     }
     final burnAtomic = (xfgAmount * atomicPerCoin).round();
     // The burn transaction pays a network fee on top of the burned amount.
@@ -502,11 +502,17 @@ class WalletCubit extends Cubit<WalletState> {
     if (_rpcService == null) {
       throw StateError('Wallet RPC service not available');
     }
-    // Round the minted amount DOWN: consensus rejects
-    // `heatMinted > expectedHeat`, and expectedHeat is computed in
-    // fixed-point from the same price, so rounding up risks landing one
-    // atomic unit over the cap.
-    final heatAtomic = (burnAtomic * heatPerXfg).floor();
+    // Integer arithmetic on the chain's own scale, matching
+    // expectedHeatFor(xfgBurned, price) = xfgBurned * price / COIN. Truncating
+    // division rounds down, which is required: consensus rejects
+    // `heatOutputs > expectedHeat`, so landing one atomic unit over the cap
+    // fails the whole transaction.
+    var heatAtomic = burnAtomic * mintPrice ~/ atomicPerCoin;
+    // When a mint premium is in force the minter must burn more than the base
+    // cost, so the mintable amount shrinks by that factor.
+    if (heatMintPremiumBps > 0) {
+      heatAtomic = heatAtomic * 10000 ~/ (10000 + heatMintPremiumBps);
+    }
     if (heatAtomic <= 0) {
       throw StateError('Amount too small to mint any ΗΞΔŦ at the current price');
     }
@@ -519,9 +525,14 @@ class WalletCubit extends Cubit<WalletState> {
     return result;
   }
 
-  /// Fetch ΗΞΔŦ metrics: supply, redemption price (TWAP), treasury, CD yield
+  /// Fetch ΗΞΔŦ metrics: supply, redemption price, treasury, vault balances.
   Future<HeatMetrics> getHeatMetrics() async =>
       HeatMetrics.fromJson(await _daemon.getHeatMetricsRaw());
+
+  /// Fetch Hearth pool state, which carries the price a mint is validated
+  /// against ([PoolInfo.mintPrice]).
+  Future<PoolInfo> getPoolInfo() async =>
+      PoolInfo.fromJson(await _daemon.getAmmPoolInfoRaw());
 
   Future<void> refreshTransactions() async {
     try {

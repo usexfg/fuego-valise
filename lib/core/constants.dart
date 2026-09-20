@@ -42,6 +42,15 @@ const int depositMinAmount = 8 * atomicPerCoin;
 /// CD creation banking fee, in basis points (heat_cd_core: amount / 1000).
 const int cdCreationFeeBps = 10;
 
+// ── HEAT mint ──
+
+/// CryptoNoteConfig.h HEAT_MINT_PREMIUM_BPS — the premium a minter must burn
+/// on top of the base mint cost. Disabled for launch; when non-zero,
+/// HeatMintEngine::validateMint requires
+/// `xfgBurned >= minXfg * (1 + bps/10000)`, so the mintable HEAT shrinks by
+/// that factor.
+const int heatMintPremiumBps = 0;
+
 /// Format atomic units to XFG string.
 String formatXfg(int atomic) {
   return (atomic / atomicPerCoin).toStringAsFixed(decimalPlaces);
