@@ -621,6 +621,7 @@ pub fn build_mint_transaction(
     mixin: usize,
     xfg_burned: u64,
     heat_minted: u64,
+    price_height: u32,
     change: u64,
     view_pub: &[u8; 32],
     change_keys: (&[u8; 32], &[u8; 32]),
@@ -657,7 +658,7 @@ pub fn build_mint_transaction(
     }
 
     let mut extra = Vec::new();
-    add_heat_mint_auth_extra(&mut extra, xfg_burned, heat_minted);
+    add_heat_mint_auth_extra(&mut extra, xfg_burned, heat_minted, price_height);
 
     build_mixed_output_transaction(
         inputs,

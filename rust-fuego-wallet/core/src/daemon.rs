@@ -180,6 +180,27 @@ impl DaemonClient {
         Ok((reserve_xfg, reserve_heat, spot_price))
     }
 
+    /// /amm_pool_info — the price a HEAT mint is validated against, with the
+    /// height it belongs to.
+    ///
+    /// Both come from the daemon. Consensus checks a mint against the price
+    /// it recorded at `mint_price_height` (Blockchain::getMintPriceAtHeight),
+    /// so a price derived here from reserves belongs to no height, cannot be
+    /// pinned, and would only produce mints that are rejected. A daemon that
+    /// does not report the field yields 0, which the caller must treat as
+    /// "cannot mint" rather than falling back to anything.
+    pub async fn mint_price(&self) -> Result<(u64, u32), String> {
+        let val = self
+            .json_rpc::<serde_json::Value>("amm_pool_info", serde_json::json!({}))
+            .await?;
+        let price = val.get("mint_price").and_then(|v| v.as_u64()).unwrap_or(0);
+        let height = val
+            .get("mint_price_height")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        Ok((price, height))
+    }
+
     /// /amm_pool_info — full Hearth pool state including LP share supply.
     pub async fn amm_pool_full(&self) -> Result<(u64, u64, u64, u64), String> {
         let val = self

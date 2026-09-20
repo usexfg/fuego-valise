@@ -665,16 +665,23 @@ impl WalletService {
         ))
     }
 
-    /// mint_heat: burn XFG, mint HEAT at the Hearth pool spot price.
+    /// mint_heat: burn XFG, mint HEAT at the daemon's mint price.
+    ///
+    /// Quoted against `mint_price` at `mint_price_height` and pinned to that
+    /// height in the auth extra. Consensus validates the claimed HEAT against
+    /// the price it recorded at that height, exactly, so the wallet must not
+    /// price this itself: the pool's spot price is not what a mint is checked
+    /// against, and quoting from it made every mint fail the upper bound as
+    /// soon as the oracle and spot diverged.
     pub async fn mint_heat(&self, xfg_burned: u64) -> std::result::Result<String, String> {
         if xfg_burned == 0 {
             return Err("xfg_burned must be > 0".into());
         }
-        let (_rx, _rh, spot_price) = self.daemon.amm_pool_info().await?;
-        if spot_price == 0 {
-            return Err("no pool price available".into());
+        let (mint_price, price_height) = self.daemon.mint_price().await?;
+        if mint_price == 0 {
+            return Err("no mint price available".into());
         }
-        let heat_minted = (xfg_burned as u128 * spot_price as u128 / COIN as u128) as u64;
+        let heat_minted = (xfg_burned as u128 * mint_price as u128 / COIN as u128) as u64;
         if heat_minted < HEAT_MINT_MIN_HEAT {
             return Err(format!(
                 "minted HEAT {} below minimum {}",
@@ -731,6 +738,7 @@ impl WalletService {
             mixin,
             xfg_burned,
             heat_minted,
+            price_height,
             change,
             &keys.view_public,
             (&keys.spend_public, &keys.view_public),

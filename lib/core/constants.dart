@@ -53,35 +53,18 @@ const int cdCreationFeeBps = 10;
 const int heatLaunchRatioXfgPerHeat = 10;
 const int heatLaunchMintPrice = atomicPerCoin ~/ heatLaunchRatioXfgPerHeat;
 
-/// How far below the current mint price to quote, in basis points.
-///
-/// Consensus rejects a mint claiming MORE ΗΞΔŦ than the price at the block
-/// that includes it allows (HeatMintEngine: `heatOutputs > expectedHeat`),
-/// and that check is exact. Quoting at exactly the current price therefore
-/// fails on any downward drift at all — even a tenth of a percent — between
-/// building the transaction and it being mined. Roughly half of all mints,
-/// since prices move both ways.
-///
-/// Quoting slightly under buys headroom for that drift. The cost is
-/// symmetric and explicit: the minter gives up this much ΗΞΔŦ, and in
-/// exchange a price fall of up to this much no longer voids the mint.
-///
-/// 100 bps covers about an 8% single-block swing in the pool, because the
-/// 8-block TWAP absorbs only about an eighth of a spot move per block.
-///
-/// Must stay well below HEAT_MINT_SHORTFALL_TOLERANCE_BPS (500), or the
-/// headroom itself trips the consensus shortfall floor.
-const int heatMintQuoteHeadroomBps = 100;
-
 /// ΗΞΔŦ to claim for [burnAtomic] at [mintPrice], on the chain's own terms:
-/// `expectedHeat = xfgBurned * price / COIN` (HeatMintEngine::expectedHeatFor),
-/// less [heatMintQuoteHeadroomBps] of drift headroom.
+/// `expectedHeat = xfgBurned * price / COIN` (HeatMintEngine::expectedHeatFor).
 ///
-/// Truncating division rounds down, which is required — consensus rejects a
-/// claim one atomic unit over the cap.
+/// Exact, with no headroom. A mint pins the height whose price it used
+/// (TX_EXTRA_HEAT_MINT_AUTH carries priceHeight), and consensus validates
+/// against the price it recorded at that height rather than the price when
+/// the transaction is mined. There is no drift left to absorb, so the wallet
+/// quotes the full amount and the claim is checked by exact equality.
+///
+/// Truncating division rounds down, matching the chain's own floor.
 int heatMintableFor(int burnAtomic, int mintPrice) {
-  final expected = burnAtomic * mintPrice ~/ atomicPerCoin;
-  return expected * (10000 - heatMintQuoteHeadroomBps) ~/ 10000;
+  return burnAtomic * mintPrice ~/ atomicPerCoin;
 }
 
 /// Format atomic units to XFG string.

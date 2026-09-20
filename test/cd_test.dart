@@ -242,7 +242,8 @@ void main() {
   });
 
   group('PoolInfo mint price', () {
-    PoolInfo pool({int twap = 0, int spot = 0, int reported = 0}) =>
+    PoolInfo pool(
+            {int twap = 0, int spot = 0, int reported = 0, int height = 0}) =>
         PoolInfo.fromJson({
           'reserve_xfg': 10000000,
           'reserve_heat': 20000000,
@@ -251,6 +252,7 @@ void main() {
           'epoch_swap_fees': 0,
           'hearth_twap': twap,
           'mint_price': reported,
+          'mint_price_height': height,
         });
 
     test('prefers the daemon\'s reported mint price', () {
@@ -260,10 +262,16 @@ void main() {
           50000000);
     });
 
-    test('falls back TWAP then spot, as Blockchain.cpp orders them', () {
-      // An older daemon leaves mint_price unset.
-      expect(pool(twap: 30000000, spot: 20000000).mintPrice, 30000000);
-      expect(pool(spot: 20000000).mintPrice, 20000000);
+    test('never re-derives a price from the TWAP or spot', () {
+      // A mint pins mint_price_height and consensus checks it against the
+      // price recorded there, so a figure assembled from these belongs to no
+      // height and would only ever build a mint the chain rejects.
+      expect(pool(twap: 30000000, spot: 20000000).mintPrice, isNull);
+      expect(pool(spot: 20000000).mintPrice, isNull);
+    });
+
+    test('carries the height the price is pinned to', () {
+      expect(pool(reported: 50000000, height: 1234).mintPriceHeight, 1234);
     });
 
     test('never invents a launch ratio when the daemon reports no price', () {
@@ -292,23 +300,23 @@ void main() {
     test('is on the canonical scale: HEAT per XFG x COIN', () {
       // ammGetSpotPrice = reserveHeat * COIN / reserveXfg. With 2 HEAT of
       // reserve against 1 XFG that is 2 HEAT per XFG, scaled by COIN.
-      expect(pool(spot: 20000000).heatPerXfg, 2.0);
-      expect(pool(spot: 5000000).heatPerXfg, 0.5);
-      expect(pool(spot: atomicPerCoin).heatPerXfg, 1.0);
+      expect(pool(reported: 20000000).heatPerXfg, 2.0);
+      expect(pool(reported: 5000000).heatPerXfg, 0.5);
+      expect(pool(reported: atomicPerCoin).heatPerXfg, 1.0);
     });
 
     test('quote multiplies by price / COIN, matching expectedHeatFor', () {
       // expectedHeatFor(xfgBurned, price) = xfgBurned * price / COIN.
       // Burning 1 XFG at 2 HEAT/XFG mints 2 HEAT.
       const burnAtomic = atomicPerCoin;
-      final price = pool(spot: 20000000).mintPrice!;
+      final price = pool(reported: 20000000).mintPrice!;
       expect(burnAtomic * price ~/ atomicPerCoin, 2 * atomicPerCoin);
     });
 
     test('quote truncates down so it cannot exceed the consensus cap', () {
       // A price of 1/3 HEAT per XFG leaves a remainder; rounding up would
       // put heatOutputs one atomic unit over expectedHeat and be rejected.
-      final price = pool(spot: 3333333).mintPrice!;
+      final price = pool(reported: 3333333).mintPrice!;
       const burnAtomic = atomicPerCoin;
       final minted = burnAtomic * price ~/ atomicPerCoin;
       expect(minted, 3333333);
@@ -316,69 +324,54 @@ void main() {
     });
 
     test('a mint costs the price, with no premium on top', () {
-      // The mandatory mint premium is gone: the only thing held back is
-      // drift headroom.
+      // The mandatory mint premium is gone, and nothing is held back in its
+      // place: the quote is the price, exactly.
       const burn = 10 * atomicPerCoin;
-      final price = pool(spot: atomicPerCoin).mintPrice!;
+      final price = pool(reported: atomicPerCoin).mintPrice!;
       expect(burn * price ~/ atomicPerCoin, burn);
     });
   });
 
-  group('mint quote headroom', () {
-    // Consensus rejects a claim ABOVE the price at the including block and
-    // (with HEAT_MINT_SHORTFALL_TOLERANCE_BPS = 500) one more than 5% below.
-    const shortfallToleranceBps = 500;
-
+  group('mint quote', () {
+    // A mint pins the height whose price it was quoted against, and consensus
+    // validates the claim against the price recorded at that height. Both
+    // bounds are therefore exact equalities — no tolerance band either way.
     int expectedAt(int burn, int price) => burn * price ~/ atomicPerCoin;
-    bool accepted(int burn, int minted, int priceAtInclusion) {
-      final expected = expectedAt(burn, priceAtInclusion);
-      if (minted > expected) return false;
-      final floor = expected * (10000 - shortfallToleranceBps) ~/ 10000;
-      return minted >= floor;
-    }
+    bool accepted(int burn, int minted, int pinnedPrice) =>
+        minted == expectedAt(burn, pinnedPrice);
 
-    test('headroom stays inside the consensus shortfall tolerance', () {
-      // Otherwise the wallet's own headroom would trip the floor.
-      expect(heatMintQuoteHeadroomBps, lessThan(shortfallToleranceBps));
-    });
-
-    test('quoting at the exact price fails on ANY downward drift', () {
-      // The reason headroom exists. This is the pre-existing upper bound,
-      // and it is exact.
+    test('the quote is exact at the pinned price', () {
       const burn = 100 * atomicPerCoin;
       final price = heatLaunchMintPrice;
-      final naive = expectedAt(burn, price); // no headroom
-      expect(accepted(burn, naive, price), isTrue);
-      // A tenth of a percent down is enough to void it.
-      expect(accepted(burn, naive, price * 999 ~/ 1000), isFalse);
+      expect(heatMintableFor(burn, price), expectedAt(burn, price));
+      expect(accepted(burn, heatMintableFor(burn, price), price), isTrue);
     });
 
-    test('headroom absorbs a downward tick', () {
+    test('drift no longer voids the mint, because the price is pinned', () {
+      // The old failure: quoting at the live price and having it move before
+      // inclusion. The pinned price does not move, so the same quote holds
+      // however far spot travels in the meantime.
       const burn = 100 * atomicPerCoin;
       final price = heatLaunchMintPrice;
       final quoted = heatMintableFor(burn, price);
-      // Accepted at the quoted price and all the way down to the headroom.
       expect(accepted(burn, quoted, price), isTrue);
-      expect(accepted(burn, quoted, price * 995 ~/ 1000), isTrue);
-      expect(accepted(burn, quoted, price * 991 ~/ 1000), isTrue);
     });
 
-    test('headroom still leaves room for an upward tick', () {
+    test('a claim off the pinned price by one atomic unit is rejected', () {
       const burn = 100 * atomicPerCoin;
       final price = heatLaunchMintPrice;
-      final quoted = heatMintableFor(burn, price);
-      // Price rising means the quote is under expected — fine until the
-      // shortfall floor, several percent up.
-      expect(accepted(burn, quoted, price * 102 ~/ 100), isTrue);
-      expect(accepted(burn, quoted, price * 104 ~/ 100), isTrue);
+      final exact = expectedAt(burn, price);
+      expect(accepted(burn, exact + 1, price), isFalse);
+      expect(accepted(burn, exact - 1, price), isFalse);
     });
 
-    test('headroom costs exactly what it says', () {
+    test('quoting against a different price than the pin is rejected', () {
+      // Which is what stops a wallet pricing off spot, or off a price it
+      // derived itself, and pinning some other height.
       const burn = 100 * atomicPerCoin;
       final price = heatLaunchMintPrice;
-      final full = expectedAt(burn, price);
-      final quoted = heatMintableFor(burn, price);
-      expect(full - quoted, full * heatMintQuoteHeadroomBps ~/ 10000);
+      final quotedElsewhere = heatMintableFor(burn, price * 101 ~/ 100);
+      expect(accepted(burn, quotedElsewhere, price), isFalse);
     });
 
     test('a wrong ratio is still caught in both directions', () {

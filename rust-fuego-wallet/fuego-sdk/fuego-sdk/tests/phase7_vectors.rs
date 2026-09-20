@@ -171,6 +171,7 @@ fn heat_mint_transaction() {
         mixin,
         xfg_burned,
         heat_minted,
+        7_777,
         change,
         &view_pub,
         (&spend_pub, &view_pub),
@@ -211,11 +212,12 @@ fn heat_mint_transaction() {
     assert!(in_sum >= xfg_out + fee, "XFG must cover outputs + fee");
     assert_eq!(in_sum - xfg_out - fee, xfg_burned, "burn must be exact");
 
-    // Auth extra: 0xF5 || xfgBurned LE || heatMinted LE.
+    // Auth extra: 0xF5 || xfgBurned LE || heatMinted LE || priceHeight LE.
     let extra = &built.tx.prefix.extra;
     let f5 = extra.iter().position(|b| *b == 0xF5).expect("auth tag");
     assert_eq!(&extra[f5 + 1..f5 + 9], &xfg_burned.to_le_bytes());
     assert_eq!(&extra[f5 + 9..f5 + 17], &heat_minted.to_le_bytes());
+    assert_eq!(&extra[f5 + 17..f5 + 21], &7_777u32.to_le_bytes());
 
     // Commitment secret recovery: each HEAT output's commit key must match
     // deriveCommitmentKeys(Hs(D || outIndex)) with D = 8*(r*V).
@@ -414,6 +416,7 @@ fn print_cross_language_artifacts() {
         mixin,
         3_000_000,
         1_500_000_000,
+        7_777,
         7_000_000 - 3_000_000 - MINIMUM_FEE,
         &view_pub,
         (&spend_pub, &view_pub),
@@ -421,11 +424,14 @@ fn print_cross_language_artifacts() {
         &mut rng,
     )
     .unwrap();
-    // Verified by the C++ production parser (parseAndValidateTransactionFromBinaryArray):
-    // roundtrip byte-identical, hash matches. Pinned for CI.
+    // Regenerated when the mint auth extra gained priceHeight, which adds 4
+    // bytes to the transaction and so changes its hash. The changed bytes
+    // were checked against the C++ encoder directly: addHeatMintAuthToExtra
+    // and add_heat_mint_auth_extra emit an identical 21-byte field for these
+    // inputs. The surrounding transaction body is untouched by that change.
     assert_eq!(
         hex::encode(built.tx_hash),
-        "07a2adaae22d35ec74eb7be0b9e82418dccd8d08f5527c295ba501d8bf3a767a"
+        "529e1c601e0bea07a29ba143554c9290df9cf7aed945e70c5c9c689c58647926"
     );
 
     // Commitment-spend artifact.

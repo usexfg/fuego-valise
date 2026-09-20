@@ -250,6 +250,8 @@ class PoolInfo {
   /// (Blockchain::getMintPrice). Zero on a daemon predating the field, where
   /// [mintPrice] re-derives it locally.
   final int reportedMintPrice;
+  /// Height [reportedMintPrice] belongs to. A mint pins this.
+  final int mintPriceHeight;
 
   final String status;
 
@@ -261,6 +263,7 @@ class PoolInfo {
     required this.epochSwapFees,
     required this.hearthTwap,
     this.reportedMintPrice = 0,
+    this.mintPriceHeight = 0,
     required this.status,
   });
 
@@ -273,6 +276,7 @@ class PoolInfo {
       epochSwapFees: _u64(json['epoch_swap_fees']),
       hearthTwap: _u64(json['hearth_twap']),
       reportedMintPrice: _u64(json['mint_price']),
+      mintPriceHeight: _u64(json['mint_price_height']),
       status: json['status'] as String? ?? '',
     );
   }
@@ -284,18 +288,14 @@ class PoolInfo {
   /// selection — including the fixed launch ratio during bootstrap, and its
   /// withdrawal once the pool has ever priced.
   ///
-  /// Falls back to the TWAP then spot only for a daemon predating the field.
-  /// Deliberately never falls back to the launch ratio on its own: the
-  /// client cannot tell a genuine bootstrap from a node that failed to
-  /// report, and quoting a stale 10:1 against a live market either gets the
-  /// mint rejected or silently shortchanges the minter, since consensus only
-  /// checks that the ΗΞΔŦ claimed is not too high. Null means no quote.
-  int? get mintPrice {
-    if (reportedMintPrice > 0) return reportedMintPrice;
-    if (hearthTwap > 0) return hearthTwap;
-    if (spotPrice > 0) return spotPrice;
-    return null;
-  }
+  /// No fallback. A mint pins [mintPriceHeight] and consensus validates it
+  /// against the price recorded there, so a figure assembled here from the
+  /// TWAP or from spot belongs to no height and would only ever produce a
+  /// quote the chain rejects. Reconstructing the launch ratio client-side
+  /// would be worse: the client cannot tell a genuine bootstrap from a node
+  /// that failed to report. Null means no quote, and the screen says so
+  /// rather than showing a number that will not settle.
+  int? get mintPrice => reportedMintPrice > 0 ? reportedMintPrice : null;
 
   /// HEAT minted per whole XFG burned, for display.
   double? get heatPerXfg {

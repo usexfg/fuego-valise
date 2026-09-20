@@ -487,11 +487,22 @@ pub fn build_extra_with_pubkey(r: &[u8; 32]) -> Vec<u8> {
 }
 
 /// TransactionExtra.cpp addHeatMintAuthToExtra: 0xF5 || xfgBurned u64 LE ||
-/// heatMinted u64 LE.
-pub fn add_heat_mint_auth_extra(extra: &mut Vec<u8>, xfg_burned: u64, heat_minted: u64) {
+/// heatMinted u64 LE || priceHeight u32 LE.
+///
+/// `price_height` is the height whose mint price `heat_minted` was computed
+/// from. Consensus validates the amount against the price it recorded at
+/// that height rather than the price at inclusion, so the two agree exactly
+/// and there is no tolerance band on either side.
+pub fn add_heat_mint_auth_extra(
+    extra: &mut Vec<u8>,
+    xfg_burned: u64,
+    heat_minted: u64,
+    price_height: u32,
+) {
     extra.push(TX_EXTRA_HEAT_MINT_AUTH);
     extra.extend_from_slice(&xfg_burned.to_le_bytes());
     extra.extend_from_slice(&heat_minted.to_le_bytes());
+    extra.extend_from_slice(&price_height.to_le_bytes());
 }
 
 /// TransactionExtra.cpp addHeatSendAuthToExtra: 0xF9 || heatAmount u64 LE.
