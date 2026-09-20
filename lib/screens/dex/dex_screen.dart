@@ -1559,7 +1559,7 @@ class _DexScreenState extends State<DexScreen>
         return 'uni';
       case ChainTypeSdk.plasma:
         return 'xpl';
-      case ChainTypeSdk.pulsex:
+      case ChainTypeSdk.pulseChain:
         return 'pls';
       case ChainTypeSdk.monad:
         return 'monad';

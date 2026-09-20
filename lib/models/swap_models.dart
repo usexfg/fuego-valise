@@ -15,6 +15,10 @@ enum SwapPairSdk {
   bch(3, 'BCH', 'XFG/BCH', 'BCH'),
   arb(4, 'ARB', 'XFG/ARB', 'ARB'),
   base(5, 'BASE', 'XFG/BASE', 'BASE'),
+  // `SwapPair::KMD_SPV = 6` — Komodo was wired SPV-first and the enum
+  // constant kept the suffix, so `swapPairToString` emits "KMD_SPV".
+  // `swapPairFromString` also accepts plain "KMD" (`SwapTypes.cpp:39`);
+  // KMD_SPV is used here because it is the string the daemon round-trips.
   kmd(6, 'KMD', 'XFG/KMD', 'KMD_SPV'),
   bnb(7, 'BNB', 'XFG/BNB', 'BNB'),
   dcr(8, 'DCR', 'XFG/DCR', 'DCR'),
@@ -32,7 +36,12 @@ enum SwapPairSdk {
   doge(20, 'DOGE', 'XFG/DOGE', 'DOGE'),
   dash(21, 'DASH', 'XFG/DASH', 'DASH'),
   zec(22, 'ZEC', 'XFG/ZEC', 'ZEC'),
-  pulsex(23, 'PLS', 'XFG/PLS', 'PULSEX'),
+  // The chain is PulseChain; PulseX is a DEX that runs on it. fuego-suite
+  // named the pair after the DEX (`SwapTypes.h:101`: `PULSEX = 23`) and
+  // `swapPairToString` emits "PULSEX", so that string is what the daemon
+  // round-trips and what must go on the wire. "PULS" is accepted too;
+  // "PLS" and "PULSECHAIN" are not. Fix belongs upstream.
+  pulseChain(23, 'PLS', 'XFG/PLS', 'PULSEX'),
   zano(24, 'ZANO', 'XFG/ZANO', 'ZANO'),
   monad(25, 'MON', 'XFG/MON', 'MONAD'),
   optimism(26, 'OP', 'XFG/OP', 'OPTIMISM'),
@@ -125,7 +134,7 @@ enum ChainTypeSdk {
   bob(17, 'BOB', 'BOB'),
   unichain(18, 'UNI', 'Unichain'),
   plasma(19, 'XPL', 'Plasma'),
-  pulsex(20, 'PLS', 'PulseChain'),
+  pulseChain(20, 'PLS', 'PulseChain'), // see SwapPairSdk.pulseChain
   monad(21, 'MON', 'Monad'),
   optimism(22, 'OP', 'Optimism'),
   sia(23, 'SIA', 'Sia'),
@@ -154,7 +163,7 @@ enum ChainTypeSdk {
       this == ChainTypeSdk.bob ||
       this == ChainTypeSdk.unichain ||
       this == ChainTypeSdk.plasma ||
-      this == ChainTypeSdk.pulsex ||
+      this == ChainTypeSdk.pulseChain ||
       this == ChainTypeSdk.monad ||
       this == ChainTypeSdk.optimism;
 

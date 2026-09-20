@@ -57,32 +57,93 @@ void main() {
       }
     });
 
-    test('daemonName is what swapPairFromString accepts', () {
-      // The six pairs whose display ticker the daemon does NOT parse. Sending
-      // the ticker instead of the daemon name is "Unknown swap pair".
-      const divergent = <SwapPairSdk, String>{
-        SwapPairSdk.kmd: 'KMD_SPV',
-        SwapPairSdk.poly: 'POLYGON',
-        SwapPairSdk.robinhood: 'ROBINHOOD',
-        SwapPairSdk.unichain: 'UNICHAIN',
-        SwapPairSdk.plasma: 'PLASMA',
-        SwapPairSdk.pulsex: 'PULSEX',
-        SwapPairSdk.monad: 'MONAD',
-        SwapPairSdk.optimism: 'OPTIMISM',
+    test('daemonName is a string swapPairFromString accepts', () {
+      // Transcribed from fuego-suite `SwapTypes.cpp:28-67` — every literal
+      // the C++ compares against, per pair. Anything outside a pair's set is
+      // "Unknown swap pair".
+      const accepted = <SwapPairSdk, Set<String>>{
+        SwapPairSdk.sol: {'SOL'},
+        SwapPairSdk.eth: {'ETH'},
+        SwapPairSdk.xmr: {'XMR'},
+        SwapPairSdk.bch: {'BCH'},
+        SwapPairSdk.arb: {'ARB'},
+        SwapPairSdk.base: {'BASE'},
+        SwapPairSdk.kmd: {'KMD', 'KMD_SPV'},
+        SwapPairSdk.bnb: {'BNB'},
+        SwapPairSdk.dcr: {'DCR'},
+        SwapPairSdk.btc: {'BTC'},
+        SwapPairSdk.ltc: {'LTC'},
+        SwapPairSdk.poly: {'POLY', 'POLYGON'},
+        SwapPairSdk.gleec: {'GLEEC'},
+        SwapPairSdk.robinhood: {'ROBINHOOD'},
+        SwapPairSdk.avax: {'AVAX'},
+        SwapPairSdk.cro: {'CRO'},
+        SwapPairSdk.bob: {'BOB'},
+        SwapPairSdk.sia: {'SIA', 'SC'},
+        SwapPairSdk.unichain: {'UNICHAIN'},
+        SwapPairSdk.plasma: {'PLASMA'},
+        SwapPairSdk.doge: {'DOGE'},
+        SwapPairSdk.dash: {'DASH'},
+        SwapPairSdk.zec: {'ZEC'},
+        SwapPairSdk.pulseChain: {'PULSEX', 'PULS'},
+        SwapPairSdk.zano: {'ZANO'},
+        SwapPairSdk.ton: {'TON'},
+        SwapPairSdk.monad: {'MONAD'},
+        SwapPairSdk.optimism: {'OPTIMISM', 'OP'},
+        SwapPairSdk.dot: {'DOT', 'POLKADOT'},
       };
-      for (final e in divergent.entries) {
-        expect(e.key.daemonName, e.value);
+      expect(accepted.length, SwapPairSdk.values.length);
+      for (final p in SwapPairSdk.values) {
+        expect(accepted[p], isNotNull, reason: 'no accepted set for ${p.name}');
+        expect(
+          accepted[p],
+          contains(p.daemonName),
+          reason: '${p.name}.daemonName "${p.daemonName}" would be rejected',
+        );
       }
-      // RHC / UNI / XPL / PLS / MON are rejected by the daemon as-is.
-      for (final p in [
+    });
+
+    test('exactly five tickers are rejected by the daemon as-is', () {
+      // RHC / UNI / XPL / PLS / MON. KMD, POLY and OP also have a daemonName
+      // that differs from the ticker, but the C++ accepts their plain ticker
+      // too (`SwapTypes.cpp:39`, `:45`, `:64`) — for those three the
+      // daemonName is the round-trip string, not a requirement.
+      const rejected = {
         SwapPairSdk.robinhood,
         SwapPairSdk.unichain,
         SwapPairSdk.plasma,
-        SwapPairSdk.pulsex,
+        SwapPairSdk.pulseChain,
         SwapPairSdk.monad,
-      ]) {
+      };
+      const tickerAlsoAccepted = {
+        SwapPairSdk.kmd,
+        SwapPairSdk.poly,
+        SwapPairSdk.optimism,
+      };
+      expect(rejected.length, 5);
+      expect(rejected.intersection(tickerAlsoAccepted), isEmpty);
+      for (final p in {...rejected, ...tickerAlsoAccepted}) {
         expect(p.daemonName, isNot(p.ticker));
       }
+      // Every other pair's daemonName IS its ticker.
+      for (final p in SwapPairSdk.values) {
+        if (rejected.contains(p) || tickerAlsoAccepted.contains(p)) continue;
+        expect(p.daemonName, p.ticker, reason: p.name);
+      }
+    });
+
+    test('PulseChain is named for the chain, not the DEX running on it', () {
+      // fuego-suite named the pair after PulseX, a DEX on PulseChain
+      // (`SwapTypes.h:101`: `PULSEX = 23`). The wire string has to match the
+      // daemon; the wallet-side identifier must not inherit the mistake.
+      expect(SwapPairSdk.pulseChain.ticker, 'PLS');
+      expect(SwapPairSdk.pulseChain.daemonName, 'PULSEX');
+      expect(SwapPairSdk.pulseChain.displayName, 'XFG/PLS');
+      // ChainTypeSdk declares its own `name` field, shadowing Enum.name.
+      expect(ChainTypeSdk.pulseChain.name, 'PulseChain');
+      expect(ChainInfo.names['PLS'], 'Pulsechain');
+      // Nothing user-visible says "PulseX".
+      expect(ChainTypeSdk.values.map((c) => c.name), isNot(contains('PulseX')));
     });
 
     test('an unknown id resolves to null, never to another asset', () {
@@ -201,7 +262,7 @@ void main() {
         ChainTypeSdk.bob,
         ChainTypeSdk.unichain,
         ChainTypeSdk.plasma,
-        ChainTypeSdk.pulsex,
+        ChainTypeSdk.pulseChain,
         ChainTypeSdk.monad,
         ChainTypeSdk.optimism,
       ]) {

@@ -385,8 +385,8 @@ class DexCubit extends Cubit<DexState> {
         return ChainTypeSdk.dash;
       case SwapPairSdk.zec:
         return ChainTypeSdk.zec;
-      case SwapPairSdk.pulsex:
-        return ChainTypeSdk.pulsex;
+      case SwapPairSdk.pulseChain:
+        return ChainTypeSdk.pulseChain;
       case SwapPairSdk.zano:
         return ChainTypeSdk.zano;
       case SwapPairSdk.monad:

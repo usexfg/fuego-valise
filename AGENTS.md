@@ -33,10 +33,27 @@ them; `ZANO(24)`, `TON(27)`, `SIA(17)` and `DOT(28)` are staged and log
 "… is staged — not yet registered".
 
 The daemon parses pair names with `swapPairFromString`
-(`src/SwapDaemon/SwapTypes.cpp:30`), which does **not** accept the wallet's
-display tickers for five pairs — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`,
-`PULSEX`, `MONAD`, not `RHC`, `UNI`, `XPL`, `PLS`, `MON`.
-`SwapPairSdk.daemonName` carries the accepted string.
+(`src/SwapDaemon/SwapTypes.cpp:28-67`). Exactly **five** display tickers are
+rejected — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`, `PULSEX`, `MONAD`, not
+`RHC`, `UNI`, `XPL`, `PLS`, `MON`. `SwapPairSdk.daemonName` carries an
+accepted string for every pair, so sending it is always safe.
+
+Three more pairs have a `daemonName` that differs from the ticker but whose
+ticker the C++ **also** accepts, so they are not divergent: `KMD`/`KMD_SPV`
+(`:39-40`), `POLY`/`POLYGON` (`:45-46`), `OP`/`OPTIMISM` (`:63-64`). Aliases
+also exist for `SIA`/`SC` and `DOT`/`POLKADOT`, and `PULS` for PulseChain.
+
+Two names in the C++ are wrong and cannot be fixed wallet-side:
+
+- **`PULSEX = 23`** — the chain is PulseChain; PulseX is a DEX running on it.
+  `swapPairToString` emits `"PULSEX"`, so that is the wire string. The wallet
+  names its own identifiers `pulseChain` and displays "PulseChain"; only the
+  daemon string keeps the upstream name. The daemon's config keys are also
+  `pulsex_*` (`ChainClientConfig.cpp:281-286`), so `SwapConfigService`'s
+  `'pls': 'pulsex'` prefix mapping must stay.
+- **`KMD_SPV = 6`** — Komodo was wired SPV-first and the enum constant kept
+  the suffix, so `swapPairToString` emits `"KMD_SPV"` even in RPC mode. Its
+  config keys are plain `kmd_*`. Plain `"KMD"` parses fine.
 
 ### The original 12 (unchanged)
 
@@ -54,6 +71,24 @@ display tickers for five pairs — send `ROBINHOOD`, `UNICHAIN`, `PLASMA`,
 | 9 | BTC | `BtcChainClient` | Electrum SPV or bitcoind RPC | P2WSH SegWit |
 | 10 | LTC | `LtcChainClient` | Electrum SPV or litecoind RPC | P2WSH SegWit |
 | 11 | POLYGON | `PolygonChainClient` | Polygon JSON-RPC | HashedTimelock.sol |
+
+### EVM chains that are NOT swappable
+
+`chains.yaml` carries **33** EVM chains in two tiers. Only `tier: swap` (15)
+has a `SwapPair` id and reaches xfg-swapd. The other **18** are `tier: wallet`
+— live in the ERC20 layer (balances, send, approve, custom tokens) with no
+atomic swap, because the C++ `SwapPair` enum has no id for them:
+
+Linea, ZKsync Era, HyperEVM, Ink, Rootstock, Gnosis, Flare, Kaia, Scroll,
+Abstract, Plume, Soneium, Doma, Beam, Moonriver, peaq, Tempo, Sei.
+
+`ChainInfo.walletOnlyChains` is derived from `kWalletTierKeys`, so the split
+follows chains.yaml rather than a hand-kept list. Adding swap support for any
+of them starts in fuego-suite (`SwapPair` + a registered chain client), not
+here.
+
+So: 25 swappable = 15 swap-tier EVM + 10 non-EVM (BTC, LTC, BCH, KMD, DCR,
+DOGE, DASH, ZEC, SOL, XMR).
 
 ### Chain Connection Modes
 - **SPV mode**: Read-only verification via Electrum protocol (BTC/LTC/BCH/KMD) or Neutrino (DCR). Cannot create lock transactions — claim/refund needs RPC mode.
