@@ -209,10 +209,12 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      // Lock vault when app leaves foreground — keys must not sit in memory
-      // while the process is backgrounded or interrupted.
+    // Only `paused` (fully backgrounded) locks the vault. `inactive` also
+    // fires for transient interruptions — a notification pull-down, an
+    // incoming call banner, and critically the biometric system prompt
+    // itself — so locking on it would force PIN re-entry during normal use
+    // and could relock the vault mid biometric-unlock.
+    if (state == AppLifecycleState.paused) {
       widget.vaultService.lock();
     }
     if (state == AppLifecycleState.detached) {
