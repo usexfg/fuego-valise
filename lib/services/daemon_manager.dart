@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -41,6 +42,29 @@ class DaemonManager {
   String? _fuegodBin;
   String? _walletdBin;
   String? _swapdBin;
+
+  // ── Android native library directory ────────────────────────────
+  // Android has no subprocess-executable concept outside jniLibs — an
+  // arbitrary bundled binary only becomes executable once extracted to
+  // applicationInfo.nativeLibraryDir (see MainActivity.kt). Resolved once
+  // per DaemonManager instance and cached; Dart has no built-in accessor
+  // for this path, hence the platform channel.
+  static const MethodChannel _nativeLibChannel =
+      MethodChannel('com.fuego.fuego_wallet/native_lib_dir');
+  String? _androidNativeLibDir;
+  bool _androidNativeLibDirResolved = false;
+
+  Future<void> _resolveAndroidNativeLibDir() async {
+    if (!Platform.isAndroid || _androidNativeLibDirResolved) return;
+    _androidNativeLibDirResolved = true;
+    try {
+      _androidNativeLibDir =
+          await _nativeLibChannel.invokeMethod<String>('getNativeLibraryDir');
+      debugPrint('[daemon] Android nativeLibraryDir: $_androidNativeLibDir');
+    } catch (e) {
+      debugPrint('[daemon] Failed to resolve Android nativeLibraryDir: $e');
+    }
+  }
 
   // ── State ────────────────────────────────────────────────────────
   final List<String> errors = [];
@@ -176,6 +200,12 @@ class DaemonManager {
     if (_walletdBin != null && File(_walletdBin!).existsSync()) return _walletdBin;
     final exe = File(Platform.resolvedExecutable);
     final candidates = [
+      // Android: bundled as jniLibs/*/libfuego_walletd.so, extracted to
+      // nativeLibraryDir with execute permission (see MainActivity.kt /
+      // _resolveAndroidNativeLibDir). Not a real shared library — invoked
+      // directly as a subprocess, never dlopen()'d.
+      if (Platform.isAndroid && _androidNativeLibDir != null)
+        '$_androidNativeLibDir/libfuego_walletd.so',
       '${exe.parent.path}/fuego_walletd',
       if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/fuego_walletd',
       // Prefer release over debug for correct --local / port defaults.
@@ -335,6 +365,7 @@ class DaemonManager {
     _fuegodExternallyRunning = false;
     _swapdExternallyRunning = false;
     _useLocalNode = useLocalNode;
+    await _resolveAndroidNativeLibDir();
     debugPrint('[daemon] === Starting daemons ===');
     debugPrint('[daemon] Mode: ${useLocalNode ? "LOCAL" : "REMOTE"}');
     debugPrint('[daemon] Chain target: $daemonHost:$daemonPort');

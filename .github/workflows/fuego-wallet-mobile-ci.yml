@@ -84,6 +84,18 @@ jobs:
           cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 --platform 25 -- build --release
           cd ../../../
 
+      - name: Build fuego_walletd for Android
+        run: |
+          # fuego_walletd is a spawned executable (JSON-RPC wallet proxy), not
+          # an FFI library, but it's cross-compiled the same way via cargo-ndk.
+          # It is packaged below as a renamed .so under jniLibs so Android's
+          # installer extracts it into applicationInfo.nativeLibraryDir with
+          # execute permission — the only way to ship an arbitrary executable
+          # on non-rooted Android without root.
+          cd rust-fuego-wallet
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 --platform 25 -- build --release --package rust_fuego_wallet --bin fuego_walletd
+          cd ..
+
       - name: Copy Rust libraries to Android jniLibs
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
@@ -102,6 +114,15 @@ jobs:
           cp rust-fuego-wallet/target/armv7-linux-androideabi/release/libfuego_ffi.so android/app/src/main/jniLibs/armeabi-v7a/
           cp rust-fuego-wallet/target/x86_64-linux-android/release/libfuego_ffi.so android/app/src/main/jniLibs/x86_64/
           cp rust-fuego-wallet/target/i686-linux-android/release/libfuego_ffi.so android/app/src/main/jniLibs/x86/
+
+          # Copy fuego_walletd — renamed to lib*.so, this is a real ELF
+          # executable, not a shared library. jniLibs packaging is used only
+          # to get Android to extract it with execute permission; it is
+          # invoked directly via Process.start(), never dlopen()'d.
+          cp rust-fuego-wallet/target/aarch64-linux-android/release/fuego_walletd android/app/src/main/jniLibs/arm64-v8a/libfuego_walletd.so
+          cp rust-fuego-wallet/target/armv7-linux-androideabi/release/fuego_walletd android/app/src/main/jniLibs/armeabi-v7a/libfuego_walletd.so
+          cp rust-fuego-wallet/target/x86_64-linux-android/release/fuego_walletd android/app/src/main/jniLibs/x86_64/libfuego_walletd.so
+          cp rust-fuego-wallet/target/i686-linux-android/release/fuego_walletd android/app/src/main/jniLibs/x86/libfuego_walletd.so
 
       - name: Install dependencies
         run: flutter pub get

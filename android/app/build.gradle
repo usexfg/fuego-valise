@@ -71,6 +71,20 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // jniLibs/*/libfuego_walletd.so is a real ELF executable (a spawned JSON-RPC
+    // daemon), not a loadable shared library — it must be extracted to a real
+    // file in applicationInfo.nativeLibraryDir with execute permission.
+    // AGP's default "uncompressed, mapped straight from the APK" packaging
+    // does not produce an executable file on disk, so legacy extraction is
+    // required here. This applies to all jniLibs, including the genuine
+    // libfuego_crypto.so/libfuego_ffi.so shared libraries, which still work
+    // fine either way.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {

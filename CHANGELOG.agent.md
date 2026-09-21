@@ -23,6 +23,23 @@
 | 10 | Verified `stopAll()` external-flag reset (task 3) against both call sites (`NodeConnection.connect()`, `disconnect()`) — confirmed no regression: redundant no-op in `connect()` (immediately followed by `startAll()`, which resets the same flags itself), accuracy improvement in `disconnect()` (no `startAll()` follows, so stale `true` would otherwise persist in `status.value.walletdRunning` indefinitely after an explicit disconnect) | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ verified, no change needed |
 | 11 | Verified `getOrCreateWalletdPassword` exception propagation (task 7) against both call sites (`daemon_manager.dart`, `walletd_service.dart`) — both already wrap the call in try/catch, so removing the internal silent-swallow introduces no new uncaught-exception risk | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ verified, no change needed |
 
+### Mobile CI: fuego_walletd (2026-09-21)
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 12 | Confirm `fuego_walletd` was missing from mobile CI (`fuego-wallet-mobile-ci.yml` only built `fuego_crypto`/`fuego_ffi`, never the `core` crate binary) — this was finding F4 from the earlier audit, now confirmed at the CI level | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ confirmed |
+| 13 | Add `fuego_walletd` Android cross-compile to CI (`cargo ndk` for the same 4 ABIs, reusing the existing `fuego_crypto`/`fuego_ffi` recipe) | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ done |
+| 14 | Package `fuego_walletd` as `jniLibs/<abi>/libfuego_walletd.so` — the only way to get Android's installer to extract a bundled executable with execute permission on non-rooted devices; it is invoked via `Process.start()`, never `dlopen()`'d despite the `.so` naming | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ done |
+| 15 | Set `packaging.jniLibs.useLegacyPackaging = true` in `android/app/build.gradle` + `android:extractNativeLibs="true"` in the manifest — without this, AGP 8.x's default packaging maps libs straight from the APK (page-aligned, never extracted as a real file), which would make the binary unexecutable | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ done |
+| 16 | Add a `MethodChannel` (`MainActivity.kt`) exposing `applicationInfo.nativeLibraryDir` — Dart has no built-in accessor for this path, and `Platform.resolvedExecutable` does not point there on Android | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ done |
+| 17 | Wire the resolved native-lib-dir into `DaemonManager._findWalletdBinary()` as an Android-only candidate path, resolved once and cached at the top of `startAll()` | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-21 | ✅ done |
+
+**iOS is explicitly NOT addressed** — this is not a CI gap on iOS, it is an architecture limitation. iOS sandboxing forbids spawning arbitrary bundled subprocesses at all (`Process.start`/`NSTask`), and would also fail App Store review. Cross-compiling `fuego_walletd` for iOS would produce a binary the app can never execute under the current `Process.start()`-based `DaemonManager` design. The real fix is folding walletd's wallet-RPC logic into the existing in-process FFI library (same shape as `fuego-ffi`/`fuego_crypto`) instead of a spawned daemon — a larger project, not a CI change.
+
+**Unverified build risk:** `core/Cargo.toml` depends on `keyring = "3"` (used unconditionally, not `#[cfg]`-gated, in `keystore.rs`). This crate's Android backend typically expects a JNI/Android context that a plain `cargo ndk build`-produced standalone binary (not loaded via JNI) does not have. The usage is wrapped in `if let Ok(entry) = ...`, so a failure to construct the entry should be non-fatal at runtime, and `daemon_manager.dart` already always supplies `--container-password` via CLI arg rather than relying on the binary's own keyring lookup — but whether the crate even *compiles* cleanly for `aarch64-linux-android` et al. is unverified in this sandbox (no Rust/NDK toolchain available). Watch the first CI run for this specifically.
+
+**Also unverified:** whether `fuego_walletd` actually runs correctly end-to-end once installed (does it bind to `127.0.0.1:18189` correctly inside Android's per-app network sandbox, does `sled`'s file-based storage work from the path passed via `--container-file`, etc.) — this CI change gets the binary onto the device; runtime verification needs an actual device/emulator run, which this sandbox cannot do.
+
 ### Findings not yet fixed (require binary/platform changes)
 
 | # | Finding | Severity | Blocker |
