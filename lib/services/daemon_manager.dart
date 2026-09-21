@@ -54,6 +54,9 @@ class DaemonManager {
   /// the xfg-swapd auto-restart so intentional stops don't respawn.
   bool _stopping = false;
 
+  /// Config path used for the last C++ swapd start; preserved for crash-restarts.
+  String? _lastSwapdConfigPath;
+
   /// Bounded stderr buffer captured during unified daemon startup
   /// (release mode) so failures surface the real cause, not just the
   /// exit code (e.g. "Address already in use").
@@ -820,6 +823,7 @@ class DaemonManager {
       ];
       // Do not pass bare --testnet: it overrides --daemon/--wallet to hard-coded ports.
     } else if (configPath != null && File(configPath).existsSync()) {
+      _lastSwapdConfigPath = configPath;
       args = ['--swap-config', configPath, '--service'];
     } else {
       return 'xfg-swapd needs Go headless binary (xfgo/swapxfg/xfg-swapd) '
@@ -854,6 +858,7 @@ class DaemonManager {
             if (binary == null) return;
             try {
               final goHeadless = _isGoSwapd(binary);
+              final cfg = _lastSwapdConfigPath;
               final args = goHeadless
                   ? [
                       '--headless',
@@ -863,7 +868,9 @@ class DaemonManager {
                       '--no-bridge',
                       '--no-bch',
                     ]
-                  : <String>['--service'];
+                  : (cfg != null && File(cfg).existsSync()
+                      ? ['--swap-config', cfg, '--service']
+                      : <String>['--service']);
               _swapd = await Process.start(binary, args);
               _swapd!.stdout.drain<void>();
               _swapd!.stderr.drain<void>();
@@ -915,6 +922,9 @@ class DaemonManager {
     _walletd = null;
     await _stopProcess(_fuegod, 'fuegod');
     _fuegod = null;
+    _walletdExternallyRunning = false;
+    _fuegodExternallyRunning = false;
+    _swapdExternallyRunning = false;
     _stopping = false;
     _updateStatus();
   }

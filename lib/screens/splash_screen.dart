@@ -106,12 +106,6 @@ class _SplashScreenState extends State<SplashScreen>
       final securityService = SecurityService();
       final walletProvider = Provider.of<WalletProvider>(context, listen: false);
 
-      // Always clear stale lockout FIRST — before any PIN/wallet checks.
-      // This runs unconditionally so a stale lockout never blocks navigation.
-      try {
-        await securityService.clearStaleLockout();
-      } catch (_) {}
-
       bool hasWallet = false;
       bool hasPIN = false;
       try {
@@ -124,15 +118,13 @@ class _SplashScreenState extends State<SplashScreen>
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
 
-      // Skip PIN screen — go straight to MainScreen.
-      _navigateToScreen(const MainScreen());
+      if (hasWallet && hasPIN) {
+        _navigateToScreen(const PinEntryScreen());
+      } else {
+        _navigateToScreen(const MainScreen());
+      }
     } catch (e) {
       if (!mounted) return;
-
-      // Clear lockout even in error path
-      try {
-        await SecurityService().clearStaleLockout();
-      } catch (_) {}
 
       setState(() {
         _initMessage = 'Unable to initialize securely. Please unlock or set up.';

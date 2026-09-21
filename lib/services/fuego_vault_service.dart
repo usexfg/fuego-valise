@@ -315,32 +315,17 @@ class FuegoVaultService {
     final encFile = File('${dir.path}/${entry.file}');
     if (!await encFile.exists()) return false;
 
-    final payload = await encFile.readAsString();
-    // Payload is PIN-encrypted; for biometric we store a second envelope.
+    // Biometric envelope is a separate AES-256-CBC file encrypted with the
+    // device-bound key (never derived from the wallet password or app PIN).
     final bioFile = File('${dir.path}/${entry.file}.bio');
-    if (await bioFile.exists()) {
-      final bioPayload = await bioFile.readAsString();
-      final plain = await _security.decryptBytesWithKey(bioPayload, key);
-      await _loadInMemory(plain);
-      return true;
+    if (!await bioFile.exists()) {
+      debugPrint('Vault biometric unlock failed: .bio envelope missing');
+      return false;
     }
 
-    // Fallback: unwrap key is the PIN-derived data key — re-decrypt pin payload
     try {
-      final decoded =
-          json.decode(utf8.decode(base64Decode(payload))) as Map<String, dynamic>;
-      // Reconstruct SecretKey path via raw AES with stored unwrap key
-      final plain = await _security.decryptBytesWithKey(
-        // rebuild rawkey-shaped blob from pin blob fields
-        base64Encode(utf8.encode(json.encode({
-          'v': 1,
-          'iv': decoded['iv'],
-          'data': decoded['data'],
-          'mac': decoded['mac'],
-          'mode': 'rawkey',
-        }))),
-        key,
-      );
+      final bioPayload = await bioFile.readAsString();
+      final plain = await _security.decryptBytesWithKey(bioPayload, key);
       await _loadInMemory(plain);
       return true;
     } catch (e) {

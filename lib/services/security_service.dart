@@ -347,9 +347,9 @@ class SecurityService {
       if (existing != null && existing.isNotEmpty) return existing;
     } catch (_) {}
     final password = base64UrlEncode(_secureRandomBytes(32));
-    try {
-      await _write(_walletdPasswordKey, password);
-    } catch (_) {}
+    // Persist so the same password is reused on next start (container was
+    // created with this password — a different one on next call breaks it).
+    await _write(_walletdPasswordKey, password);
     return password;
   }
 

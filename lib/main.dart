@@ -209,6 +209,12 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      // Lock vault when app leaves foreground — keys must not sit in memory
+      // while the process is backgrounded or interrupted.
+      widget.vaultService.lock();
+    }
     if (state == AppLifecycleState.detached) {
       unawaited(stopBackend());
     }
