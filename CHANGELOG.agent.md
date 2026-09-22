@@ -1,5 +1,18 @@
 # CHANGELOG.agent.md
 
+## [2026-09-22] Repo cleanup: dead trees, disabled workflows, duplicate file
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 19 | Delete `src/Alpha/` and `src/Release/` — two entire dead Flutter app scaffolds (unrelated "Polaris" branding, last touched 2026-08-13, zero references from any CI workflow, script, or doc) | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ done |
+| 20 | Delete the 7 `.github/workflows/*.disable` files (`android-release`, `fdroid-release`, `flutter-desktop`, `fuego-wallet-desktop`, `ios-release`, `linux-appstore-release`, `xfg-wallet-desktop`) — git history keeps them if ever needed; sitting disabled next to active workflows made it impossible to tell superseded from temporarily-off at a glance | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ done |
+| 21 | Delete `lib/services/walletd_service.dart` — resolves F3 below. Confirmed `wallet_daemon_service.dart` (used by `network_selection_screen.dart`) is a separate, live file and was NOT touched | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ done |
+| 22 | Delete `rust-fuego-wallet/core/src/Cargo.toml` — byte-identical duplicate of `rust-fuego-wallet/core/Cargo.toml`; Cargo only ever reads the package-root copy, the `src/` one was dead weight from a restructure | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ done |
+| 23 | Fix `README.md`'s file-tree diagram, which still listed the now-deleted `walletd_service.dart` | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ done |
+| 24 | Confirm read access to `usexfg/fuego-suite` (master) for this session, addressing the undocumented sibling-repo assumption in `daemon_manager.dart`'s binary search paths (11 references to `fuego-suite/`/`xfgo/`, neither present in this repo) | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ confirmed available (public repo, already served) |
+
+**F3 (below) is now resolved** by task 21.
+
 ## [2026-09-22] iOS walletd FFI scope
 
 | # | Task | Owner | Date | Status |
@@ -64,7 +77,7 @@ build attempted. Recommended next step is a single-method spike (Phase
 |---|---------|----------|---------|
 | F1 | Container password in process argv (`--container-password <pass>` visible via `ps`) | HIGH | Requires `unified`/`fuego_walletd` binary to support env-var or stdin delivery |
 | F2 | `fuego_wallets.json` stores wallet addresses in plaintext (iCloud/ADB readable) | LOW | UX/migration decision needed |
-| F3 | `WalletdService` — dead code with hardcoded seed node, superseded by `DaemonManager` | LOW | Safe to delete when confirmed unused |
+| F3 | ~~`WalletdService` — dead code with hardcoded seed node, superseded by `DaemonManager`~~ | LOW | **Resolved 2026-09-22** — deleted |
 | F4 | Mobile degraded mode — `rpcService` points at `127.0.0.1:18189` (never listening); all wallet RPCs fail with connection refused | MEDIUM | Needs `fuego_walletd` ARM binary bundled in APK/IPA |
 
 ### Sign-off
