@@ -234,6 +234,8 @@ class WalletCubit extends Cubit<WalletState> {
         String addr = '';
         int bal = 0;
         int unlocked = 0;
+        int unlockedHeat = 0;
+        int lockedHeat = 0;
         List<FuegoTransaction> txs = [];
 
         if (_vault != null && _vault!.address.isNotEmpty) {
@@ -268,6 +270,8 @@ class WalletCubit extends Cubit<WalletState> {
               final d = await _daemon.getBalanceDetailed();
               bal = d.available + d.locked;
               unlocked = d.available;
+              unlockedHeat = d.unlockedHeat;
+              lockedHeat = d.lockedHeat;
             } catch (_) {}
           }
         } else {
@@ -275,6 +279,8 @@ class WalletCubit extends Cubit<WalletState> {
             final d = await _daemon.getBalanceDetailed();
             bal = d.available + d.locked;
             unlocked = d.available;
+            unlockedHeat = d.unlockedHeat;
+            lockedHeat = d.lockedHeat;
           } catch (_) {
             try {
               bal = await _daemon.getBalance();
@@ -287,9 +293,7 @@ class WalletCubit extends Cubit<WalletState> {
           txs = await _daemon.getTransactions(count: 50);
         } catch (_) {}
 
-        // Fetch ΗΞΔŦ balance
-        int unlockedHeat = 0;
-        int lockedHeat = 0;
+        // Fetch ΗΞΔŦ balance (overwrite with rpcService data if available)
         if (_rpcService != null) {
           try {
             final heat = await _rpcService!.getHeatBalance();

@@ -1,0 +1,64 @@
+name: Suite Sync Check
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  push:
+    paths:
+      - 'lib/core/daemon_client.dart'
+      - 'lib/services/fuego_rpc_service.dart'
+      - 'lib/models/heat_amm.dart'
+      - 'tool/check_suite_sync.py'
+  pull_request:
+    paths:
+      - 'lib/core/daemon_client.dart'
+      - 'lib/services/fuego_rpc_service.dart'
+      - 'lib/models/heat_amm.dart'
+      - 'tool/check_suite_sync.py'
+  workflow_dispatch:
+    inputs:
+      suite_ref:
+        description: 'fuego-suite branch/tag/commit to check against'
+        required: false
+        default: 'master'
+
+jobs:
+  suite-sync:
+    name: Check RPC drift vs fuego-suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fuego-valise
+        uses: actions/checkout@v4
+        with:
+          path: fuego-valise
+
+      - name: Checkout fuego-suite
+        uses: actions/checkout@v4
+        with:
+          repository: usexfg/fuego-suite
+          ref: ${{ github.event.inputs.suite_ref || 'master' }}
+          path: fuego-suite
+          # Public repo — no token needed. Add one if the repo goes private:
+          # token: ${{ secrets.SUITE_READ_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run drift check
+        run: |
+          python3 fuego-valise/tool/check_suite_sync.py \
+            --suite fuego-suite \
+            --valise fuego-valise
+
+      - name: Upload drift report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-sync-drift-report
+          path: |
+            fuego-suite/src/Rpc/CoreRpcServerCommandsDefinitions.h
+            fuego-suite/src/PaymentGate/PaymentServiceJsonRpcMessages.h

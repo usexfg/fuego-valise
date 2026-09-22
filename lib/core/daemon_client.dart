@@ -170,7 +170,7 @@ class FuegoDaemonClient {
     return (result['availableBalance'] ?? result['balance'] ?? 0) as int;
   }
 
-  Future<({int available, int locked})> getBalanceDetailed() async {
+  Future<({int available, int locked, int lockedDeposit, int unlockedDeposit, int lockedHeat, int unlockedHeat})> getBalanceDetailed() async {
     final r = await _post('/json_rpc', {
       'jsonrpc': '2.0',
       'id': 'fuego_core',
@@ -186,7 +186,22 @@ class FuegoDaemonClient {
             as int;
     final locked =
         (result['lockedAmount'] ?? result['locked_amount'] ?? 0) as int;
-    return (available: available, locked: locked);
+    final lockedDeposit =
+        (result['lockedDepositBalance'] ?? 0) as int;
+    final unlockedDeposit =
+        (result['unlockedDepositBalance'] ?? 0) as int;
+    final lockedHeat =
+        (result['lockedHeatBalance'] ?? 0) as int;
+    final unlockedHeat =
+        (result['unlockedHeatBalance'] ?? 0) as int;
+    return (
+      available: available,
+      locked: locked,
+      lockedDeposit: lockedDeposit,
+      unlockedDeposit: unlockedDeposit,
+      lockedHeat: lockedHeat,
+      unlockedHeat: unlockedHeat,
+    );
   }
 
   Future<String> sendTransaction(SendTransactionRequest req) async {
@@ -195,7 +210,7 @@ class FuegoDaemonClient {
       'id': 'fuego_core',
       'method': 'sendTransaction',
       'params': {
-        'destinations': [
+        'transfers': [
           {'amount': (req.amount * 1e7).toInt(), 'address': req.address},
         ],
         'fee': (req.fee * 1e7).toInt(),

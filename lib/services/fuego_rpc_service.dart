@@ -135,21 +135,27 @@ class FuegoRPCService {
       // getTransactions → proxy remaps to walletd's "get_transfers"
       final response = await _makeRPCCall('getTransactions', {});
 
-      final transfers = response['transfers'] as List? ?? [];
-      return transfers.map((tx) {
-        final txMap = tx as Map<String, dynamic>;
-        return WalletTransaction(
-          txid: txMap['transactionHash'] ?? txMap['transaction_hash'] ?? '',
-          amount: (txMap['amount'] ?? 0) as int,
-          fee: (txMap['fee'] ?? 0) as int,
-          paymentId: txMap['paymentId'] ?? txMap['payment_id'] ?? '',
-          blockHeight: txMap['blockIndex'] ?? txMap['block_index'] ?? 0,
-          timestamp: (txMap['time'] ?? 0) as int,
-          isSpending: ((txMap['amount'] ?? 0) as int) < 0,
-          address: txMap['address'] as String?,
-          confirmations: 0,
-        );
-      }).toList();
+      // walletd response: result.items[] → each item.transactions[]
+      final items = response['items'] as List? ?? [];
+      final txs = <WalletTransaction>[];
+      for (final item in items) {
+        final txList = (item as Map<String, dynamic>)['transactions'] as List? ?? [];
+        for (final tx in txList) {
+          final txMap = tx as Map<String, dynamic>;
+          txs.add(WalletTransaction(
+            txid: txMap['transactionHash'] ?? txMap['transaction_hash'] ?? '',
+            amount: (txMap['amount'] ?? 0) as int,
+            fee: (txMap['fee'] ?? 0) as int,
+            paymentId: txMap['paymentId'] ?? txMap['payment_id'] ?? '',
+            blockHeight: txMap['blockIndex'] ?? txMap['block_index'] ?? 0,
+            timestamp: (txMap['timestamp'] ?? txMap['time'] ?? 0) as int,
+            isSpending: ((txMap['amount'] ?? 0) as int) < 0,
+            address: txMap['address'] as String?,
+            confirmations: (txMap['confirmations'] ?? 0) as int,
+          ));
+        }
+      }
+      return txs;
     } catch (e) {
       throw FuegoRPCException('Failed to get transactions: $e');
     }
@@ -160,7 +166,7 @@ class FuegoRPCService {
       // sendTransaction → proxy remaps to walletd's "transfer"
       // Proxy also converts anonymity → mixin, adds unlock_time
       final response = await _makeRPCCall('sendTransaction', {
-        'destinations': [{
+        'transfers': [{
           'amount': request.amount,
           'address': request.address,
         }],

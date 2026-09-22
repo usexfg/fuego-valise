@@ -20,7 +20,6 @@ class HeatMetrics {
   final int treasuryBalance;
   final int treasuryCounterXfg;
   final int swfBurnedXfgPendingHeat;
-  final int swfHeatBalance;
   final int epochSwapFees;
   final int vaultHeatCdFeePool;
   final int vaultHeatLpReserve;
@@ -43,7 +42,6 @@ class HeatMetrics {
     required this.treasuryBalance,
     required this.treasuryCounterXfg,
     required this.swfBurnedXfgPendingHeat,
-    required this.swfHeatBalance,
     required this.epochSwapFees,
     required this.vaultHeatCdFeePool,
     required this.vaultHeatLpReserve,
@@ -68,7 +66,6 @@ class HeatMetrics {
       treasuryBalance: _u64(json['treasury_balance']),
       treasuryCounterXfg: _u64(json['treasury_counter_xfg']),
       swfBurnedXfgPendingHeat: _u64(json['swf_burned_xfg_pending_heat']),
-      swfHeatBalance: _u64(json['swf_heat_balance']),
       epochSwapFees: _u64(json['epoch_swap_fees']),
       vaultHeatCdFeePool: _u64(json['vault_heat_cd_fee_pool']),
       vaultHeatLpReserve: _u64(json['vault_heat_lp_reserve']),
@@ -232,6 +229,7 @@ class PoolInfo {
   final int spotPrice;
   final int epochSwapFees;
   final int hearthTwap;
+  final int height;
   final String status;
 
   const PoolInfo({
@@ -241,6 +239,7 @@ class PoolInfo {
     required this.spotPrice,
     required this.epochSwapFees,
     required this.hearthTwap,
+    required this.height,
     required this.status,
   });
 
@@ -252,6 +251,7 @@ class PoolInfo {
       spotPrice: _u64(json['spot_price']),
       epochSwapFees: _u64(json['epoch_swap_fees']),
       hearthTwap: _u64(json['hearth_twap']),
+      height: _u64(json['height']),
       status: json['status'] as String? ?? '',
     );
   }
