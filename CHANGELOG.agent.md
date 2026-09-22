@@ -1,5 +1,23 @@
 # CHANGELOG.agent.md
 
+## [2026-09-22] iOS walletd FFI scope
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 18 | Scope what's needed for `fuego_walletd` to actually work on iOS, given the subprocess approach used for Android CI cannot work there (App Sandbox forbids `Process.start`/`NSTask` for bundled executables) | claude/okoc-valise-daemon-audit-1niqzp | 2026-09-22 | ✅ scoped, not implemented |
+
+Read `rust-fuego-wallet/core`'s actual source (`wallet_service.rs` 1740
+lines / 28 public methods, `server.rs` 818 lines / 28 HTTP routes, of
+which 13 are pure fuegod passthrough) and the existing `fuego-ffi`
+crate's calling convention (synchronous-only today) to produce a grounded
+phased plan rather than a hand-wave. Full writeup: `docs/IOS_WALLETD_FFI_SCOPE.md`.
+
+Sign-off: this is a multi-week Rust+Swift+Dart project (new async FFI
+convention, 28 financial-logic methods wrapped, a parallel Dart data-layer
+for iOS, xfg-swapd is a separate unaddressed scope) — no code written, no
+build attempted. Recommended next step is a single-method spike (Phase
+0+1 in the doc), not wrapping everything blind.
+
 ## [2026-09-21] Security audit + daemon/mobile review
 
 ### Tasks
