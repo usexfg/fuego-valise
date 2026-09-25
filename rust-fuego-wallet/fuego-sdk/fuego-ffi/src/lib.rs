@@ -724,3 +724,46 @@ pub extern "C" fn fuego_mine_share(
     }
     -1 // Not found
 }
+
+#[cfg(test)]
+mod tests {
+    use super::fuego_cn_slow_hash;
+
+    fn slow_hash_hex(input: &[u8], variant: i32, light: i32) -> String {
+        let mut out = [0u8; 32];
+        assert_eq!(
+            fuego_cn_slow_hash(input.as_ptr(), input.len(), out.as_mut_ptr(), variant, light),
+            0
+        );
+        hex::encode(out)
+    }
+
+    // Canonical CN vectors (Monero reference, via suite tests/PowBytes) guard submodule bumps.
+    #[test]
+    fn cn_v0_vectors() {
+        assert_eq!(
+            slow_hash_hex(b"", 0, 0),
+            "eb14e8a833fac6fe9a43b57b336789c46ffe93f2868452240720607b14387e11"
+        );
+        assert_eq!(
+            slow_hash_hex(b"This is a test", 0, 0),
+            "a084f01d1437a09c6985401b60d43554ae105802c5f5d8a9b3253649c0be6605"
+        );
+        assert_eq!(
+            slow_hash_hex(b"de omnibus dubitandum", 0, 0),
+            "2f8e3df40bd11f9ac90c743ca8e32bb391da4fb98612aa3b6cdc639ee00b31f5"
+        );
+    }
+
+    #[test]
+    fn cn_v2_vectors() {
+        assert_eq!(
+            slow_hash_hex(b"This is a test This is a test This is a test", 2, 0),
+            "353fdc068fd47b03c04b9431e005e00b68c2168a3cc7335c8b9b308156591a4f"
+        );
+        assert_eq!(
+            slow_hash_hex(b"Lorem ipsum dolor sit amet, consectetur adipiscing", 2, 0),
+            "72f134fc50880c330fe65a2cb7896d59b2e708a0221c6a9da3f69b3a702d8682"
+        );
+    }
+}

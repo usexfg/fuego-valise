@@ -45,6 +45,9 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-suite and its external/secp256k1 are needed to build fuegod
+          submodules: recursive
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -75,14 +78,13 @@ jobs:
           ls -la rust-fuego-wallet/target/release/fuego_walletd \
             rust-fuego-wallet/core/target/release/fuego_walletd 2>/dev/null || true
 
-      - name: Build unified daemon (xfgo) — optional
+      - name: Build suite daemons (fuego-suite submodule)
         id: unified
         continue-on-error: true
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch master --recurse-submodules --shallow-submodules \
-            https://github.com/usexfg/fuego-suite.git xfgo-build
-          cd xfgo-build
+          # Builds the pinned submodule commit, not floating suite master.
+          cd fuego-suite
           brew install boost openssl icu4c jsoncpp cmake ninja || true
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -96,7 +98,7 @@ jobs:
           echo "::endgroup::"
           FUEGOD="$(find build -name fuegod -type f | head -1)"
           if [ -z "$FUEGOD" ]; then
-            echo "::error::Failed to build or find 'fuegod' binary from xfgo 'Daemon' target."
+            echo "::error::Failed to build or find 'fuegod' binary from fuego-suite 'Daemon' target."
             exit 1
           fi
           cp "$FUEGOD" ../fuegod
@@ -119,15 +121,20 @@ jobs:
           echo "::endgroup::"
           SWAPD="$(find build -name xfg-swapd -type f | head -1)"
           if [ -z "$SWAPD" ]; then
-            echo "::error::Failed to build or find 'xfg-swapd' binary from xfgo 'SwapDaemon' target."
+            echo "::error::Failed to build or find 'xfg-swapd' binary from fuego-suite 'SwapDaemon' target."
             exit 1
           fi
           cp "$SWAPD" ../xfg-swapd
           echo "Successfully built and copied xfg-swapd."
 
           cd ..
-          rm -rf xfgo-build
           echo "built=true" >> "$GITHUB_OUTPUT"
+
+      # Overwrites the committed prebuilt dylib with one built from the pinned suite crypto.
+      - name: Build fuego-ffi (CryptoNight from fuego-suite)
+        run: |
+          cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi
+          cp rust-fuego-wallet/target/release/libfuego_ffi.dylib macos/Runner/libfuego_ffi.dylib
 
       - name: Build macOS app
         run: flutter build macos --release
@@ -161,7 +168,7 @@ jobs:
             cp ./fuegod "$RESOURCES_BIN/fuegod"
             chmod +x "$BIN/fuegod" "$RESOURCES_BIN/fuegod"
           else
-            echo "::error::fuegod missing — local mode would fail at runtime. Build the xfgo 'Daemon' target."
+            echo "::error::fuegod missing — local mode would fail at runtime. Build the fuego-suite 'Daemon' target."
             exit 1
           fi
 
@@ -171,7 +178,7 @@ jobs:
             cp ./xfg-swapd "$RESOURCES_BIN/xfg-swapd"
             chmod +x "$BIN/xfg-swapd" "$RESOURCES_BIN/xfg-swapd"
           else
-            echo "::error::xfg-swapd missing — cross-chain swaps would fail at runtime. Build the xfgo 'SwapDaemon' target."
+            echo "::error::xfg-swapd missing — cross-chain swaps would fail at runtime. Build the fuego-suite 'SwapDaemon' target."
             exit 1
           fi
 
@@ -223,6 +230,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-suite and its external/secp256k1 are needed to build fuegod
+          submodules: recursive
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -259,14 +269,13 @@ jobs:
           test -x rust-fuego-wallet/target/release/fuego_walletd || \
             test -x rust-fuego-wallet/core/target/release/fuego_walletd
 
-      - name: Build unified daemon (xfgo) — optional
+      - name: Build suite daemons (fuego-suite submodule)
         id: unified
         continue-on-error: true
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch master --recurse-submodules --shallow-submodules \
-            https://github.com/usexfg/fuego-suite.git xfgo-build
-          cd xfgo-build
+          # Builds the pinned submodule commit, not floating suite master.
+          cd fuego-suite
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build \
             libboost-all-dev libssl-dev libicu-dev libjsoncpp-dev
@@ -277,7 +286,7 @@ jobs:
           echo "::endgroup::"
           FUEGOD="$(find build -name fuegod -type f | head -1)"
           if [ -z "$FUEGOD" ]; then
-            echo "::error::Failed to build or find 'fuegod' binary from xfgo 'Daemon' target."
+            echo "::error::Failed to build or find 'fuegod' binary from fuego-suite 'Daemon' target."
             exit 1
           fi
           cp "$FUEGOD" ../fuegod
@@ -299,14 +308,13 @@ jobs:
           echo "::endgroup::"
           SWAPD="$(find build -name xfg-swapd -type f | head -1)"
           if [ -z "$SWAPD" ]; then
-            echo "::error::Failed to build or find 'xfg-swapd' binary from xfgo 'SwapDaemon' target."
+            echo "::error::Failed to build or find 'xfg-swapd' binary from fuego-suite 'SwapDaemon' target."
             exit 1
           fi
           cp "$SWAPD" ../xfg-swapd
           echo "Successfully built and copied xfg-swapd."
 
           cd ..
-          rm -rf xfgo-build
           echo "built=true" >> "$GITHUB_OUTPUT"
 
       - name: Build Linux app
@@ -331,14 +339,14 @@ jobs:
           if [ -x ./fuegod ]; then
             cp ./fuegod "$BUNDLE/" && chmod +x "$BUNDLE/fuegod"
           else
-            echo "::error::fuegod missing — local mode would fail at runtime. Build the xfgo 'Daemon' target."
+            echo "::error::fuegod missing — local mode would fail at runtime. Build the fuego-suite 'Daemon' target."
             exit 1
           fi
           # xfg-swapd required — cross-chain atomic swaps depend on it.
           if [ -x ./xfg-swapd ]; then
             cp ./xfg-swapd "$BUNDLE/" && chmod +x "$BUNDLE/xfg-swapd"
           else
-            echo "::error::xfg-swapd missing — cross-chain swaps would fail at runtime. Build the xfgo 'SwapDaemon' target."
+            echo "::error::xfg-swapd missing — cross-chain swaps would fail at runtime. Build the fuego-suite 'SwapDaemon' target."
             exit 1
           fi
           cp linux/xfg-wallet.desktop "$BUNDLE/" 2>/dev/null || true
@@ -364,3 +372,72 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: Fuego-Wallet-Linux-x64.tar.gz
+
+  fuegod-wire-check:
+    name: SDK / fuegod wire format
+    # Toolchain matches where this was verified: Ubuntu 24.04, Boost 1.83.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install suite build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build \
+            libboost-all-dev libssl-dev libicu-dev libjsoncpp-dev
+
+      - name: Resolve pinned fuego-suite commit
+        id: suite
+        run: echo "sha=$(git rev-parse HEAD:fuego-suite)" >> "$GITHUB_OUTPUT"
+
+      # Keyed on the submodule pin: rebuilds only when Dependabot bumps it.
+      - name: Cache fuegod build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: fuego-suite/build
+          key: fuegod-${{ runner.os }}-24.04-${{ steps.suite.outputs.sha }}
+
+      - name: Build fuegod from the pinned submodule
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build fuego-suite/build --target Daemon -j"$(nproc)"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
+
+      - name: FFI CryptoNight vectors
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi
+
+      # --testnet ungates RPC on an unsynced node; the nonexistent exclusive peer keeps it isolated.
+      - name: Start fuegod (testnet, isolated)
+        run: |
+          mkdir -p "$RUNNER_TEMP/fuegod-data"
+          nohup fuego-suite/build/src/fuegod --testnet --no-console \
+            --data-dir "$RUNNER_TEMP/fuegod-data" \
+            --rpc-bind-ip 127.0.0.1 --rpc-bind-port 28180 \
+            --p2p-bind-ip 127.0.0.1 --p2p-bind-port 28080 \
+            --add-exclusive-node 127.0.0.1:1 > "$RUNNER_TEMP/fuegod.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -m 2 http://127.0.0.1:28180/getinfo >/dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::fuegod RPC did not come up within 60s"
+          cat "$RUNNER_TEMP/fuegod.log"
+          exit 1
+
+      - name: SDK wire-format round trips against fuegod
+        env:
+          FUEGOD_RPC_URL: http://127.0.0.1:28180
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-sdk --test fuegod_wire -- --ignored
+
+      - name: fuegod log
+        if: failure()
+        run: tail -200 "$RUNNER_TEMP/fuegod.log" || true

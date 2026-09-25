@@ -1,0 +1,5 @@
+[submodule "fuego-suite"]
+	path = fuego-suite
+	url = https://github.com/usexfg/fuego-suite.git
+	branch = master
+	shallow = true

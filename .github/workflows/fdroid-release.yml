@@ -26,6 +26,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
 
       - name: Verify FLOSS compliance
         run: |

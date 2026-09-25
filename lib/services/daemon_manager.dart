@@ -184,7 +184,6 @@ class DaemonManager {
       if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/fuegod',
       '${Directory.current.path}/rust-fuego-wallet/target/release/fuegod',
       '${Directory.current.path}/rust-fuego-wallet/target/debug/fuegod',
-      '${Directory.current.path}/xfgo/build/src/fuegod',
       '${Directory.current.path}/fuego-suite/build/src/fuegod',
     ];
     for (final path in candidates) {
@@ -228,8 +227,8 @@ class DaemonManager {
     final candidates = [
       '${exe.parent.path}/xfg-swapd',
       if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/xfg-swapd',
-      '${Directory.current.path}/xfgo/swapxfg/xfg-swapd',
-      '${Directory.current.path}/xfgo/build/release/bin/xfg-swapd',
+      '${Directory.current.path}/fuego-suite/swapxfg/xfg-swapd',
+      '${Directory.current.path}/fuego-suite/build/release/bin/xfg-swapd',
       '${Directory.current.path}/build/release/src/xfg-swapd',
       '${Directory.current.path}/xfg-swapd',
       '${Directory.current.path}/fuego-suite/build/src/xfg-swapd',
@@ -346,7 +345,7 @@ class DaemonManager {
   ///   Does NOT start a local fuegod — the proxy talks to the remote seed node.
   ///
   /// Swap daemon:
-  /// - Go headless (`xfgo/swapxfg/xfg-swapd --headless`) when that binary is found
+  /// - Go headless (`fuego-suite/swapxfg/xfg-swapd --headless`) when that binary is found
   /// - else C++ style `--swap-config … --service` when [swapConfigPath] is set
   ///
   /// Returns error message if the wallet proxy fails, null on success.
@@ -857,7 +856,7 @@ class DaemonManager {
       _lastSwapdConfigPath = configPath;
       args = ['--swap-config', configPath, '--service'];
     } else {
-      return 'xfg-swapd needs Go headless binary (xfgo/swapxfg/xfg-swapd) '
+      return 'xfg-swapd needs Go headless binary (fuego-suite/swapxfg/xfg-swapd) '
           'or a C++ --swap-config file';
     }
 

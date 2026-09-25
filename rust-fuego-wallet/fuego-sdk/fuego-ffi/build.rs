@@ -2,7 +2,18 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let cn_dir = PathBuf::from("src/cn");
+    // Compiled from the fuego-suite submodule so the FFI hashes exactly what fuegod hashes.
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let suite_src = manifest_dir.join("../../../fuego-suite/src");
+    let cn_dir = suite_src.join("crypto");
+
+    if !cn_dir.join("slow-hash.c").exists() {
+        panic!(
+            "fuego-suite submodule is not checked out (missing {}). \
+             Run: git submodule update --init fuego-suite",
+            cn_dir.display()
+        );
+    }
 
     let cn_sources = [
         "slow-hash.c",
@@ -25,7 +36,7 @@ fn main() {
     build
         .files(cn_sources.iter().map(|f| cn_dir.join(f)))
         .include(&cn_dir)
-        .include(cn_dir.parent().unwrap()) // for Common/ at src/Common
+        .include(&suite_src) // Common/int-util.h, Common/static_assert.h
         .flag_if_supported("-std=c11")
         .flag_if_supported("-O2");
 
@@ -36,4 +47,8 @@ fn main() {
     }
 
     build.compile("cryptonight");
+
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed={}", cn_dir.display());
+    println!("cargo:rerun-if-changed={}", suite_src.join("Common").display());
 }

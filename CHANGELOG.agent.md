@@ -1,5 +1,39 @@
 # CHANGELOG.agent.md
 
+## [2026-09-25] fuego-suite submodule, FFI from suite, SDK/fuegod wire check
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 25 | Add `usexfg/fuego-suite` as a shallow submodule at `fuego-suite/` tracking `master`, pinned to `524454d` | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 26 | `fuego-ffi/build.rs` compiles CryptoNight from `fuego-suite/src/crypto`; delete the vendored copy (`src/cn`, `src/Common`, 30 files, byte-identical to suite at the pin) | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 27 | Add CryptoNight known-answer tests to `fuego-ffi` (canonical CN v0 ×3, v2 ×2 from suite `tests/PowBytes`). The crate had zero tests before | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 28 | Delete `native/crypto` + `lib/native` (dead: `NativeCrypto` referenced nowhere, yet built and shipped in every APK/IPA; includes ~92 MB / 384 committed build artifacts) | claude-opus-5-5 | 2026-09-25 | ⛔ blocked by permission classifier (irreversible delete) — needs user approval |
+| 29 | Replace `xfgo/` paths (local name for suite) with `fuego-suite/` in `daemon_manager.dart`, `build-and-run.sh`, `test-daemon.sh`, comments | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 30 | Desktop CI builds fuegod/xfg-swapd/unified from the pinned submodule instead of cloning floating suite `master`; FFI jobs (mobile, fdroid) check out the submodule; macOS job rebuilds `libfuego_ffi.dylib` from it | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 31 | Dependabot `gitsubmodule` (daily): PR per suite master move | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 32 | `fuegod-wire-check` CI job + `fuego-sdk/tests/fuegod_wire.rs`: round-trip `queryblockslite.bin` and `getrandom_outs.bin` through a real fuegod built from the pin | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 33 | Fix found by #32: suite's KV serializer omits empty binary fields, and `parse_get_random_outs_response` / `parse_get_random_commitment_outs_response` treated that as a hard error, failing the whole call when any amount had no outputs. Absent field now means empty | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 34 | Fix CONTRIBUTING.md: told contributors to clone fuego-suite and check out stale `HEAT` | claude-opus-5-5 | 2026-09-25 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test -p fuego-ffi` (built from submodule) | ✅ 2/2 vector tests pass |
+| `cargo test -p fuego-sdk` | ✅ 54 pass, 2 wire tests ignored without a node |
+| Wire tests vs local fuegod built from `524454d` (Ubuntu 24.04, Boost 1.83, `--testnet`) | ✅ 2/2 after fix #33 (1/2 before) |
+| `cargo check -p rust_fuego_wallet` | ✅ |
+| Edited workflow YAML parses | ✅ |
+| CI workflows actually run on GitHub | — not run from here |
+| Flutter analyze/build | — no Flutter toolchain in this environment |
+
+### Open (flagged, not changed)
+- Five release workflows (`appstore-release`, `ios-release`, `macos-release`, `linux-flatpak-release`, `linux-snap-release`) clone suite branch `HEAT`: last commit 2026-01-15, no `fuego/` dir, so `appstore-release`'s `/tmp/fuego-suite/fuego/build/ios/fuego_walletd` cannot exist. Releases would ship 8-month-old daemons vs what CI tests.
+- Committed `macos/Runner/libfuego_ffi.dylib` is an arm64-only dev build (`/Users/aejt/...` install name). CI now overwrites it; the committed file should be deleted + gitignored.
+- Suite's AGENTS.md says `queryblockslite.bin` hangs on every binary. It did not hang here on a genesis-only testnet node; not verified on a synced mainnet node.
+- Wire tests only exercise empty `getrandom_outs` groups (an isolated genesis node has no spendable outputs); the 40-byte non-empty record layout is not yet checked against live data.
+- `build-linux` builds suite on ubuntu-22.04 (Boost 1.74); suite's AGENTS.md says Boost 1.86+. Pre-existing, unverified.
+
 ## [2026-09-22] Repo cleanup: dead trees, disabled workflows, duplicate file
 
 | # | Task | Owner | Date | Status |

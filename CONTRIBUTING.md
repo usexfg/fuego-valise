@@ -25,10 +25,14 @@ We welcome feature suggestions! Please:
 
 1. **Fork the repository**
    ```bash
-   git clone https://github.com/usexfg/fuego-suite.git
-   cd fuego-suite
-   git checkout HEAT
+   git clone --recurse-submodules https://github.com/usexfg/fuego-valise.git
+   cd fuego-valise
    ```
+   `fuego-suite/` is a git submodule pinned to a `usexfg/fuego-suite` master
+   commit. The Rust FFI compiles its CryptoNight code from it, and the
+   desktop daemons (`fuegod`, `xfg-swapd`, `unified`) build from it. If you
+   cloned without `--recurse-submodules`, run
+   `git submodule update --init --recursive fuego-suite`.
 
 2. **Create a feature branch**
    ```bash

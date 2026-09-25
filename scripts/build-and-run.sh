@@ -27,13 +27,12 @@ echo ""
 # ── Step 1: Build unified daemon ──
 print_status "Step 1: Building unified daemon..."
 
-if [ ! -d "xfgo" ]; then
-    print_status "Cloning fuego-suite..."
-    git clone --depth 1 --recurse-submodules --shallow-submodules \
-        https://github.com/usexfg/fuego-suite.git xfgo
+if [ ! -f "fuego-suite/CMakeLists.txt" ]; then
+    print_status "Initializing fuego-suite submodule..."
+    git submodule update --init --recursive --depth 1 fuego-suite
 fi
 
-cd xfgo
+cd fuego-suite
 
 if [ ! -f "build/src/unified" ]; then
     print_status "Configuring build..."
@@ -71,13 +70,13 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 
     # Bundle unified daemon into app
     print_status "Bundling unified daemon into app..."
-    cp xfgo/build/src/unified "$APP_PATH/Contents/MacOS/"
+    cp fuego-suite/build/src/unified "$APP_PATH/Contents/MacOS/"
     chmod +x "$APP_PATH/Contents/MacOS/unified"
     print_success "Unified daemon bundled at: $APP_PATH/Contents/MacOS/unified"
 else
     flutter build linux --release
     APP_PATH="build/linux/x64/release/bundle"
-    cp xfgo/build/src/unified "$APP_PATH/"
+    cp fuego-suite/build/src/unified "$APP_PATH/"
     chmod +x "$APP_PATH/unified"
     print_success "Unified daemon bundled at: $APP_PATH/unified"
 fi

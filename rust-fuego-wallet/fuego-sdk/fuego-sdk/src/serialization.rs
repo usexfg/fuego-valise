@@ -634,7 +634,7 @@ pub fn parse_get_random_outs_response(
             .as_object()
             .ok_or_else(|| SerializationError("outs_for_amount is not an object".into()))?;
         let amount = kv_u64(obj, &["amount"])?;
-        let blob = kv_bytes(obj, &["outs"])?;
+        let blob = kv_bytes_or_empty(obj, &["outs"])?;
         if blob.len() % 40 != 0 {
             return Err(SerializationError(format!(
                 "getrandom_outs blob size {} not a multiple of 40",
@@ -702,7 +702,7 @@ pub fn parse_get_random_commitment_outs_response(
             "getrandom_commitment_outs status: {status}"
         )));
     }
-    let blob = kv_bytes(&root, &["outs"])?;
+    let blob = kv_bytes_or_empty(&root, &["outs"])?;
     if blob.len() % 36 != 0 {
         return Err(SerializationError(format!(
             "commitment outs blob size {} not a multiple of 36",
@@ -1033,6 +1033,18 @@ fn kv_bytes(object: &BTreeMap<String, KvValue>, names: &[&str]) -> Result<Vec<u8
     match kv_get(object, names) {
         Some(KvValue::Bytes(value)) => Ok(value.clone()),
         _ => Err(SerializationError(format!("missing bytes field {:?}", names))),
+    }
+}
+
+// fuegod's KV serializer omits empty binary fields, so absent means empty, not malformed.
+fn kv_bytes_or_empty(
+    object: &BTreeMap<String, KvValue>,
+    names: &[&str],
+) -> Result<Vec<u8>, SerializationError> {
+    match kv_get(object, names) {
+        None => Ok(Vec::new()),
+        Some(KvValue::Bytes(value)) => Ok(value.clone()),
+        Some(_) => Err(SerializationError(format!("field {:?} is not bytes", names))),
     }
 }
 
