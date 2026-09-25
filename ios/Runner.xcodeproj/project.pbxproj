@@ -368,9 +368,25 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios-sim/release/libfuego_ffi.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
+				STRIP_STYLE = "non-global";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
@@ -547,10 +563,26 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios-sim/release/libfuego_ffi.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				STRIP_STYLE = "non-global";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
@@ -569,9 +601,25 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios-sim/release/libfuego_ffi.a",
+				);
+				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]" = (
+					"$(inherited)",
+					"-force_load",
+					"$(PROJECT_DIR)/../rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
+				STRIP_STYLE = "non-global";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};

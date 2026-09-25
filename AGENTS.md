@@ -125,3 +125,10 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 - `libfuego_ffi.dylib` is built, never committed (`macos/Runner/libfuego_ffi.dylib` is gitignored). `scripts/build-and-run.sh` builds it for local macOS builds.
 - Linux release packages build on ubuntu-22.04: snap `core22` is 22.04 and `--destructive-mode` requires the host to match. Suite links Boost statically, so the daemons only need OpenSSL 3, libstdc++ and glibc at runtime.
 - iOS cannot spawn `fuego_walletd`; iOS release workflows do not build it (see `docs/IOS_WALLETD_FFI_SCOPE.md`).
+- iOS links the FFI statically: Runner's `OTHER_LDFLAGS` force-load `rust-fuego-wallet/target/<triple>/release/libfuego_ffi.a` (`aarch64-apple-ios` device, `aarch64-apple-ios-sim` / `x86_64-apple-ios` simulator) and `STRIP_STYLE = non-global` keeps the `fuego_*` symbols for `DynamicLibrary.process()`. Before a local iOS build: `cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target <triple>`.
+- Linux bundles include a `fuego-valise` launcher symlink to the `Fuego Valise` executable; `linux/xfg-wallet.desktop` execs it.
+
+## Network selection
+
+- Mainnet/testnet: `FUEGO_TESTNET` env wins at launch, else the choice saved by Settings → Network (`node_network` pref). `NodeConnection.switchNetwork()` retargets ports/seeds, persists, and reconnects at runtime; `useTestnet` in `main.dart` follows it.
+- Chain clients (`daemon`, `hearthClient`) and `DexCubit` follow every reconnect through `NodeConnection.addListener`.

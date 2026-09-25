@@ -39,6 +39,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -60,6 +62,9 @@ jobs:
       - name: Install dependencies
         run: |
           flutter pub get
+
+      - name: Build fuego-ffi staticlib (force-loaded into Runner)
+        run: cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios
 
       - name: Extract iOS version from pubspec.yaml
         id: ios_version
@@ -118,6 +123,10 @@ jobs:
             -configuration Release \
             -archivePath build/ios/archive/fuego_wallet.xcarchive \
             -allowProvisioningUpdates
+
+      - name: Verify FFI symbols survived archive stripping
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: nm -gU "build/ios/archive/fuego_wallet.xcarchive/Products/Applications/Runner.app/Runner" | grep -E " _fuego_(mine_share|vault_from_seed|make_address)$"
 
       - name: Export IPA
         if: ${{ github.event.inputs.dry_run != 'true' }}

@@ -35,13 +35,8 @@ class FuegoNative {
     }
     if (Platform.isWindows) return DynamicLibrary.open('fuego_ffi.dll');
     if (Platform.isAndroid) return DynamicLibrary.open('libfuego_ffi.so');
-    if (Platform.isIOS) {
-      try {
-        return DynamicLibrary.open('libfuego_ffi.dylib');
-      } catch (_) {
-        return DynamicLibrary.process();
-      }
-    }
+    // iOS: libfuego_ffi.a is force-loaded into Runner (see ios/Runner.xcodeproj).
+    if (Platform.isIOS) return DynamicLibrary.process();
     throw UnsupportedError('Unsupported platform');
   }
 

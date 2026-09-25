@@ -184,12 +184,10 @@ jobs:
       - name: Build iOS App
         run: flutter build ios --release --no-codesign
 
-      - name: Bundle Rust libraries into iOS app
+      # libfuego_ffi.a is force-loaded into Runner; Dart resolves these via DynamicLibrary.process().
+      - name: Verify FFI symbols are linked into Runner
         run: |
-          APP="build/ios/iphoneos/Runner.app"
-          mkdir -p "$APP/Frameworks"
-          cp rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.dylib "$APP/Frameworks/"
-          cp rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.dylib "$APP/"
+          nm -gU build/ios/iphoneos/Runner.app/Runner | grep -E " _fuego_(mine_share|vault_from_seed|make_address)$"
 
       - name: Package iOS App (.ipa)
         run: |

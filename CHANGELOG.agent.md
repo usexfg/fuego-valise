@@ -1,5 +1,30 @@
 # CHANGELOG.agent.md
 
+## [2026-09-25] Network connect, desktop Exec, iOS static link
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 47 | Settings → Network → Connect loaded `assets/bin/fuego_walletd-*` (never produced by any build) via `WalletDaemonService`, bypassing `NodeConnection`. Now `NodeConnection.switchNetwork()` retargets ports/seeds, persists the choice (`node_network` pref, honored at next launch unless `FUEGO_TESTNET` is set) and reconnects; the screen opens on the active network | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 48 | `useTestnet` followed only the env var, so a runtime switch would be reverted by Settings' local/remote toggles; it now reads `NodeConnection` | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 49 | Chain clients (`daemon`, `hearthClient`) and `DexCubit` now follow every reconnect via `NodeConnection.addListener` instead of being pinned at startup | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 50 | Delete now-unreferenced `wallet_daemon_service.dart`, `cli_service.dart`, `assets/bin/` (+ pubspec entry, README tree line) | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 51 | `linux/xfg-wallet.desktop`: `Exec=Fuego Wallet` (nonexistent) → `Exec=fuego-valise`; `Name` → Fuego Valise; `StartupWMClass` → fuego-valise (GTK3 derives it from argv[0]). Shared Linux bundle step now creates the `fuego-valise` launcher symlink for tarball/flatpak/snap | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 52 | iOS: force-load `libfuego_ffi.a` into Runner (per SDK/arch `OTHER_LDFLAGS` at target level so `$(inherited)` keeps CocoaPods flags), `STRIP_STYLE = non-global`; `FuegoNative` uses `DynamicLibrary.process()`. Mobile CI drops the loose-dylib copy (App Store-rejected) for a linked-symbol check; both iOS release workflows build the staticlib and check symbols survive archive stripping | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 53 | Correct suite `AGENTS.md` (`queryblockslite.bin` hang claim, Boost 1.86+ note) | claude-opus-5-5 | 2026-09-25 | ⛔ blocked: push access to `usexfg/fuego-suite` denied by permission classifier; replacement text given to user |
+| 54 | Look for a previously created fuego-ffi skill (Claude / opencode) | claude-opus-5-5 | 2026-09-25 | ✅ searched: none in synced Claude skills, claude.ai library, either repo's `.claude/`/`.opencode/`, or reachable history |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `flutter analyze` (Flutter 3.44.4, first real run this session) | ✅ 0 errors; no warnings in any file touched this session (142 pre-existing warnings elsewhere) |
+| `project.pbxproj` parses (openstep_parser); Runner Debug/Release/Profile carry force-load + non-global strip | ✅ |
+| Host `libfuego_ffi.a` contains exported `fuego_*` and `cn_slow_hash` | ✅ |
+| `desktop-file-validate linux/xfg-wallet.desktop` | ✅ (one category hint) |
+| Bundle step launcher: `fuego-valise` → `Fuego Valise`, argv[0] = fuego-valise | ✅ |
+| iOS device/simulator link and archive stripping | — needs Xcode; CI symbol checks are the verification |
+| Network switch end to end in the running app | — no display/device here |
+
 ## [2026-09-25] Release pipelines, FFI packaging, wire coverage (user: "fix all")
 
 | # | Task | Owner | Date | Status |

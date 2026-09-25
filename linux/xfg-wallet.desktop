@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Fuego Wallet
+Name=Fuego Valise
 GenericName=Cryptocurrency Wallet
 Comment=Privacy-focused cryptocurrency wallet for XF₲
-Exec=Fuego Wallet
+Exec=fuego-valise
 Icon=fuego
 Terminal=false
 Categories=Finance;Network;
 Keywords=cryptocurrency;wallet;privacy;fuego;xfg;
-StartupWMClass=fuego-wallet
+StartupWMClass=fuego-valise
 StartupNotify=true

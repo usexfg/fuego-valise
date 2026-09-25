@@ -60,10 +60,11 @@ class NodeConnection {
   static const _prefsModeKey = 'node_connection_mode';
   static const _prefsHostKey = 'node_remote_host';
   static const _prefsPortKey = 'node_remote_port';
+  static const prefsNetworkKey = 'node_network';
 
   final DaemonManager daemonManager;
   final FuegoRPCService rpcService;
-  final NetworkConfig networkConfig;
+  NetworkConfig _networkConfig;
 
   ConnectionMode _mode;
   String _remoteHost;
@@ -74,14 +75,16 @@ class NodeConnection {
   NodeConnection({
     required this.daemonManager,
     required this.rpcService,
-    required this.networkConfig,
+    required NetworkConfig networkConfig,
     ConnectionMode? mode,
     String? remoteHost,
     int? remotePort,
-  })  : _mode = mode ?? platformDefaultMode(),
+  })  : _networkConfig = networkConfig,
+        _mode = mode ?? platformDefaultMode(),
         _remoteHost = remoteHost ?? _defaultRemoteHost(networkConfig),
         _remotePort = remotePort ?? networkConfig.daemonRpcPort;
 
+  NetworkConfig get networkConfig => _networkConfig;
   ConnectionMode get mode => _mode;
   String get remoteHost => _remoteHost;
   int get remotePort => _remotePort;
@@ -453,6 +456,21 @@ class NodeConnection {
     _mode = ConnectionMode.remote;
     await _savePreferences();
     return connect(useTestnet: useTestnet);
+  }
+
+  /// Switches mainnet/testnet at runtime: retargets ports and seeds, persists
+  /// the choice for the next launch, then reconnects.
+  Future<ConnectionEndpoints> switchNetwork(NetworkConfig config) async {
+    _networkConfig = config;
+    daemonManager.fuegodPort = config.daemonRpcPort;
+    daemonManager.walletdPort = config.walletRpcPort;
+    rpcService.updateNetworkConfig(config);
+    _remoteHost = _defaultRemoteHost(config);
+    _remotePort = _defaultRemotePort(config);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(prefsNetworkKey, config.isTestnet ? 'testnet' : 'mainnet');
+    await _savePreferences();
+    return connect(useTestnet: config.isTestnet);
   }
 
   Future<void> disconnect() async {

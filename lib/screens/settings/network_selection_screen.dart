@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../main.dart' as app;
 import '../../models/network_config.dart';
 import '../../providers/wallet_provider.dart';
-import '../../services/wallet_daemon_service.dart';
 import '../../utils/theme.dart';
 
 class NetworkSelectionScreen extends StatefulWidget {
@@ -14,7 +14,7 @@ class NetworkSelectionScreen extends StatefulWidget {
 }
 
 class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
-  NetworkConfig _selectedNetwork = NetworkConfig.mainnet;
+  NetworkConfig _selectedNetwork = app.nodeConnection.networkConfig;
   bool _isLoading = false;
 
   @override
@@ -250,19 +250,13 @@ class _NetworkSelectionScreenState extends State<NetworkSelectionScreen> {
     });
 
     try {
-      // Get wallet provider
       final walletProvider = Provider.of<WalletProvider>(context, listen: false);
-      
-      // Update network configuration
-      walletProvider.updateNetworkConfig(_selectedNetwork);
-      
-      // Update wallet daemon service
-      await WalletDaemonService.initialize(
-        daemonAddress: _selectedNetwork.defaultSeedNode.split(':')[0],
-        daemonPort: _selectedNetwork.daemonRpcPort,
-        networkConfig: _selectedNetwork,
-      );
-      
+      final ep = await app.nodeConnection.switchNetwork(_selectedNetwork);
+      await walletProvider.updateNetworkConfig(_selectedNetwork);
+      if (!ep.proxyRunning) {
+        throw Exception(ep.error ?? 'wallet proxy did not start');
+      }
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

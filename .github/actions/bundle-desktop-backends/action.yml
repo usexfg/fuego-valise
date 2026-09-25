@@ -29,4 +29,6 @@ runs:
             if [ -f "backends/$b" ]; then install -m 755 "backends/$b" "$APP/$b"; fi
           done
           install -m 644 backends/libfuego_ffi.so "$APP/lib/libfuego_ffi.so"
+          # No-space launcher for the "Fuego Valise" executable; the .desktop Exec uses it.
+          ln -sfn "Fuego Valise" "$APP/fuego-valise"
         fi

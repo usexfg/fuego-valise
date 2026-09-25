@@ -74,13 +74,12 @@ jobs:
         with:
           app: build/linux/x64/release/bundle
 
-      # Keeps the executable beside lib/, data/ and the daemons; the symlink avoids the space in its name.
+      # Keeps the executable beside lib/, data/ and the daemons.
       - name: Stage snap layout
         run: |
           rm -rf build/snap-root
           mkdir -p build/snap-root
           cp -a build/linux/x64/release/bundle build/snap-root/fuego-valise
-          ln -s "Fuego Valise" build/snap-root/fuego-valise/fuego-valise
 
       - name: Install Snapcraft
         run: |

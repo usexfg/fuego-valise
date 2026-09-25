@@ -23,11 +23,12 @@ toolchain available to test any of it from this environment.
   convention already used on every platform: `crate-type = ["cdylib",
   "staticlib"]`, `#[no_mangle] extern "C"` functions, JSON-string /
   byte-buffer marshaling, explicit `fuego_string_free`/`fuego_bytes_free`
-  paired frees. `lib/ffi/fuego_native.dart` is the Dart-side binding,
-  loaded via `DynamicLibrary.open()` (with an iOS fallback to
-  `DynamicLibrary.process()` for static linking).
-- Mobile CI already knows how to cross-compile Rust for
-  `aarch64-apple-ios` and bundle the result into `Runner.app/Frameworks/`.
+  paired frees. `lib/ffi/fuego_native.dart` is the Dart-side binding.
+  On iOS, `libfuego_ffi.a` is force-loaded into the Runner binary and
+  resolved via `DynamicLibrary.process()`; a new wallet-service FFI can
+  ship the same way, inside the same staticlib.
+- Mobile CI and both iOS release workflows already cross-compile the
+  staticlib for `aarch64-apple-ios` and verify its symbols are in Runner.
 - `fuego-ffi` today is **entirely synchronous, single-call, stateless**
   (keypair generation, address derivation, key images, HTLC hash locks,
   swap-pair metadata, `cn_slow_hash`). No tokio, no async, no persistent
