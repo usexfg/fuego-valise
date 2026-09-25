@@ -29,7 +29,7 @@ payment_gate.log
 *.so
 *.dll
 *.a
-native/crypto/target/
+macos/Runner/libfuego_ffi.dylib
 
 # Build outputs / scratch
 src/Release/

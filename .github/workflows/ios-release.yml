@@ -55,25 +55,6 @@ jobs:
 
           echo "Bundle ID: ${IOS_BUNDLE_ID}"
 
-      - name: Build fuego walletd for iOS
-        run: |
-          echo "=== Building fuego walletd ==="
-          git clone -b HEAT https://github.com/usexfg/fuego-suite.git fuego-source
-          cd fuego-source
-
-          brew install cmake pkg-config boost openssl zeromq jsoncpp
-
-          sed -i .bak "s/#include <json\/json.h>/#include <jsoncpp\/json.h>/g" src/CryptoNoteCore/ProofStructures.h
-
-          mkdir build && cd build
-          cmake .. -DBUILD_TESTS=OFF -DCMAKE_CXX_FLAGS="-I /usr/include"
-          make -j$(sysctl -n hw.ncpu) PaymentGateService
-
-          mkdir -p ../../assets/bin
-          cp src/walletd/walletd ../../assets/bin/fuego-walletd-ios
-          chmod +x ../../assets/bin/fuego-walletd-ios
-          echo "✅ walletd built"
-
       - name: Install dependencies
         run: flutter pub get
 

@@ -28,13 +28,15 @@ env:
 jobs:
   snap-build:
     name: Build Snap Package
-    runs-on: ubuntu-latest
+    # Oldest target glibc: snap core22 is Ubuntu 22.04; --destructive-mode needs the host to match.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+          submodules: recursive
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -47,25 +49,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
 
-      - name: Build fuego from source
-        run: |
-          echo "=== Building fuego walletd ==="
-          git clone -b HEAT https://github.com/usexfg/fuego-suite.git fuego-source
-          cd fuego-source
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
 
-          sudo apt-get update
-          sudo apt-get install -y build-essential git cmake libboost-all-dev libjsoncpp-dev libssl-dev libzmq3-dev
-
-          sed -i 's/#include <json\/json.h>/#include <jsoncpp\/json.h>/g' src/CryptoNoteCore/ProofStructures.h
-
-          mkdir build && cd build
-          cmake .. -DBUILD_TESTS=OFF -DCMAKE_CXX_FLAGS="-I /usr/include"
-          make -j$(nproc) PaymentGateService
-
-          mkdir -p ../../assets/bin
-          find . -name "walletd" -type f -executable -exec cp {} ../../assets/bin/fuego-walletd \;
-          chmod +x ../../assets/bin/fuego-walletd
-          echo "✅ walletd built"
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
 
       - name: Install dependencies
         run: flutter pub get
@@ -79,6 +68,19 @@ jobs:
 
       - name: Build Linux desktop app
         run: flutter build linux --release
+
+      - name: Bundle backends into app
+        uses: ./.github/actions/bundle-desktop-backends
+        with:
+          app: build/linux/x64/release/bundle
+
+      # Keeps the executable beside lib/, data/ and the daemons; the symlink avoids the space in its name.
+      - name: Stage snap layout
+        run: |
+          rm -rf build/snap-root
+          mkdir -p build/snap-root
+          cp -a build/linux/x64/release/bundle build/snap-root/fuego-valise
+          ln -s "Fuego Valise" build/snap-root/fuego-valise/fuego-valise
 
       - name: Install Snapcraft
         run: |

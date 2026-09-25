@@ -1,5 +1,41 @@
 # CHANGELOG.agent.md
 
+## [2026-09-25] Release pipelines, FFI packaging, wire coverage (user: "fix all")
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 35 | Delete `native/crypto` (incl. 384 committed build artifacts, ~92 MB), `lib/native`, and the committed arm64-only `macos/Runner/libfuego_ffi.dylib` (now gitignored); drop `native/crypto` from mobile CI | claude-opus-5-5 | 2026-09-25 | ✅ done (user approved) |
+| 36 | Move desktop build + bundling into shared composite actions `build-desktop-backends` / `bundle-desktop-backends`; CI and all desktop release workflows use them | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 37 | Linux builds (CI tarball, flatpak, snap) never bundled `libfuego_ffi.so`, so wallet create/unlock (`FuegoVaultService` → FFI) failed on Linux. Now bundled in `lib/`; `FuegoNative` loads it by explicit path | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 38 | All 5 release workflows built suite's old C++ `walletd` from 8-month-stale `HEAT` into `assets/bin/` (never read by the app). Desktop ones now build/bundle the real backends from the pinned submodule; iOS ones drop the step (iOS cannot spawn it) | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 39 | `appstore-release`: `subosher/setup-flutter@v1` → `subosito/flutter-action@v2`; signing identity `"Developer ID Application: $APPLE_TEAM_ID"` never matches a cert CN → identity read from the imported keychain | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 40 | `macos-release`: bundle path `fuego-wallet.app` → `fuego_wallet.app` (verify step failed every run); signing gated on never-set `env.APPLE_CERTIFICATE` → step output | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 41 | `scripts/sign-macos-app.sh`: one signer for CI (ad-hoc) and releases (keychain identity, hardened runtime, timestamp); CI re-sign no longer fails when optional `unified` is absent | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 42 | Stop duplicating macOS daemons into `Contents/Resources/bin` (never used; still pointed at Homebrew dylib paths) | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 43 | Linux executable is `Fuego Valise` (space). Flatpak `command: fuego_wallet` and snap `xfg-wallet` named nonexistent binaries, and snap split the exe from its `lib/`. Both now install the bundle intact under `fuego-valise/` with a `fuego-valise` launcher symlink; flatpak skips copying `.git`, `fuego-suite`, Rust `target` | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 44 | Flatpak/snap jobs → ubuntu-22.04 (snap `--destructive-mode` requires host = core22 base; oldest glibc); snap's stale `assets/bin` walletd part removed | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 45 | Wire test `get_random_outs_returns_known_output`: genesis coinbase key + amount from fuegod JSON must come back from `getrandom_outs.bin` with the global index `get_o_indexes.bin` reports — covers non-empty record layout and the `get_o_indexes` parser | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 46 | Delete `scripts/get_walletd_binary.sh`, `scripts/build-fuego-source.sh` (build suite walletd from `HEAT` into `assets/bin` under names nothing loads; unreferenced) | claude-opus-5-5 | 2026-09-25 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `build-desktop-backends` Linux steps run verbatim here (Rust + suite `Daemon`/`SwapDaemon`/`PaymentGateService` from pin) | ✅ all 5 artifacts produced |
+| `bundle-desktop-backends` Linux step run verbatim on a stand-in bundle; bundled `fuegod`, `xfg-swapd`, `unified`, `fuego_walletd` execute | ✅ |
+| `libfuego_ffi.so` exports the 37 `fuego_*` symbols incl. those Dart looks up | ✅ |
+| Wire tests vs local testnet fuegod from pin | ✅ 3/3 |
+| Known-output test fails when parser key/index offsets are swapped (mutation check) | ✅ fails as intended |
+| `cargo test -p fuego-sdk` / `-p fuego-ffi` | ✅ 54 / 2 |
+| All workflow, action, snapcraft, flatpak YAML parses; all scripts `bash -n` | ✅ |
+| macOS actions, signing, notarization, flatpak-builder, snapcraft, iOS release | — cannot run here (no macOS/Xcode, flatpak-builder, snapcraft); first real runs are the verification |
+
+### Open (found, not fixed)
+- **iOS FFI is not linked.** No iOS build links `libfuego_ffi` into the app: mobile CI copies a loose `.dylib` into `Runner.app` after `flutter build` (App Store rejects loose dylibs), and the release workflows don't include it at all. `FuegoNative` falls back to `DynamicLibrary.process()`, where the symbols don't exist, so wallet create/unlock fails on iOS. Needs the staticlib force-loaded into Runner (xcconfig `OTHER_LDFLAGS` + non-global strip style) or an XCFramework, verified on a Mac.
+- **Settings → Network → Connect always fails.** `network_selection_screen.dart` calls `WalletDaemonService.initialize`, which loads `assets/bin/fuego_walletd-{linux,macos,windows.exe}`, and no build ever produces those files. It also bypasses `NodeConnection`. Runtime mainnet/testnet switching isn't supported by the startup-time wiring (`FUEGO_TESTNET`), so the fix is a redesign, not a patch. `cli_service.dart` loads from `assets/bin` too and is referenced nowhere.
+- `linux/xfg-wallet.desktop` has `Exec=Fuego Wallet`, but the binary is `Fuego Valise`.
+- Suite's own `AGENTS.md` still says `queryblockslite.bin` hangs on every binary. It works against this pin on a testnet node; that doc lives in suite (read-only from here).
+
 ## [2026-09-25] fuego-suite submodule, FFI from suite, SDK/fuegod wire check
 
 | # | Task | Owner | Date | Status |
@@ -7,7 +43,7 @@
 | 25 | Add `usexfg/fuego-suite` as a shallow submodule at `fuego-suite/` tracking `master`, pinned to `524454d` | claude-opus-5-5 | 2026-09-25 | ✅ done |
 | 26 | `fuego-ffi/build.rs` compiles CryptoNight from `fuego-suite/src/crypto`; delete the vendored copy (`src/cn`, `src/Common`, 30 files, byte-identical to suite at the pin) | claude-opus-5-5 | 2026-09-25 | ✅ done |
 | 27 | Add CryptoNight known-answer tests to `fuego-ffi` (canonical CN v0 ×3, v2 ×2 from suite `tests/PowBytes`). The crate had zero tests before | claude-opus-5-5 | 2026-09-25 | ✅ done |
-| 28 | Delete `native/crypto` + `lib/native` (dead: `NativeCrypto` referenced nowhere, yet built and shipped in every APK/IPA; includes ~92 MB / 384 committed build artifacts) | claude-opus-5-5 | 2026-09-25 | ⛔ blocked by permission classifier (irreversible delete) — needs user approval |
+| 28 | Delete `native/crypto` + `lib/native` (dead: `NativeCrypto` referenced nowhere, yet built and shipped in every APK/IPA; includes ~92 MB / 384 committed build artifacts) | claude-opus-5-5 | 2026-09-25 | ✅ done 2026-09-25 after user approval (task 35) |
 | 29 | Replace `xfgo/` paths (local name for suite) with `fuego-suite/` in `daemon_manager.dart`, `build-and-run.sh`, `test-daemon.sh`, comments | claude-opus-5-5 | 2026-09-25 | ✅ done |
 | 30 | Desktop CI builds fuegod/xfg-swapd/unified from the pinned submodule instead of cloning floating suite `master`; FFI jobs (mobile, fdroid) check out the submodule; macOS job rebuilds `libfuego_ffi.dylib` from it | claude-opus-5-5 | 2026-09-25 | ✅ done |
 | 31 | Dependabot `gitsubmodule` (daily): PR per suite master move | claude-opus-5-5 | 2026-09-25 | ✅ done |
@@ -32,7 +68,7 @@
 - Committed `macos/Runner/libfuego_ffi.dylib` is an arm64-only dev build (`/Users/aejt/...` install name). CI now overwrites it; the committed file should be deleted + gitignored.
 - Suite's AGENTS.md says `queryblockslite.bin` hangs on every binary. It did not hang here on a genesis-only testnet node; not verified on a synced mainnet node.
 - Wire tests only exercise empty `getrandom_outs` groups (an isolated genesis node has no spendable outputs); the 40-byte non-empty record layout is not yet checked against live data.
-- `build-linux` builds suite on ubuntu-22.04 (Boost 1.74); suite's AGENTS.md says Boost 1.86+. Pre-existing, unverified.
+- ~~`build-linux` Boost 1.74 vs suite's "1.86+" note~~ — resolved: user confirmed the 1.86+ note is outdated and suite builds on current Boost.
 
 ## [2026-09-22] Repo cleanup: dead trees, disabled workflows, duplicate file
 

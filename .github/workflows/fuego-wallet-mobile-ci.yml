@@ -75,14 +75,8 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
-      - name: Build Rust libraries for Android (fuego_crypto & fuego_ffi)
+      - name: Build fuego-ffi for Android
         run: |
-          # Build fuego-crypto
-          cd native/crypto
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 --platform 25 -- build --release
-          cd ../..
-
-          # Build fuego-ffi
           cd rust-fuego-wallet/fuego-sdk/fuego-ffi
           cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 --platform 25 -- build --release
           cd ../../../
@@ -105,12 +99,6 @@ jobs:
           mkdir -p android/app/src/main/jniLibs/armeabi-v7a
           mkdir -p android/app/src/main/jniLibs/x86_64
           mkdir -p android/app/src/main/jniLibs/x86
-
-          # Copy fuego_crypto
-          cp native/crypto/target/aarch64-linux-android/release/libfuego_crypto.so android/app/src/main/jniLibs/arm64-v8a/
-          cp native/crypto/target/armv7-linux-androideabi/release/libfuego_crypto.so android/app/src/main/jniLibs/armeabi-v7a/
-          cp native/crypto/target/x86_64-linux-android/release/libfuego_crypto.so android/app/src/main/jniLibs/x86_64/
-          cp native/crypto/target/i686-linux-android/release/libfuego_crypto.so android/app/src/main/jniLibs/x86/
 
           # Copy fuego_ffi
           cp rust-fuego-wallet/target/aarch64-linux-android/release/libfuego_ffi.so android/app/src/main/jniLibs/arm64-v8a/
@@ -184,14 +172,8 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios
 
-      - name: Build Rust libraries for iOS
+      - name: Build fuego-ffi for iOS
         run: |
-          # Build fuego-crypto
-          cd native/crypto
-          cargo build --release --target aarch64-apple-ios
-          cd ../..
-
-          # Build fuego-ffi
           cd rust-fuego-wallet/fuego-sdk/fuego-ffi
           cargo build --release --target aarch64-apple-ios
           cd ../../../
@@ -206,9 +188,7 @@ jobs:
         run: |
           APP="build/ios/iphoneos/Runner.app"
           mkdir -p "$APP/Frameworks"
-          cp native/crypto/target/aarch64-apple-ios/release/libfuego_crypto.dylib "$APP/Frameworks/"
           cp rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.dylib "$APP/Frameworks/"
-          cp native/crypto/target/aarch64-apple-ios/release/libfuego_crypto.dylib "$APP/"
           cp rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.dylib "$APP/"
 
       - name: Package iOS App (.ipa)

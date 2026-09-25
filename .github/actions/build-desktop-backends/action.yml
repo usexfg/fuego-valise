@@ -1,0 +1,66 @@
+name: Build desktop backends
+description: >-
+  Builds fuego_walletd + fuego-ffi (Rust) and fuegod, xfg-swapd, unified from
+  the pinned fuego-suite submodule into ./backends. Needs a checkout with
+  submodules: recursive and a Rust toolchain. Run before `flutter build`.
+
+runs:
+  using: composite
+  steps:
+    - name: Install suite build dependencies
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          brew install boost openssl icu4c jsoncpp cmake ninja || true
+        else
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build \
+            libboost-all-dev libssl-dev libicu-dev libjsoncpp-dev
+        fi
+
+    - name: Build fuego_walletd and fuego-ffi
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml \
+          -p rust_fuego_wallet -p fuego-ffi
+        mkdir -p backends
+        cp rust-fuego-wallet/target/release/fuego_walletd backends/
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          cp rust-fuego-wallet/target/release/libfuego_ffi.dylib backends/
+          # Xcode's "Bundle Framework" phase copies it into Contents/Frameworks.
+          cp rust-fuego-wallet/target/release/libfuego_ffi.dylib macos/Runner/libfuego_ffi.dylib
+        else
+          cp rust-fuego-wallet/target/release/libfuego_ffi.so backends/
+        fi
+
+    - name: Build fuegod, xfg-swapd, unified
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+        else
+          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        fi
+        # fuegod (local mode) and xfg-swapd (cross-chain swaps) are required.
+        cmake --build fuego-suite/build --target Daemon SwapDaemon
+        find_bin() { find fuego-suite/build/ -name "$1" -type f | head -1; }
+        FUEGOD="$(find_bin fuegod)"
+        SWAPD="$(find_bin xfg-swapd)"
+        if [ -z "$FUEGOD" ] || [ -z "$SWAPD" ]; then
+          echo "::error::fuegod or xfg-swapd missing after build"
+          exit 1
+        fi
+        cp "$FUEGOD" "$SWAPD" backends/
+        UNIFIED=""
+        if cmake --build fuego-suite/build --target PaymentGateService; then
+          UNIFIED="$(find_bin unified)"
+        fi
+        if [ -n "$UNIFIED" ]; then
+          cp "$UNIFIED" backends/
+        else
+          echo "::warning::unified (PaymentGateService) not built; bundling without it"
+        fi
+        ls -la backends

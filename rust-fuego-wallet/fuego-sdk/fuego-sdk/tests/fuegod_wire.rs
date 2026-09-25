@@ -5,9 +5,10 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 use fuego_sdk::serialization::{
-    get_random_outs_request, parse_get_random_outs_response, parse_query_blocks_lite_response,
-    query_blocks_lite_request,
+    get_o_indexes_request, get_random_outs_request, parse_get_o_indexes_response,
+    parse_get_random_outs_response, parse_query_blocks_lite_response, query_blocks_lite_request,
 };
+use serde_json::{json, Value};
 
 // A hung endpoint must fail the job, not stall it.
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -71,14 +72,38 @@ fn post(path: &str, content_type: &str, body: &[u8]) -> Vec<u8> {
     raw[body_start..body_start + len].to_vec()
 }
 
+fn json_rpc(method: &str, params: Value) -> Value {
+    let body = json!({"jsonrpc": "2.0", "id": "1", "method": method, "params": params});
+    let resp: Value = serde_json::from_slice(&post(
+        "/json_rpc",
+        "application/json",
+        body.to_string().as_bytes(),
+    ))
+    .unwrap();
+    resp.get("result")
+        .cloned()
+        .unwrap_or_else(|| panic!("{method}: {resp}"))
+}
+
+fn hex32(s: &str) -> [u8; 32] {
+    hex::decode(s).unwrap().try_into().unwrap()
+}
+
 fn genesis_hash() -> [u8; 32] {
-    let body = br#"{"jsonrpc":"2.0","id":"1","method":"on_getblockhash","params":[0]}"#;
-    let resp: serde_json::Value =
-        serde_json::from_slice(&post("/json_rpc", "application/json", body)).unwrap();
-    let hex_hash = resp["result"]
-        .as_str()
-        .unwrap_or_else(|| panic!("on_getblockhash: {resp}"));
-    hex::decode(hex_hash).unwrap().try_into().unwrap()
+    hex32(json_rpc("on_getblockhash", json!([0])).as_str().unwrap())
+}
+
+// (coinbase tx hash, amount, one-time key) of genesis output 0, from fuegod's JSON view.
+fn genesis_coinbase_output() -> ([u8; 32], u64, [u8; 32]) {
+    let block = json_rpc("f_block_json", json!({"hash": hex::encode(genesis_hash())}));
+    let tx_hash = block["block"]["transactions"][0]["hash"].as_str().unwrap().to_string();
+    let tx = json_rpc("f_transaction_json", json!({"hash": tx_hash}));
+    let out = &tx["tx"]["vout"][0];
+    (
+        hex32(&tx_hash),
+        out["amount"].as_u64().unwrap(),
+        hex32(out["target"]["data"]["key"].as_str().unwrap()),
+    )
 }
 
 #[test]
@@ -98,7 +123,7 @@ fn query_blocks_lite_round_trip() {
 
 #[test]
 #[ignore = "needs a running fuegod; set FUEGOD_RPC_URL"]
-fn get_random_outs_round_trip() {
+fn get_random_outs_empty_groups() {
     let amounts = [0u64, 1_000_000];
     let raw = post(
         "/getrandom_outs.bin",
@@ -109,5 +134,36 @@ fn get_random_outs_round_trip() {
     assert_eq!(
         resp.iter().map(|r| r.amount).collect::<Vec<_>>(),
         amounts.to_vec()
+    );
+}
+
+#[test]
+#[ignore = "needs a running fuegod; set FUEGOD_RPC_URL"]
+fn get_random_outs_returns_known_output() {
+    let (tx_hash, amount, key) = genesis_coinbase_output();
+    let o_indexes = parse_get_o_indexes_response(&post(
+        "/get_o_indexes.bin",
+        "application/octet-stream",
+        &get_o_indexes_request(&tx_hash),
+    ))
+    .expect("parse /get_o_indexes.bin");
+    // Asking for more outputs than exist returns all of them (testnet unlock window is 0).
+    let resp = parse_get_random_outs_response(&post(
+        "/getrandom_outs.bin",
+        "application/octet-stream",
+        &get_random_outs_request(&[amount], 100),
+    ))
+    .expect("parse /getrandom_outs.bin");
+    assert_eq!(resp.len(), 1);
+    assert_eq!(resp[0].amount, amount);
+    assert!(
+        resp[0]
+            .outs
+            .iter()
+            .any(|o| o.out_key == key && o.global_amount_index == o_indexes[0]),
+        "genesis output (key {}, global index {}) missing from {:?}",
+        hex::encode(key),
+        o_indexes[0],
+        resp[0].outs
     );
 }

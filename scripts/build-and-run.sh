@@ -61,6 +61,12 @@ print_status "Step 2: Building Rust wallet backend..."
 cargo build --manifest-path rust-fuego-wallet/Cargo.toml --release --package rust_fuego_wallet
 print_success "Rust wallet backend built at rust-fuego-wallet/target/release/fuego_walletd"
 
+cargo build --manifest-path rust-fuego-wallet/Cargo.toml --release --package fuego-ffi
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    cp rust-fuego-wallet/target/release/libfuego_ffi.dylib macos/Runner/libfuego_ffi.dylib
+fi
+print_success "fuego-ffi built from fuego-suite/src/crypto"
+
 # ── Step 3: Build Flutter app ──
 print_status "Step 3: Building Flutter app..."
 

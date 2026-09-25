@@ -27,7 +27,12 @@ class FuegoNative {
       }
       return DynamicLibrary.open('libfuego_ffi.dylib');
     }
-    if (Platform.isLinux) return DynamicLibrary.open('libfuego_ffi.so');
+    if (Platform.isLinux) {
+      final bundled =
+          '${File(Platform.resolvedExecutable).parent.path}/lib/libfuego_ffi.so';
+      return DynamicLibrary.open(
+          File(bundled).existsSync() ? bundled : 'libfuego_ffi.so');
+    }
     if (Platform.isWindows) return DynamicLibrary.open('fuego_ffi.dll');
     if (Platform.isAndroid) return DynamicLibrary.open('libfuego_ffi.so');
     if (Platform.isIOS) {

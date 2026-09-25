@@ -24,7 +24,7 @@ architectures:
 
 apps:
   xfg-wallet:
-    command: xfg-wallet
+    command: fuego-valise/fuego-valise
     extensions: [gnome]
     plugs:
       - network
@@ -35,20 +35,6 @@ apps:
       LD_LIBRARY_PATH: $SNAP/usr/lib:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP_APP/usr/lib
 
 parts:
-  flutter-app:
+  fuego-valise:
     plugin: dump
-    source: build/linux/x64/release/bundle
-    organize:
-      xfg-wallet: bin/xfg-wallet
-    stage:
-      - bin/*
-      - lib/*
-      - data/*
-
-  fuego-daemon:
-    plugin: dump
-    source: assets/bin
-    organize:
-      fuego-walletd: bin/fuego-walletd
-    stage:
-      - bin/*
+    source: build/snap-root
