@@ -187,7 +187,7 @@ jobs:
       # libfuego_ffi.a is force-loaded into Runner; Dart resolves these via DynamicLibrary.process().
       - name: Verify FFI symbols are linked into Runner
         run: |
-          nm -gU build/ios/iphoneos/Runner.app/Runner | grep -E " _fuego_(mine_share|vault_from_seed|make_address)$"
+          syms=$(nm -gU build/ios/iphoneos/Runner.app/Runner); for s in mine_share vault_from_seed make_address; do grep -q " _fuego_$s$" <<<"$syms" || { echo "missing _fuego_$s"; exit 1; }; done
 
       - name: Package iOS App (.ipa)
         run: |

@@ -40,3 +40,6 @@ xfgo/
 
 # Unbundled font drops (not wired in pubspec)
 assets/fonts/Noto_Serif_Display/
+
+# Claude Code agent worktrees
+.claude/worktrees/

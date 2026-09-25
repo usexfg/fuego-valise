@@ -1,5 +1,34 @@
 # CHANGELOG.agent.md
 
+## [2026-09-25] fuego-ffi skill
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 55 | `.claude/skills/fuego-ffi`: SKILL.md (boundary conventions, type mapping, add-a-function steps, verification gates, suite-bump checks, known debt), `references/platforms.md`, `references/cryptonight.md`, `scripts/check_ffi_bindings.py` (Rust export vs Dart typedef arity/width/signedness + `#[repr(C)]` struct layout) | claude-opus-5-5 | 2026-09-25 | ✅ done |
+| 56 | Evaluate the skill: 4 prompts × with/without skill, graded + benchmarked | claude-opus-5-5 | 2026-09-25 | ✅ done: with 100%, without 92%; -12% time, -6% tokens |
+| 57 | iOS symbol checks (mobile CI, `ios-release.yml`, `appstore-release.yml`) used `grep -E "(a\|b\|c)"`, which passed if any one symbol survived; now every symbol must be present | claude-opus-5-5 | 2026-09-25 | ✅ done |
+
+Defects found by the evals and verified, **not fixed** (recorded in the skill's known debt):
+
+| # | Finding | Severity |
+|---|---------|----------|
+| F5 | suite `slow-hash.c` `VARIANT2_PORTABLE_SHUFFLE_ADD` stores to the wrong offsets for `light`, so the portable path (every Android ABI, any ARM-no-crypto or `NO_AES` fuegod) computes a different Fuego PoW hash from SSE2/NEON | CRITICAL (consensus); fix belongs in fuego-suite |
+| F6 | `build.rs` lacks `FORCE_USE_HEAP`: 2 MiB CryptoNight scratchpad on the stack on the portable path (Dart isolate threads ~1 MiB) | HIGH |
+| F7 | `fuego_mine_share` compares hash bytes 0..4 with the stratum target; pools compare the u64 at offset 24 | HIGH |
+| F8 | Subaddress n uses vault keys n/n+1 starting at n=1: subaddress 1 spend secret = main view secret | HIGH (security) |
+| F9 | Ten `usize` FFI params bound as Dart `Int32` (ABI width mismatch on 64-bit) | MEDIUM |
+| F10 | `android-playstore-release.yml` and `fdroid-release.yml` ship no `libfuego_ffi.so`; `ios-release.yml` archive/check steps always skip (`env.IOS_P12_BASE64` never defined) | HIGH (release) |
+| F11 | No variant-2-light known-answer test; CryptoNight tests only exercise x86_64 | MEDIUM |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `check_ffi_bindings.py` mutation tests (missing symbol, arity, struct width, return kind) | ✅ each detected |
+| Workflow YAML parses after symbol-check change; loop fails on a missing symbol | ✅ |
+| `package_skill.py` validation | ✅ |
+| Real iOS archive symbol check | — needs a macOS runner |
+
 ## [2026-09-25] Network connect, desktop Exec, iOS static link
 
 | # | Task | Owner | Date | Status |

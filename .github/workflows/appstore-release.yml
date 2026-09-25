@@ -126,7 +126,7 @@ jobs:
 
       - name: Verify FFI symbols survived archive stripping
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: nm -gU "build/ios/archive/fuego_wallet.xcarchive/Products/Applications/Runner.app/Runner" | grep -E " _fuego_(mine_share|vault_from_seed|make_address)$"
+        run: syms=$(nm -gU "build/ios/archive/fuego_wallet.xcarchive/Products/Applications/Runner.app/Runner"); for s in mine_share vault_from_seed make_address; do grep -q " _fuego_$s$" <<<"$syms" || { echo "missing _fuego_$s"; exit 1; }; done
 
       - name: Export IPA
         if: ${{ github.event.inputs.dry_run != 'true' }}

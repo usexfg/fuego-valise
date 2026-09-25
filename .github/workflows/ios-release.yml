@@ -148,7 +148,7 @@ jobs:
 
       - name: Verify FFI symbols survived archive stripping
         if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        run: nm -gU "ios/build/Runner.xcarchive/Products/Applications/Runner.app/Runner" | grep -E " _fuego_(mine_share|vault_from_seed|make_address)$"
+        run: syms=$(nm -gU "ios/build/Runner.xcarchive/Products/Applications/Runner.app/Runner"); for s in mine_share vault_from_seed make_address; do grep -q " _fuego_$s$" <<<"$syms" || { echo "missing _fuego_$s"; exit 1; }; done
 
       - name: Export IPA
         if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
