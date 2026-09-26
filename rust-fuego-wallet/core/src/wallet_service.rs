@@ -283,6 +283,7 @@ impl SyncEngine {
         }
         let info = self.daemon.get_info().await?;
         let our_height = self.wallet.lock().unwrap().height();
+        self.retry_missing_global_indices().await;
 
         if info.height <= our_height {
             return Ok(0);
@@ -388,6 +389,42 @@ impl SyncEngine {
         let _ = self.db.remove(KEY_RESCAN);
         self.persist_state();
         log::info!("rescanning from genesis");
+    }
+
+    /// Outputs whose `get_o_indexes` lookup failed during the scan keep the
+    /// placeholder global index 0, which coin selection skips (index 0 is the
+    /// genesis output). Retry them each round so they become spendable.
+    async fn retry_missing_global_indices(&self) {
+        let missing: std::collections::BTreeSet<[u8; 32]> = {
+            let wallet = self.wallet.lock().unwrap();
+            wallet
+                .utxos()
+                .iter()
+                .filter(|u| u.global_index == 0)
+                .map(|u| u.tx_hash)
+                .chain(
+                    wallet
+                        .snapshot_state()
+                        .commitments
+                        .iter()
+                        .filter(|c| c.global_index == 0)
+                        .map(|c| c.tx_hash),
+                )
+                .collect()
+        };
+        let mut attached = false;
+        for tx_hash in missing {
+            match self.daemon.get_o_indexes(&tx_hash).await {
+                Ok(indices) => {
+                    self.wallet.lock().unwrap().attach_global_indices(&tx_hash, &indices);
+                    attached = true;
+                }
+                Err(e) => log::warn!("get_o_indexes retry failed for {}: {}", hex::encode(tx_hash), e),
+            }
+        }
+        if attached {
+            self.persist_state();
+        }
     }
 
     /// Remove pending entries whose transaction is now in a scanned block.

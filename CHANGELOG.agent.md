@@ -1,5 +1,31 @@
 # CHANGELOG.agent.md
 
+## [2026-09-26] PR #12 CI and review fixes
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 67 | iOS archive had no `fuego_*` symbols: release links dead-strip, and ld64 does not keep a main executable's unreferenced globals. Added `-Xlinker -export_dynamic` next to each `-force_load` | claude-opus-5-5 | 2026-09-26 | ✅ done (verified by CI) |
+| 68 | Runner build phase "Build fuego-ffi" (`scripts/build-ios-ffi.sh`) builds the Rust slice for the active SDK/arch; clean Xcode/flutter builds no longer need a manual cargo step (review #7) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 69 | Android natives: cargo-ndk 4.1.2 could not link against NDK r25b (`crtbegin_so.o`, `-llog`). Use the runner's preinstalled NDK (27.x), which master's green builds used | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 70 | walletd JSON-RPC: the `is_wallet_method` allowlist omitted the sub-address methods and several handled aliases (`getHealth`, `transfer`, `send_heat`, `create_afk_lock`, `heat_cd`, ...), which returned "unknown method". Removed it; the handler is the only list, and unhandled names fall through to the fuegod proxy. Dropped the placeholder zero-APY arm so `cd::apy` still reaches fuegod (review #4) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 71 | Outputs whose `get_o_indexes` failed keep global index 0 and could never be spent or swept; retried every sync round (review #3) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 72 | Zero 8-byte stratum target rejected (-2) (review #8) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 73 | Core client wallet port follows mainnet/testnet switches when the local proxy runs (review #2) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 74 | Backgrounding locks through `WalletProvider.lockWallet()` (clears cached data), and resuming routes to `PinEntryScreen` when a PIN is set (review #5) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 75 | Linux launcher symlink pointed at "Fuego Valise" (display name); the binary is `fuegowallet` (`BINARY_NAME`). Bundle step reads it from CMakeLists and checks the link resolves; flatpak fixed too (review #6) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 76 | `unified` is required: the desktop build fails without it, and bundling requires all four backends (review #1) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 77 | Main CI Analyze passed `--fatal-warnings` but infos were still fatal by default (red on master too); added `--no-fatal-infos` as the step's comment intends | claude-opus-5-5 | 2026-09-26 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test --workspace` | ✅ 96 passed |
+| `check_ffi_bindings.py --strict` | ✅ clean |
+| `flutter analyze --fatal-warnings --no-fatal-infos` / `flutter test` | ✅ / ✅ 59 |
+| `dart format --set-exit-if-changed lib/ test/` | ❌ 94/108 files, same on master; not reformatted in this PR |
+| iOS link, Android NDK link, desktop bundles | — CI on the pushed head |
+
 ## [2026-09-26] Fuego PoW on Android, FFI ABI, sub-addresses, key and address fixes (user: "fix 1-7 all"; sub-address design: suite scheme)
 
 | # | Task | Owner | Date | Status |

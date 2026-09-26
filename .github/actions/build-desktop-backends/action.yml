@@ -54,13 +54,12 @@ runs:
           exit 1
         fi
         cp "$FUEGOD" "$SWAPD" backends/
-        UNIFIED=""
-        if cmake --build fuego-suite/build --target PaymentGateService; then
-          UNIFIED="$(find_bin unified)"
+        # unified is part of the required desktop bundle (AGENTS.md); never ship without it.
+        cmake --build fuego-suite/build --target PaymentGateService
+        UNIFIED="$(find_bin unified)"
+        if [ -z "$UNIFIED" ]; then
+          echo "::error::unified missing after the PaymentGateService build"
+          exit 1
         fi
-        if [ -n "$UNIFIED" ]; then
-          cp "$UNIFIED" backends/
-        else
-          echo "::warning::unified (PaymentGateService) not built; bundling without it"
-        fi
+        cp "$UNIFIED" backends/
         ls -la backends

@@ -25,11 +25,11 @@ modules:
     build-options:
       env:
         FLUTTER_ROOT: /usr
-    # Keeps the executable beside lib/, data/ and the daemons; the symlink avoids the space in its name.
+    # Keeps the executable beside lib/, data/ and the daemons; bin/fuego-valise is the launch name.
     build-commands:
       - mkdir -p $FLATPAK_DEST/fuego-valise $FLATPAK_DEST/bin
       - cp -a build/linux/x64/release/bundle/. $FLATPAK_DEST/fuego-valise/
-      - ln -s "../fuego-valise/Fuego Valise" $FLATPAK_DEST/bin/fuego-valise
+      - ln -s ../fuego-valise/fuegowallet $FLATPAK_DEST/bin/fuego-valise
     sources:
       - type: dir
         path: ../

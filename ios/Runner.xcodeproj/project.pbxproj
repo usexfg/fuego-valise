@@ -146,6 +146,7 @@
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
 				9740EEB61CF901F6004384FC /* Run Script */,
+				F0E6A1B2C3D4E5F601234567 /* Build fuego-ffi */,
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
@@ -222,6 +223,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		F0E6A1B2C3D4E5F601234567 /* Build fuego-ffi */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build fuego-ffi";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"$PROJECT_DIR/../scripts/build-ios-ffi.sh\"";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -372,16 +388,22 @@
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]" = (
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios-sim/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]" = (
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -567,16 +589,22 @@
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]" = (
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios-sim/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]" = (
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -605,16 +633,22 @@
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]" = (
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios-sim/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]" = (
 					"$(inherited)",
 					"-force_load",
 					"$(PROJECT_DIR)/../rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a",
+					"-Xlinker",
+					"-export_dynamic",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuego.fuegoWallet;
 				PRODUCT_NAME = "$(TARGET_NAME)";

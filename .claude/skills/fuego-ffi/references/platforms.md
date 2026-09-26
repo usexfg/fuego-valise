@@ -27,9 +27,10 @@ a C source or a system library that changes how the library links.
 
 ## Linux
 
-- The executable is `Fuego Valise` (with a space). The `fuego-valise`
-  symlink and the `.desktop` `Exec` exist only for launching. FFI loading
-  uses `Platform.resolvedExecutable`, which is unaffected.
+- The executable is `fuegowallet` (`BINARY_NAME` in `linux/CMakeLists.txt`); "Fuego Valise"
+  is only the display name. The `fuego-valise` symlink is the launch name for the
+  `.desktop` `Exec`, snap and flatpak. FFI loading uses
+  `Platform.resolvedExecutable`, which resolves the symlink.
 - The flatpak (`flatpak/com.fuego.fuego_wallet.yml`) and the snap
   (`snap-root` layout) both keep the bundle's `lib/` directory. If a
   packaging change moves `lib/`, the fallback bare-name `dlopen` will fail
@@ -62,19 +63,25 @@ a C source or a system library that changes how the library links.
     $(PROJECT_DIR)/../rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.a`
   - `OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]` → `aarch64-apple-ios-sim`
   - `OTHER_LDFLAGS[sdk=iphonesimulator*][arch=x86_64]` → `x86_64-apple-ios`
+  - each followed by `-Xlinker -export_dynamic`
   - `STRIP_STYLE = non-global`
 - Why `-force_load`: nothing in Runner's Objective-C/Swift references the
   `fuego_*` symbols, so a plain link would drop every object file. Dart
   looks them up at runtime, which the linker cannot see.
+- Why `-export_dynamic`: `-force_load` pulls the objects in, but release
+  links dead-strip, and ld64 does not treat a main executable's global
+  symbols as roots, so unreferenced `fuego_*` functions are removed. The
+  first CI archive built with only `-force_load` had none of them.
 - Why `STRIP_STYLE = non-global`: release builds strip symbols.
   `DynamicLibrary.process()` resolves through `dlsym`, which needs the
   global `fuego_*` symbols to survive stripping. Symptom when this is
   wrong: `Failed to lookup symbol 'fuego_…'` in release builds only,
   while debug builds work.
-- Build before `flutter build ios`:
-  `cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios`
-  (simulator builds use `aarch64-apple-ios-sim` or `x86_64-apple-ios`).
-  A missing `.a` fails the link with "file not found" on that path.
+- The Runner build phase "Build fuego-ffi" runs `scripts/build-ios-ffi.sh`,
+  which builds the `.a` for the SDK/arch being built (and unsets Xcode's
+  `SDKROOT` so Cargo's host build scripts don't link against the iOS SDK).
+  Needs Rust with `aarch64-apple-ios`, `aarch64-apple-ios-sim` and
+  `x86_64-apple-ios` installed. "cargo not found" means Rust is missing.
 - Check the result with `scripts/check-ios-ffi-symbols.sh <Runner | .xcarchive | .ipa>`.
   Stripping happens on archive/install (`DEPLOYMENT_POSTPROCESSING`), and
   the export can strip again (`stripSwiftSymbols`), so a plain

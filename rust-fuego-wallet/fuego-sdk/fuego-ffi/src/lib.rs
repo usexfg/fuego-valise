@@ -707,7 +707,8 @@ pub unsafe extern "C" fn fuego_cn_slow_hash(
 
 /// Stratum share target as the 64-bit bound the pool compares against the last
 /// 8 bytes of the hash (xmrig semantics): a 4-byte target t expands to
-/// u64::MAX / (u32::MAX / t); an 8-byte target is used as is. None if malformed.
+/// u64::MAX / (u32::MAX / t); an 8-byte target is used as is. None if malformed
+/// or zero (no hash can be below a zero bound).
 fn share_target_bound(target: &[u8]) -> Option<u64> {
     match target.len() {
         4 => {
@@ -717,7 +718,7 @@ fn share_target_bound(target: &[u8]) -> Option<u64> {
             }
             Some(u64::MAX / (u32::MAX as u64 / t))
         }
-        8 => Some(u64::from_le_bytes(target.try_into().ok()?)),
+        8 => Some(u64::from_le_bytes(target.try_into().ok()?)).filter(|b| *b != 0),
         _ => None,
     }
 }
@@ -882,6 +883,7 @@ mod tests {
         );
         assert_eq!(share_target_bound(&7u64.to_le_bytes()), Some(7));
         assert_eq!(share_target_bound(&[0u8; 4]), None);
+        assert_eq!(share_target_bound(&[0u8; 8]), None);
         assert_eq!(share_target_bound(&[1u8; 3]), None);
 
         // Only the last 8 bytes of the hash count.

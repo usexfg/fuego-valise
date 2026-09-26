@@ -13,11 +13,17 @@ runs:
         toolchain: stable
         targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
 
-    - name: Set up NDK
+    # The runner image ships an NDK (ANDROID_NDK_ROOT, 27.x). cargo-ndk 4 fails to link
+    # against r25b (crtbegin_so.o / -llog not found), so use the preinstalled one.
+    - name: Locate NDK
       id: ndk
-      uses: nttld/setup-ndk@v1
-      with:
-        ndk-version: r25b
+      shell: bash
+      run: |
+        set -euo pipefail
+        ndk="${ANDROID_NDK_ROOT:-${ANDROID_NDK_LATEST_HOME:-}}"
+        test -n "$ndk" && test -f "$ndk/source.properties" || { echo "::error::no Android NDK on this runner"; exit 1; }
+        grep Pkg.Revision "$ndk/source.properties"
+        echo "path=$ndk" >> "$GITHUB_OUTPUT"
 
     - name: Install cargo-ndk
       shell: bash
@@ -26,7 +32,7 @@ runs:
     - name: Build fuego-ffi and fuego_walletd
       shell: bash
       env:
-        ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        ANDROID_NDK_HOME: ${{ steps.ndk.outputs.path }}
         # Android 15+ devices with 16 KB pages refuse 4 KB-aligned ELF segments. cargo-ndk
         # adds this for 64-bit ABIs on NDK <= r27; set it for every ABI so the check below holds.
         RUSTFLAGS: -C link-arg=-Wl,-z,max-page-size=16384
@@ -40,7 +46,7 @@ runs:
     - name: Copy into jniLibs and verify
       shell: bash
       env:
-        READELF: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+        READELF: ${{ steps.ndk.outputs.path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
       run: |
         set -euo pipefail
         declare -A triple=(

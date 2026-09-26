@@ -10,7 +10,8 @@ import 'transaction.dart';
 class FuegoDaemonClient {
   String host;
   int port;
-  final int walletPort;
+  /// Local fuego_walletd port; follows mainnet/testnet switches (see main.dart).
+  int walletPort;
   final http.Client _http;
 
   FuegoDaemonClient({
