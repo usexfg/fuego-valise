@@ -61,16 +61,10 @@ fn is_fuegod_method(method: &str) -> bool {
     )
 }
 
-fn is_wallet_method(method: &str) -> bool {
-    matches!(method,
-        "getBalance" | "getAddresses" | "getAddress" | "getTransactions" |
-        "sendTransaction" | "getStatus" | "register_alias" | "create_cd" | "claim_cd" |
-        "create_integrated" | "list_cds" | "cd::list" | "cd::create" | "cd::claim" |
-        "rollover_cd" | "cd::rollover" | "cd::config" | "get_cd_config" |
-        "cd::create_ladder" | "create_ladder" |
-        "mint_heat" | "swap" | "add_liq" | "remove_liq" | "place_limit_order"
-    )
-}
+/// Returned by `handle_wallet_method` for names it does not implement, so the
+/// dispatcher falls through to the fuegod proxy. The handler's match is the only
+/// list of wallet methods; a separate allowlist had drifted and hid handlers.
+const NOT_A_WALLET_METHOD: &str = "\u{0}not-a-wallet-method";
 
 fn sanitize_error(msg: &str) -> String {
     if msg.contains("127.0.0.1") || msg.contains("localhost")
@@ -325,6 +319,41 @@ async fn handle_wallet_method(
                 "txHash": tx_hash,
             }))
         }
+        "create_subaddress" => {
+            let wallet = wallet.lock().await;
+            let (index, address) = wallet.create_subaddress()?;
+            Ok(serde_json::json!({ "index": index, "address": address }))
+        }
+        "get_subaddresses" => {
+            let wallet = wallet.lock().await;
+            let (subs, legacy) = wallet.list_subaddresses();
+            Ok(serde_json::json!({
+                "subaddresses": subs.iter().map(|(i, a, b)| serde_json::json!({
+                    "index": i, "address": a, "balance": b,
+                })).collect::<Vec<_>>(),
+                "legacy": legacy.iter().map(|(i, b)| serde_json::json!({
+                    "index": i, "balance": b,
+                })).collect::<Vec<_>>(),
+            }))
+        }
+        "register_legacy_subaddresses" => {
+            let indices: Vec<u32> = params.get("indices")
+                .and_then(|v| v.as_array())
+                .ok_or("missing indices")?
+                .iter()
+                .map(|v| v.as_u64().filter(|n| *n >= 1 && *n < u32::MAX as u64).map(|n| n as u32)
+                    .ok_or("indices must be integers in 1..u32::MAX"))
+                .collect::<Result<_, _>>()?;
+            let wallet = wallet.lock().await;
+            let rescan = wallet.register_legacy_subaddresses(&indices);
+            Ok(serde_json::json!({ "rescan": rescan }))
+        }
+        "sweep_legacy_subaddresses" => {
+            let wallet = wallet.lock().await;
+            let tx = wallet.sweep_legacy_subaddresses().await
+                .map_err(|e| format!("sweep failed: {}", e))?;
+            Ok(serde_json::json!({ "txHash": tx }))
+        }
         "register_alias" => {
             let alias = params.get("alias")
                 .and_then(|a| a.as_str())
@@ -380,14 +409,6 @@ async fn handle_wallet_method(
         }
         // CD market / APY — proxied to daemon (is_fuegod_method). Kept as wallet
         // fallback only if daemon unavailable: return empty to keep GUI loadAll from failing.
-        "cd::apy" | "estimate_cd_yield" => {
-            Ok(serde_json::json!({
-                "coin": "HEAT",
-                "current_apy": 0.0,
-                "average_apy": 0.0,
-                "epoch": 0
-            }))
-        }
         "cd::create_ladder" => {
             let ladder = params.get("rungs")
                 .or_else(|| params.get("ladder"))
@@ -662,7 +683,7 @@ async fn handle_wallet_method(
                 "txHash": tx_hash,
             }))
         }
-        _ => Err(format!("unknown wallet method: {}", method)),
+        _ => Err(NOT_A_WALLET_METHOD.to_string()),
     }
 }
 
@@ -696,14 +717,18 @@ async fn json_rpc_handler(
         return (StatusCode::FORBIDDEN, Json(serde_json::to_value(error).unwrap())).into_response();
     }
 
-    let result: Result<serde_json::Value, String> = if is_wallet_method(method) {
-        let params = body.get("params").cloned().unwrap_or(serde_json::Value::Null);
-        handle_wallet_method(&state.wallet, &state.fuegod_url, method, &params).await
-    } else if is_fuegod_method(method) {
-        proxy_to_fuegod(&state.fuegod_url, &body).await
-    } else {
-        Err(format!("unknown method: {}", method))
-    };
+    let params = body.get("params").cloned().unwrap_or(serde_json::Value::Null);
+    let result: Result<serde_json::Value, String> =
+        match handle_wallet_method(&state.wallet, &state.fuegod_url, method, &params).await {
+            Err(e) if e == NOT_A_WALLET_METHOD => {
+                if is_fuegod_method(method) {
+                    proxy_to_fuegod(&state.fuegod_url, &body).await
+                } else {
+                    Err(format!("unknown method: {}", method))
+                }
+            }
+            other => other,
+        };
 
     match result {
         Ok(val) => {
@@ -921,4 +946,35 @@ pub async fn run_server(
         .map_err(|e| format!("server: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    async fn call(wallet: &Mutex<WalletService>, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+        handle_wallet_method(wallet, "http://127.0.0.1:1", method, &params).await
+    }
+
+    #[tokio::test]
+    async fn subaddress_methods_reach_the_wallet() {
+        let dir = std::env::temp_dir().join(format!("fuego-dispatch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let svc = WalletService::new([5u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let wallet = Mutex::new(svc);
+
+        let created = call(&wallet, "create_subaddress", serde_json::json!({})).await.unwrap();
+        assert_eq!(created["index"], 1);
+        let listed = call(&wallet, "get_subaddresses", serde_json::json!({})).await.unwrap();
+        assert_eq!(listed["subaddresses"][0]["address"], created["address"]);
+        let reg = call(&wallet, "register_legacy_subaddresses", serde_json::json!({"indices": [1]})).await.unwrap();
+        assert_eq!(reg["rescan"], true);
+        // No confirmed legacy outputs: nothing to sweep, and no daemon call is made.
+        let swept = call(&wallet, "sweep_legacy_subaddresses", serde_json::json!({})).await.unwrap();
+        assert!(swept["txHash"].is_null());
+
+        // Names the handler does not implement fall through to the fuegod proxy.
+        assert_eq!(call(&wallet, "getinfo", serde_json::json!({})).await.unwrap_err(), NOT_A_WALLET_METHOD);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

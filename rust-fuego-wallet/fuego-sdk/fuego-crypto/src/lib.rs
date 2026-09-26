@@ -5,7 +5,9 @@ use zeroize::Zeroize;
 
 pub mod ref10;
 pub mod ring;
+pub mod subaddress;
 
+pub use subaddress::{derive_subaddress_keys, SubaddressKeys};
 pub use ring::{
     check_ring_signature, check_signature, cn_fast_hash, derive_public_key as derive_public_key_full,
     derive_secret_key, generate_key_derivation as generate_key_derivation_full,
@@ -125,7 +127,11 @@ fn decode_block(encoded: &str, size: usize) -> Option<Vec<u8>> {
     let mut num: u64 = 0;
     for c in encoded.chars() {
         let digit = ALPHABET.iter().position(|&b| b == c as u8)?;
-        num = num * ALPHABET_SIZE as u64 + digit as u64;
+        // Overflow means the block is not valid base58 (Base58.cpp rejects it too).
+        num = num.checked_mul(ALPHABET_SIZE as u64)?.checked_add(digit as u64)?;
+    }
+    if size < FULL_BLOCK_SIZE && num >> (8 * size) != 0 {
+        return None;
     }
     let mut block = vec![0u8; size];
     for i in (0..size).rev() {
@@ -162,8 +168,10 @@ impl Keypair {
         Self::from_secret(secret)
     }
 
-    /// Create keypair from a 32-byte secret.
-    /// CryptoNote style: raw scalar mod l, no clamping at generation.
+    /// Create keypair from 32 secret bytes, reduced mod l (CryptoNote style, no
+    /// clamping). The stored secret is the reduced scalar: every CryptoNote
+    /// routine (generate_key_derivation, derive_secret_key, key images) rejects
+    /// unreduced scalars via sc_check, and `public` is computed from it.
     pub fn from_secret(secret: [u8; 32]) -> Self {
         let mut s = secret;
         ref10::sc_reduce32(&mut s);
@@ -171,7 +179,7 @@ impl Keypair {
         ref10::ge_scalarmult_base(&mut point, &s);
         let mut pk = [0u8; 32];
         ref10::ge_p3_tobytes(&mut pk, &point);
-        Keypair { secret, public: pk }
+        Keypair { secret: s, public: pk }
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -243,15 +251,14 @@ pub fn make_address_with_prefix(spend_pub: &[u8; 32], view_pub: &[u8; 32], prefi
     Address(cn_base58_encode(&buf))
 }
 
-/// Parse a Fuego address (optionally prefixed with "fire" or "TEST") into
-/// (spend pubkey, view pubkey). Validates base58, checksum and prefix tag.
+/// Parse a Fuego address into (spend pubkey, view pubkey). Validates base58,
+/// checksum and network prefix. The leading "fire" (mainnet) / "TEST"
+/// (testnet) is how the varint prefix encodes in base58, not a separate tag,
+/// so the whole string is decoded.
 pub fn parse_address(address: &str) -> Option<([u8; 32], [u8; 32])> {
-    let stripped = address
-        .strip_prefix("fire")
-        .or_else(|| address.strip_prefix("TEST"))
-        .unwrap_or(address);
-    let decoded = cn_base58_decode(stripped)?;
-    if decoded.len() < 72 {
+    let decoded = cn_base58_decode(address)?;
+    // varint prefix (3 bytes for both networks) + 64 key bytes + 4 checksum bytes.
+    if decoded.len() <= ADDR_CHECKSUM_SIZE {
         return None;
     }
     let payload = &decoded[..decoded.len() - ADDR_CHECKSUM_SIZE];
@@ -381,6 +388,30 @@ mod tests {
         eprintln!("Starts with 'fire': {}", addr.0.starts_with("fire"));
         assert!(!addr.0.is_empty());
         assert!(addr.0.len() > 80);
+    }
+
+    #[test]
+    fn parse_address_round_trips_both_networks() {
+        for i in 0..16u8 {
+            let spend = Keypair::from_secret([i; 32]).public;
+            let view = Keypair::from_secret([i.wrapping_add(77); 32]).public;
+            let main = make_address(&spend, &view).0;
+            assert!(main.starts_with("fire"));
+            assert_eq!(parse_address(&main), Some((spend, view)));
+            let test = make_address_with_prefix(&spend, &view, TESTNET_ADDRESS_BASE58_PREFIX).0;
+            assert!(test.starts_with("TEST"));
+            assert_eq!(parse_address(&test), Some((spend, view)));
+        }
+    }
+
+    #[test]
+    fn parse_address_rejects_damage_without_panicking() {
+        let addr = make_address(&Keypair::from_secret([3; 32]).public, &Keypair::from_secret([4; 32]).public).0;
+        assert_eq!(parse_address(&addr[4..]), None, "prefix stripped");
+        let mut flipped = addr.clone().into_bytes();
+        flipped[20] = if flipped[20] == b'z' { b'y' } else { b'z' };
+        assert_eq!(parse_address(std::str::from_utf8(&flipped).unwrap()), None, "checksum");
+        assert_eq!(parse_address("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), None);
     }
 
     #[test]

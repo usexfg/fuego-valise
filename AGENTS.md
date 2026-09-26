@@ -112,3 +112,44 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 - macOS app bundle: `fuego_wallet.app`
 - Rust backend binary: `fuego_walletd`
 - Default remote daemon: `207.244.247.64:18180`
+
+## fuego-suite submodule
+
+- `fuego-suite/` is a git submodule of `usexfg/fuego-suite`, tracking `master`, pinned to one commit. Clone with `--recurse-submodules`. Locally it replaces the old gitignored `xfgo/` checkout.
+- `fuego-ffi/build.rs` compiles CryptoNight (`slow-hash.c` etc.) directly from `fuego-suite/src/crypto`. There is no vendored copy. `cargo test -p fuego-ffi` checks it against canonical CN v0/v2 vectors.
+- Desktop CI builds `fuegod`/`xfg-swapd`/`unified` from the pinned submodule (`submodules: recursive`), not from a fresh clone of suite master.
+- Dependabot (`gitsubmodule` ecosystem) opens a PR whenever suite master moves. Merging that PR is how the pin moves.
+- The Rust SDK is a Rust reimplementation of suite's C++ wire formats, not shared source. The submodule does not keep it in sync; only the fuegod wire-format CI job catches drift.
+- Wire-format check (CI job `fuegod-wire-check`): builds `fuegod` from the pin, runs it isolated with `--testnet` (ungates RPC on an unsynced node), and round-trips `fuego-sdk/tests/fuegod_wire.rs`. Locally: start fuegod the same way, then `FUEGOD_RPC_URL=http://127.0.0.1:28180 cargo test -p fuego-sdk --test fuegod_wire -- --ignored`.
+- Desktop build + bundling lives only in `.github/actions/build-desktop-backends` and `.github/actions/bundle-desktop-backends`; CI and every desktop release workflow (macOS, App Store, flatpak, snap) use them. Bundle layout: `fuego_walletd`, `fuegod`, `xfg-swapd`, `unified` next to the executable (`Contents/MacOS` on macOS); `libfuego_ffi` in `Contents/Frameworks` (macOS) or `lib/` (Linux). `scripts/sign-macos-app.sh` signs the result.
+- `libfuego_ffi.dylib` is built, never committed (`macos/Runner/libfuego_ffi.dylib` is gitignored). `scripts/build-and-run.sh` builds it for local macOS builds.
+- Linux release packages build on ubuntu-22.04: snap `core22` is 22.04 and `--destructive-mode` requires the host to match. Suite links Boost statically, so the daemons only need OpenSSL 3, libstdc++ and glibc at runtime.
+- iOS cannot spawn `fuego_walletd`; iOS release workflows do not build it (see `docs/IOS_WALLETD_FFI_SCOPE.md`).
+- iOS links the FFI statically: Runner's `OTHER_LDFLAGS` force-load `rust-fuego-wallet/target/<triple>/release/libfuego_ffi.a` (`aarch64-apple-ios` device, `aarch64-apple-ios-sim` / `x86_64-apple-ios` simulator) `-Xlinker -export_dynamic` stops dead-code stripping from dropping them (nothing native calls them; Dart looks them up at runtime), and `STRIP_STYLE = non-global` keeps them through symbol stripping, for `DynamicLibrary.process()`. The Runner build phase "Build fuego-ffi" (`scripts/build-ios-ffi.sh`) builds the slice for the SDK/arch Xcode is targeting, so a clean `flutter build ios` needs only Rust (`rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`).
+- Linux bundles include a `fuego-valise` launcher symlink to the `fuegowallet` executable (`BINARY_NAME` in `linux/CMakeLists.txt`; "Fuego Valise" is only the display name); `linux/xfg-wallet.desktop` execs it.
+
+## Network selection
+
+- Mainnet/testnet: `FUEGO_TESTNET` env wins at launch, else the choice saved by Settings → Network (`node_network` pref). `NodeConnection.switchNetwork()` retargets ports/seeds, persists, and reconnects at runtime; `useTestnet` in `main.dart` follows it.
+- Chain clients (`daemon`, `hearthClient`) and `DexCubit` follow every reconnect through `NodeConnection.addListener`.
+
+## Sub-addresses
+
+- They follow fuego-suite's scheme (`src/crypto/subaddress.cpp`, ported to Rust as `fuego_crypto::derive_subaddress_keys`):
+  - The spend key is `D = B + H_s("Sublime" || a || major || minor)·G`.
+  - The view key is the master `A`.
+  - The prefix is the same as a main address, so senders need no changes.
+- `fuego_walletd` owns them: JSON-RPC `create_subaddress`, `get_subaddresses`, `register_legacy_subaddresses`, `sweep_legacy_subaddresses`.
+  - The scanner underives each output with the one master derivation and looks the result up in a spend-key table that runs 50 past the highest sub-address used.
+- They are linkable: every sub-address carries the master view key.
+- Pre-scheme "sub-addresses" (vault keypairs n and n+1) are `legacy` in `SubaddressStore`.
+  - Legacy sub-address 1's spend key is the main view key.
+  - Walletd rescans once when they are registered, and the receive screen offers to sweep them.
+
+## CryptoNight / keys
+
+- `fuego-ffi/build.rs` compiles suite's `slow-hash.c` with two fixes to the portable path, which every Android ABI uses:
+  - the variant-2 light shuffle store offsets, which gave the wrong Fuego PoW;
+  - an unaligned `VARIANT1_INIT64` load.
+  It also defines `FORCE_USE_HEAP`. The fixes are skipped automatically once suite carries `fuego-ffi/patches/slow-hash-portable.patch`.
+- `Keypair::from_secret` stores the scalar reduced mod l. Unreduced secrets fail `sc_check`, so scanning and spending failed for about 15 of 16 wallets. Walletd rescans once when its stored `scan_version` is older.

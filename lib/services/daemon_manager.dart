@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -42,6 +43,29 @@ class DaemonManager {
   String? _walletdBin;
   String? _swapdBin;
 
+  // ── Android native library directory ────────────────────────────
+  // Android has no subprocess-executable concept outside jniLibs — an
+  // arbitrary bundled binary only becomes executable once extracted to
+  // applicationInfo.nativeLibraryDir (see MainActivity.kt). Resolved once
+  // per DaemonManager instance and cached; Dart has no built-in accessor
+  // for this path, hence the platform channel.
+  static const MethodChannel _nativeLibChannel =
+      MethodChannel('com.fuego.fuego_wallet/native_lib_dir');
+  String? _androidNativeLibDir;
+  bool _androidNativeLibDirResolved = false;
+
+  Future<void> _resolveAndroidNativeLibDir() async {
+    if (!Platform.isAndroid || _androidNativeLibDirResolved) return;
+    _androidNativeLibDirResolved = true;
+    try {
+      _androidNativeLibDir =
+          await _nativeLibChannel.invokeMethod<String>('getNativeLibraryDir');
+      debugPrint('[daemon] Android nativeLibraryDir: $_androidNativeLibDir');
+    } catch (e) {
+      debugPrint('[daemon] Failed to resolve Android nativeLibraryDir: $e');
+    }
+  }
+
   // ── State ────────────────────────────────────────────────────────
   final List<String> errors = [];
   final ValueNotifier<DaemonStatus> status = ValueNotifier(DaemonStatus());
@@ -53,6 +77,9 @@ class DaemonManager {
   /// True while [stopAll]/[stopSwapd] is tearing processes down — suppresses
   /// the xfg-swapd auto-restart so intentional stops don't respawn.
   bool _stopping = false;
+
+  /// Config path used for the last C++ swapd start; preserved for crash-restarts.
+  String? _lastSwapdConfigPath;
 
   /// Bounded stderr buffer captured during unified daemon startup
   /// (release mode) so failures surface the real cause, not just the
@@ -221,7 +248,6 @@ class DaemonManager {
       if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/fuegod',
       '${Directory.current.path}/rust-fuego-wallet/target/release/fuegod',
       '${Directory.current.path}/rust-fuego-wallet/target/debug/fuegod',
-      '${Directory.current.path}/xfgo/build/src/fuegod',
       '${Directory.current.path}/fuego-suite/build/src/fuegod',
     ];
     for (final path in candidates) {
@@ -237,6 +263,12 @@ class DaemonManager {
     if (_walletdBin != null && File(_walletdBin!).existsSync()) return _walletdBin;
     final exe = File(Platform.resolvedExecutable);
     final candidates = [
+      // Android: bundled as jniLibs/*/libfuego_walletd.so, extracted to
+      // nativeLibraryDir with execute permission (see MainActivity.kt /
+      // _resolveAndroidNativeLibDir). Not a real shared library — invoked
+      // directly as a subprocess, never dlopen()'d.
+      if (Platform.isAndroid && _androidNativeLibDir != null)
+        '$_androidNativeLibDir/libfuego_walletd.so',
       '${exe.parent.path}/fuego_walletd',
       if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/fuego_walletd',
       // Prefer release over debug for correct --local / port defaults.
@@ -259,8 +291,8 @@ class DaemonManager {
     final candidates = [
       '${exe.parent.path}/xfg-swapd',
       if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/xfg-swapd',
-      '${Directory.current.path}/xfgo/swapxfg/xfg-swapd',
-      '${Directory.current.path}/xfgo/build/release/bin/xfg-swapd',
+      '${Directory.current.path}/fuego-suite/swapxfg/xfg-swapd',
+      '${Directory.current.path}/fuego-suite/build/release/bin/xfg-swapd',
       '${Directory.current.path}/build/release/src/xfg-swapd',
       '${Directory.current.path}/xfg-swapd',
       '${Directory.current.path}/fuego-suite/build/src/xfg-swapd',
@@ -378,7 +410,7 @@ class DaemonManager {
   ///   Does NOT start a local fuegod — the proxy talks to the remote seed node.
   ///
   /// Swap daemon:
-  /// - Go headless (`xfgo/swapxfg/xfg-swapd --headless`) when that binary is found
+  /// - Go headless (`fuego-suite/swapxfg/xfg-swapd --headless`) when that binary is found
   /// - else C++ style `--swap-config … --service` when [swapConfigPath] is set
   ///
   /// Returns error message if the wallet proxy fails, null on success.
@@ -397,6 +429,7 @@ class DaemonManager {
     _fuegodExternallyRunning = false;
     _swapdExternallyRunning = false;
     _useLocalNode = useLocalNode;
+    await _resolveAndroidNativeLibDir();
     debugPrint('[daemon] === Starting daemons ===');
     debugPrint('[daemon] Mode: ${useLocalNode ? "LOCAL" : "REMOTE"}');
     debugPrint('[daemon] Chain target: $daemonHost:$daemonPort');
@@ -905,9 +938,10 @@ class DaemonManager {
       ];
       // Do not pass bare --testnet: it overrides --daemon/--wallet to hard-coded ports.
     } else if (configPath != null && File(configPath).existsSync()) {
+      _lastSwapdConfigPath = configPath;
       args = ['--swap-config', configPath, '--service'];
     } else {
-      return 'xfg-swapd needs Go headless binary (xfgo/swapxfg/xfg-swapd) '
+      return 'xfg-swapd needs Go headless binary (fuego-suite/swapxfg/xfg-swapd) '
           'or a C++ --swap-config file';
     }
 
@@ -939,6 +973,7 @@ class DaemonManager {
             if (binary == null) return;
             try {
               final goHeadless = _isGoSwapd(binary);
+              final cfg = _lastSwapdConfigPath;
               final args = goHeadless
                   ? [
                       '--headless',
@@ -948,7 +983,9 @@ class DaemonManager {
                       '--no-bridge',
                       '--no-bch',
                     ]
-                  : <String>['--service'];
+                  : (cfg != null && File(cfg).existsSync()
+                      ? ['--swap-config', cfg, '--service']
+                      : <String>['--service']);
               _swapd = await Process.start(binary, args);
               _swapd!.stdout.drain<void>();
               _swapd!.stderr.drain<void>();
@@ -1000,6 +1037,9 @@ class DaemonManager {
     _walletd = null;
     await _stopProcess(_fuegod, 'fuegod');
     _fuegod = null;
+    _walletdExternallyRunning = false;
+    _fuegodExternallyRunning = false;
+    _swapdExternallyRunning = false;
     _stopping = false;
     _updateStatus();
   }

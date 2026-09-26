@@ -32,7 +32,7 @@ jobs:
 
       - name: Analyze (warnings are errors; infos reported)
         run: |
-          flutter analyze --fatal-warnings 2>&1 | tee analyze.log
+          flutter analyze --fatal-warnings --no-fatal-infos 2>&1 | tee analyze.log
           EXIT=${PIPESTATUS[0]}
           echo "## Analyzer summary" >> $GITHUB_STEP_SUMMARY
           grep -E "warning -|error -" analyze.log | wc -l | xargs echo "Warnings+Errors:" >> $GITHUB_STEP_SUMMARY || true
@@ -57,28 +57,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@v1
         with: { toolchain: stable }
 
-      - name: Test fuego-ffi (live Dart bridge crate)
-        run: cargo test --manifest-path rust-fuego-wallet/fuego-sdk/fuego-ffi/Cargo.toml
+      - name: Test Rust workspace (walletd, SDK, crypto, vault, FFI)
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml --workspace
 
-      - name: Test native/crypto (mobile fuego_crypto crate)
-        run: cargo test --manifest-path native/crypto/Cargo.toml
-
-      - name: Binding consistency (every Dart FFI lookup must have a Rust export)
-        run: |
-          RUST=$(grep -oE 'fn (fuego|cn)_[a-z_]+' rust-fuego-wallet/fuego-sdk/fuego-ffi/src/lib.rs | sed 's/fn //;s/(//' | sort -u)
-          DART=$(grep -oE "lookupFunction<[^,]+,[^>]+>\('[a-z_]+'" lib/ffi/fuego_native.dart | grep -oE "'[a-z_]+'" | tr -d "'" | sort -u)
-          MISSING=$(comm -23 <(echo "$DART") <(echo "$RUST"))
-          if [ -n "$MISSING" ]; then
-            echo "::error::Dart FFI lookups with no matching Rust export in fuego-ffi:"
-            echo "$MISSING"
-            exit 1
-          fi
-          echo "All $(echo "$DART" | wc -l) Dart FFI lookups resolve to Rust exports."
+      # Every Dart lookup must match a Rust export in arity and C width/signedness,
+      # and #[repr(C)] structs must match their Dart mirrors.
+      - name: Binding consistency
+        run: python3 .claude/skills/fuego-ffi/scripts/check_ffi_bindings.py --strict --unused
 
       - name: Clippy (report-only)
         continue-on-error: true
@@ -96,6 +89,9 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-suite and its external/secp256k1 are needed to build fuegod
+          submodules: recursive
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -113,139 +109,19 @@ jobs:
         uses: dtolnay/rust-toolchain@v1
         with: { toolchain: stable }
 
-      - name: Build fuego_walletd (Rust — primary backend)
-        run: |
-          cargo build --release --manifest-path rust-fuego-wallet/core/Cargo.toml
-          test -x rust-fuego-wallet/target/release/fuego_walletd
-          # workspace may place binary under core/target or target/
-          if [ ! -x rust-fuego-wallet/target/release/fuego_walletd ]; then
-            mkdir -p rust-fuego-wallet/target/release
-            cp rust-fuego-wallet/core/target/release/fuego_walletd \
-              rust-fuego-wallet/target/release/fuego_walletd
-          fi
-          ls -la rust-fuego-wallet/target/release/fuego_walletd \
-            rust-fuego-wallet/core/target/release/fuego_walletd 2>/dev/null || true
-
-      - name: Build unified daemon (xfgo) — optional
-        id: unified
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch master --recurse-submodules --shallow-submodules \
-            https://github.com/usexfg/fuego-suite.git xfgo-build
-          cd xfgo-build
-          brew install boost openssl icu4c jsoncpp cmake ninja || true
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES=$(uname -m) \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
-          # PaymentGateService outputs as "unified". Daemon target produces
-          # "fuegod" and MUST succeed — local mode depends on it.
-          # (tests + incomplete swap chain clients break `cmake --build` all).
-          echo "::group::Building fuegod (Daemon target)"
-          cmake --build build --target Daemon -j$(sysctl -n hw.logicalcpu)
-          echo "::endgroup::"
-          FUEGOD="$(find build -name fuegod -type f | head -1)"
-          if [ -z "$FUEGOD" ]; then
-            echo "::error::Failed to build or find 'fuegod' binary from xfgo 'Daemon' target."
-            exit 1
-          fi
-          cp "$FUEGOD" ../fuegod
-          echo "Successfully built and copied fuegod."
-
-          # `PaymentGateService` target (unified) is optional.
-          echo "::group::Building unified (PaymentGateService target)"
-          cmake --build build --target PaymentGateService -j$(sysctl -n hw.logicalcpu) || echo "Unified daemon build failed, continuing..."
-          echo "::endgroup::"
-          UNIFIED="$(find build -name unified -type f | head -1)"
-          if [ -n "$UNIFIED" ]; then
-            cp "$UNIFIED" ../unified
-            echo "Successfully built and copied unified."
-          fi
-
-          # `SwapDaemon` target outputs "xfg-swapd" — cross-chain atomic
-          # swaps (Dart Cross-Chain tab connects to its JSON-RPC on 18902).
-          echo "::group::Building xfg-swapd (SwapDaemon target)"
-          cmake --build build --target SwapDaemon -j$(sysctl -n hw.logicalcpu)
-          echo "::endgroup::"
-          SWAPD="$(find build -name xfg-swapd -type f | head -1)"
-          if [ -z "$SWAPD" ]; then
-            echo "::error::Failed to build or find 'xfg-swapd' binary from xfgo 'SwapDaemon' target."
-            exit 1
-          fi
-          cp "$SWAPD" ../xfg-swapd
-          echo "Successfully built and copied xfg-swapd."
-
-          cd ..
-          rm -rf xfgo-build
-          echo "built=true" >> "$GITHUB_OUTPUT"
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
 
       - name: Build macOS app
         run: flutter build macos --release
 
       - name: Bundle backends into app
-        run: |
-          set -euo pipefail
-          APP="build/macos/Build/Products/Release/fuego_wallet.app"
-          BIN="$APP/Contents/MacOS"
-          RESOURCES_BIN="$APP/Contents/Resources/bin"
-          mkdir -p "$BIN" "$RESOURCES_BIN"
-
-          # Primary: Rust wallet proxy
-          WALLETD=""
-          for c in \
-            rust-fuego-wallet/target/release/fuego_walletd \
-            rust-fuego-wallet/core/target/release/fuego_walletd
-          do
-            if [ -x "$c" ]; then WALLETD="$c"; break; fi
-          done
-          test -n "$WALLETD"
-          cp "$WALLETD" "$BIN/fuego_walletd"
-          cp "$WALLETD" "$RESOURCES_BIN/fuego_walletd"
-          chmod +x "$BIN/fuego_walletd" "$RESOURCES_BIN/fuego_walletd"
-
-          # fuegod is REQUIRED for local mode. The Rust backend refuses to
-          # start embedded fuegod without it, so a bundle without fuegod is a
-          # broken app — fail the build instead of shipping a degraded one.
-          if [ -x ./fuegod ]; then
-            cp ./fuegod "$BIN/fuegod"
-            cp ./fuegod "$RESOURCES_BIN/fuegod"
-            chmod +x "$BIN/fuegod" "$RESOURCES_BIN/fuegod"
-          else
-            echo "::error::fuegod missing — local mode would fail at runtime. Build the xfgo 'Daemon' target."
-            exit 1
-          fi
-
-          # xfg-swapd REQUIRED — cross-chain atomic swaps depend on it.
-          if [ -x ./xfg-swapd ]; then
-            cp ./xfg-swapd "$BIN/xfg-swapd"
-            cp ./xfg-swapd "$RESOURCES_BIN/xfg-swapd"
-            chmod +x "$BIN/xfg-swapd" "$RESOURCES_BIN/xfg-swapd"
-          else
-            echo "::error::xfg-swapd missing — cross-chain swaps would fail at runtime. Build the xfgo 'SwapDaemon' target."
-            exit 1
-          fi
-
-          if [ -x ./unified ]; then
-            cp ./unified "$BIN/unified"
-            cp ./unified "$RESOURCES_BIN/unified"
-            chmod +x "$BIN/unified" "$RESOURCES_BIN/unified"
-          fi
-
-      - name: Bundle daemon dylibs into app
-        run: ./scripts/bundle-macos-dylibs.sh "build/macos/Build/Products/Release/fuego_wallet.app"
+        uses: ./.github/actions/bundle-desktop-backends
+        with:
+          app: build/macos/Build/Products/Release/fuego_wallet.app
 
       - name: Re-sign
-        run: |
-          APP="build/macos/Build/Products/Release/fuego_wallet.app"
-          codesign --force --sign - "$APP/Contents/MacOS/fuego_walletd"
-          codesign --force --sign - "$APP/Contents/MacOS/unified"
-          codesign --force --sign - "$APP/Contents/MacOS/fuegod"
-          codesign --force --sign - "$APP/Contents/MacOS/xfg-swapd"
-          find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 -type d -name "*.framework" -exec codesign --force --sign - {} \;
-          find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 -name "*.dylib" -exec codesign --force --sign - {} \;
-          codesign --force --sign - "$APP"
-          codesign --verify --deep --strict "$APP" || { echo "::error::codesign verification failed"; exit 1; }
+        run: ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app -
 
       - name: Package app
         run: |
@@ -274,6 +150,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-suite and its external/secp256k1 are needed to build fuegod
+          submodules: recursive
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -299,101 +178,21 @@ jobs:
         uses: dtolnay/rust-toolchain@v1
         with: { toolchain: stable }
 
-      - name: Build fuego_walletd (Rust — primary backend)
-        run: |
-          cargo build --release --manifest-path rust-fuego-wallet/core/Cargo.toml
-          if [ ! -x rust-fuego-wallet/target/release/fuego_walletd ]; then
-            mkdir -p rust-fuego-wallet/target/release
-            cp rust-fuego-wallet/core/target/release/fuego_walletd \
-              rust-fuego-wallet/target/release/fuego_walletd
-          fi
-          test -x rust-fuego-wallet/target/release/fuego_walletd || \
-            test -x rust-fuego-wallet/core/target/release/fuego_walletd
-
-      - name: Build unified daemon (xfgo) — optional
-        id: unified
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch master --recurse-submodules --shallow-submodules \
-            https://github.com/usexfg/fuego-suite.git xfgo-build
-          cd xfgo-build
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build \
-            libboost-all-dev libssl-dev libicu-dev libjsoncpp-dev
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          # `Daemon` target (fuegod) is REQUIRED for local mode to work.
-          echo "::group::Building fuegod (Daemon target)"
-          cmake --build build --target Daemon -j"$(nproc)"
-          echo "::endgroup::"
-          FUEGOD="$(find build -name fuegod -type f | head -1)"
-          if [ -z "$FUEGOD" ]; then
-            echo "::error::Failed to build or find 'fuegod' binary from xfgo 'Daemon' target."
-            exit 1
-          fi
-          cp "$FUEGOD" ../fuegod
-          echo "Successfully built and copied fuegod."
-
-          # `PaymentGateService` target (unified) is optional.
-          echo "::group::Building unified (PaymentGateService target)"
-          cmake --build build --target PaymentGateService -j"$(nproc)" || echo "Unified daemon build failed, continuing..."
-          echo "::endgroup::"
-          UNIFIED="$(find build -name unified -type f | head -1)"
-          if [ -n "$UNIFIED" ]; then
-            cp "$UNIFIED" ../unified
-            echo "Successfully built and copied unified."
-          fi
-
-          # `SwapDaemon` target outputs "xfg-swapd" — cross-chain swaps.
-          echo "::group::Building xfg-swapd (SwapDaemon target)"
-          cmake --build build --target SwapDaemon -j"$(nproc)"
-          echo "::endgroup::"
-          SWAPD="$(find build -name xfg-swapd -type f | head -1)"
-          if [ -z "$SWAPD" ]; then
-            echo "::error::Failed to build or find 'xfg-swapd' binary from xfgo 'SwapDaemon' target."
-            exit 1
-          fi
-          cp "$SWAPD" ../xfg-swapd
-          echo "Successfully built and copied xfg-swapd."
-
-          cd ..
-          rm -rf xfgo-build
-          echo "built=true" >> "$GITHUB_OUTPUT"
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
 
       - name: Build Linux app
         run: flutter build linux --release
 
       - name: Bundle backends into app
+        uses: ./.github/actions/bundle-desktop-backends
+        with:
+          app: build/linux/x64/release/bundle
+
+      - name: Add desktop entry and icon
         run: |
-          set -euo pipefail
-          BUNDLE="build/linux/x64/release/bundle"
-          WALLETD=""
-          for c in \
-            rust-fuego-wallet/target/release/fuego_walletd \
-            rust-fuego-wallet/core/target/release/fuego_walletd
-          do
-            if [ -x "$c" ]; then WALLETD="$c"; break; fi
-          done
-          test -n "$WALLETD"
-          cp "$WALLETD" "$BUNDLE/fuego_walletd"
-          chmod +x "$BUNDLE/fuego_walletd"
-          if [ -x ./unified ]; then cp ./unified "$BUNDLE/" && chmod +x "$BUNDLE/unified"; fi
-          # fuegod required — local mode depends on it. Fail rather than ship broken.
-          if [ -x ./fuegod ]; then
-            cp ./fuegod "$BUNDLE/" && chmod +x "$BUNDLE/fuegod"
-          else
-            echo "::error::fuegod missing — local mode would fail at runtime. Build the xfgo 'Daemon' target."
-            exit 1
-          fi
-          # xfg-swapd required — cross-chain atomic swaps depend on it.
-          if [ -x ./xfg-swapd ]; then
-            cp ./xfg-swapd "$BUNDLE/" && chmod +x "$BUNDLE/xfg-swapd"
-          else
-            echo "::error::xfg-swapd missing — cross-chain swaps would fail at runtime. Build the xfgo 'SwapDaemon' target."
-            exit 1
-          fi
-          cp linux/xfg-wallet.desktop "$BUNDLE/" 2>/dev/null || true
-          cp assets/logo/fuegologo.png "$BUNDLE/fuego.png" 2>/dev/null || true
+          cp linux/xfg-wallet.desktop build/linux/x64/release/bundle/ 2>/dev/null || true
+          cp assets/logo/fuegologo.png build/linux/x64/release/bundle/fuego.png 2>/dev/null || true
 
       - name: Package app
         run: |
@@ -415,3 +214,115 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: Fuego-Wallet-Linux-x64.tar.gz
+
+  # CryptoNight compiles a different implementation per target; Android uses the
+  # portable / ARM-without-crypto paths. Each must reproduce mainnet PoW.
+  ffi-cryptonight-paths:
+    name: FFI / CryptoNight on portable, aarch64, armv7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64 -L /usr/aarch64-linux-gnu
+      CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER: qemu-arm -L /usr/arm-linux-gnueabihf
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install cross compilers and qemu
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf libc6-dev-arm64-cross libc6-dev-armhf-cross qemu-user
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf
+
+      - name: Portable path (no AES-NI)
+        env:
+          CFLAGS: -DNO_AES
+          CARGO_TARGET_DIR: target-noaes
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi
+
+      # GCC's default aarch64 target has no crypto extension: the path Android arm64 compiles.
+      - name: aarch64 without crypto extension (qemu)
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-unknown-linux-gnu
+
+      - name: armv7 (qemu)
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target armv7-unknown-linux-gnueabihf
+
+  fuegod-wire-check:
+    name: SDK / fuegod wire format
+    # Toolchain matches where this was verified: Ubuntu 24.04, Boost 1.83.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install suite build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build \
+            libboost-all-dev libssl-dev libicu-dev libjsoncpp-dev
+
+      - name: Resolve pinned fuego-suite commit
+        id: suite
+        run: echo "sha=$(git rev-parse HEAD:fuego-suite)" >> "$GITHUB_OUTPUT"
+
+      # Keyed on the submodule pin: rebuilds only when Dependabot bumps it.
+      - name: Cache fuegod build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: fuego-suite/build
+          key: fuegod-${{ runner.os }}-24.04-${{ steps.suite.outputs.sha }}
+
+      - name: Build fuegod from the pinned submodule
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build fuego-suite/build --target Daemon -j"$(nproc)"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
+
+      - name: FFI CryptoNight vectors
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi
+
+      # --testnet ungates RPC on an unsynced node; the nonexistent exclusive peer keeps it isolated.
+      - name: Start fuegod (testnet, isolated)
+        run: |
+          mkdir -p "$RUNNER_TEMP/fuegod-data"
+          nohup fuego-suite/build/src/fuegod --testnet --no-console \
+            --data-dir "$RUNNER_TEMP/fuegod-data" \
+            --rpc-bind-ip 127.0.0.1 --rpc-bind-port 28180 \
+            --p2p-bind-ip 127.0.0.1 --p2p-bind-port 28080 \
+            --add-exclusive-node 127.0.0.1:1 > "$RUNNER_TEMP/fuegod.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -m 2 http://127.0.0.1:28180/getinfo >/dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::fuegod RPC did not come up within 60s"
+          cat "$RUNNER_TEMP/fuegod.log"
+          exit 1
+
+      - name: SDK wire-format round trips against fuegod
+        env:
+          FUEGOD_RPC_URL: http://127.0.0.1:28180
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-sdk --test fuegod_wire -- --ignored
+
+      - name: fuegod log
+        if: failure()
+        run: tail -200 "$RUNNER_TEMP/fuegod.log" || true

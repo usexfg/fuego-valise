@@ -39,9 +39,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Setup Flutter
-        uses: subosher/setup-flutter@v1
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -61,25 +63,8 @@ jobs:
         run: |
           flutter pub get
 
-      - name: Clone fuego-suite for iOS daemon
-        run: |
-          git clone --branch HEAT --single-branch https://github.com/usexfg/fuego-suite.git /tmp/fuego-suite
-
-      - name: Build fuego_walletd for iOS
-        working-directory: /tmp/fuego-suite
-        run: |
-          cd fuego
-          export ANDROID_HOME=""  # prevent Android SDK detection
-          mkdir -p build/ios
-          cd build/ios
-          cmake ../.. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_GUI=OFF \
-            -DBUILD_TESTS=OFF \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64
-          cmake --build . --target fuego_walletd -j$(sysctl -n hw.ncpu)
+      - name: Build fuego-ffi staticlib (force-loaded into Runner)
+        run: cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios
 
       - name: Extract iOS version from pubspec.yaml
         id: ios_version
@@ -90,10 +75,6 @@ jobs:
       - name: Build iOS App
         run: |
           flutter build ios --release --no-codesign
-          # Copy daemon binary into app bundle
-          mkdir -p build/ios/iphoneos/fuego_wallet.app
-          cp /tmp/fuego-suite/fuego/build/ios/fuego_walletd \
-             build/ios/iphoneos/fuego_wallet.app/
 
       - name: Import Code Signing Certificate
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -143,6 +124,10 @@ jobs:
             -archivePath build/ios/archive/fuego_wallet.xcarchive \
             -allowProvisioningUpdates
 
+      - name: Verify FFI symbols survived archive stripping
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: ./scripts/check-ios-ffi-symbols.sh build/ios/archive/fuego_wallet.xcarchive
+
       - name: Export IPA
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
@@ -154,6 +139,11 @@ jobs:
             -archivePath build/ios/archive/fuego_wallet.xcarchive \
             -exportOptionsPlist "$EXPORT_OPTIONS_PATH" \
             -exportPath build/ios/output
+
+      # The export (e.g. stripSwiftSymbols in the export options) can strip what the archive kept.
+      - name: Verify FFI symbols survived IPA export
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: ./scripts/check-ios-ffi-symbols.sh build/ios/output/*.ipa
 
       - name: Upload IPA to TestFlight
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -194,9 +184,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Flutter
-        uses: subosher/setup-flutter@v1
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -210,21 +202,8 @@ jobs:
         run: |
           flutter pub get
 
-      - name: Clone fuego-suite for macOS daemon
-        run: |
-          git clone --branch HEAT --single-branch https://github.com/usexfg/fuego-suite.git /tmp/fuego-suite
-
-      - name: Build fuego_walletd for macOS
-        working-directory: /tmp/fuego-suite
-        run: |
-          cd fuego
-          mkdir -p build/macos
-          cd build/macos
-          cmake ../.. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_GUI=OFF \
-            -DBUILD_TESTS=OFF
-          cmake --build . --target fuego_walletd -j$(sysctl -n hw.ncpu)
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
 
       - name: Extract macOS version from pubspec.yaml
         id: macos_version
@@ -235,9 +214,11 @@ jobs:
       - name: Build macOS App
         run: |
           flutter build macos --release
-          # Copy daemon binary into app bundle
-          cp /tmp/fuego-suite/fuego/build/macos/fuego_walletd \
-             build/macos/Build/Products/Release/fuego_wallet.app/Contents/MacOS/
+
+      - name: Bundle backends into app
+        uses: ./.github/actions/bundle-desktop-backends
+        with:
+          app: build/macos/Build/Products/Release/fuego_wallet.app
 
       - name: Import Code Signing Certificate
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -264,15 +245,13 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
       - name: Sign macOS App
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          APP_PATH=build/macos/Build/Products/Release/fuego_wallet.app
-          codesign --force --deep --sign "Developer ID Application: $APPLE_TEAM_ID" \
-            --options runtime \
-            --timestamp \
-            "$APP_PATH"
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          IDENTITY="-"
+          if [ -f "$KEYCHAIN_PATH" ]; then
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' 'NR==1 {print $2}')"
+          fi
+          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app "${IDENTITY:--}"
 
       - name: Create DMG
         run: |

@@ -27,6 +27,9 @@ pub struct Vault {
     pub guardians: Vec<Address>,
     #[zeroize(skip)]
     pub recovery_threshold: u8,
+    /// Unused. Kept so serialized vaults keep their layout; sub-addresses follow
+    /// fuego-suite's scheme (fuego_crypto::derive_subaddress_keys) and walletd
+    /// tracks how many were handed out.
     #[zeroize(skip)]
     pub subaddress_count: u32,
 }
@@ -62,26 +65,15 @@ impl Vault {
         Keypair::from_secret(secret)
     }
 
-    /// Derive a spend + view keypair for address generation.
-    /// index = spend, index + 1 = view (matching CryptoNote convention).
+    /// Address built from keypairs `index` (spend) and `index + 1` (view).
+    /// Index 0 is the primary address. Other indices are the pre-suite-scheme
+    /// "sub-addresses": independent keypairs that overlap their neighbours
+    /// (index n's view key is index n+1's spend key). Only for recovering
+    /// funds sent to them; never hand one out.
     pub fn get_address(&self, index: u32) -> Address {
         let spend_kp = self.derive_keypair(index);
         let view_kp = self.derive_keypair(index + 1);
         make_address(&spend_kp.public, &view_kp.public)
-    }
-
-    pub fn new_subaddress(&mut self) -> Address {
-        self.subaddress_count += 1;
-        let spend_index = 100 + self.subaddress_count * 2;
-        self.get_address(spend_index)
-    }
-
-    pub fn get_subaddress_spend_index(&self, subaddress_number: u32) -> u32 {
-        100 + subaddress_number * 2
-    }
-
-    pub fn get_subaddress_view_index(&self, subaddress_number: u32) -> u32 {
-        100 + subaddress_number * 2 + 1
     }
 
     pub fn set_display_name(&mut self, name: String) {

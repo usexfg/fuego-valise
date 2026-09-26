@@ -1,0 +1,38 @@
+name: Bundle desktop backends
+description: >-
+  Copies ./backends (from build-desktop-backends) into a built app where
+  DaemonManager and FuegoNative look for them. Run after `flutter build`.
+
+inputs:
+  app:
+    description: macOS .app bundle path, or Linux bundle directory
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Bundle backends
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+      run: |
+        set -euo pipefail
+        test -d "$APP"
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          for b in fuego_walletd fuegod xfg-swapd unified; do
+            install -m 755 "backends/$b" "$APP/Contents/MacOS/$b"
+          done
+          test -f "$APP/Contents/Frameworks/libfuego_ffi.dylib"
+          ./scripts/bundle-macos-dylibs.sh "$APP"
+        else
+          for b in fuego_walletd fuegod xfg-swapd unified; do
+            install -m 755 "backends/$b" "$APP/$b"
+          done
+          install -m 644 backends/libfuego_ffi.so "$APP/lib/libfuego_ffi.so"
+          # Launcher name used by the .desktop Exec, snap and flatpak. The binary is
+          # BINARY_NAME in linux/CMakeLists.txt; "Fuego Valise" is only the display name.
+          bin=$(sed -n 's/^set(BINARY_NAME "\(.*\)")$/\1/p' linux/CMakeLists.txt)
+          test -n "$bin" && test -x "$APP/$bin"
+          ln -sfn "$bin" "$APP/fuego-valise"
+          test -x "$APP/fuego-valise"
+        fi

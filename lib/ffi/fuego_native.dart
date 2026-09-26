@@ -27,16 +27,16 @@ class FuegoNative {
       }
       return DynamicLibrary.open('libfuego_ffi.dylib');
     }
-    if (Platform.isLinux) return DynamicLibrary.open('libfuego_ffi.so');
+    if (Platform.isLinux) {
+      final bundled =
+          '${File(Platform.resolvedExecutable).parent.path}/lib/libfuego_ffi.so';
+      return DynamicLibrary.open(
+          File(bundled).existsSync() ? bundled : 'libfuego_ffi.so');
+    }
     if (Platform.isWindows) return DynamicLibrary.open('fuego_ffi.dll');
     if (Platform.isAndroid) return DynamicLibrary.open('libfuego_ffi.so');
-    if (Platform.isIOS) {
-      try {
-        return DynamicLibrary.open('libfuego_ffi.dylib');
-      } catch (_) {
-        return DynamicLibrary.process();
-      }
-    }
+    // iOS: libfuego_ffi.a is force-loaded into Runner (see ios/Runner.xcodeproj).
+    if (Platform.isIOS) return DynamicLibrary.process();
     throw UnsupportedError('Unsupported platform');
   }
 
@@ -71,19 +71,19 @@ class FuegoNative {
 
   /// Create keypair from 32-byte secret.
   Map<String, dynamic> keypairFromSecret(List<int> secret) {
-    assert(secret.length == 32);
+    _requireLengths({'secret': (secret, 32)});
     final ptr = _allocBytes(secret);
     final fn = _lib.lookupFunction<_KeypairFromSecretNative, _KeypairFromSecretDart>('fuego_keypair_from_secret');
     final result = fn(ptr);
     final json = result.toDartString();
     _freeString(result);
-    calloc.free(ptr);
+    _freeSecret(ptr, 32);
     return _parseJson(json);
   }
 
   /// Generate Fuego address from spend + view public keys.
   String makeAddress(List<int> spendPub, List<int> viewPub) {
-    assert(spendPub.length == 32 && viewPub.length == 32);
+    _requireLengths({'spendPub': (spendPub, 32), 'viewPub': (viewPub, 32)});
     final spendPtr = _allocBytes(spendPub);
     final viewPtr = _allocBytes(viewPub);
     final fn = _lib.lookupFunction<_MakeAddressNative, _MakeAddressDart>('fuego_make_address');
@@ -104,23 +104,24 @@ class FuegoNative {
 
   /// Create vault from 32-byte seed.
   Uint8List vaultFromSeed(List<int> seed) {
-    assert(seed.length == 32);
+    _requireLengths({'seed': (seed, 32)});
     final ptr = _allocBytes(seed);
     final fn = _lib.lookupFunction<_VaultFromSeedNative, _VaultFromSeedDart>('fuego_vault_from_seed');
     final result = fn(ptr);
     final bytes = _bytesToList(result);
-    calloc.free(ptr);
+    _freeSecret(ptr, 32);
     return bytes;
   }
 
   /// Get address from vault at index.
   String vaultGetAddress(Uint8List vaultBytes, int index) {
+    _requireKeyIndex(index);
     final vaultPtr = _allocUint8List(vaultBytes);
     final fn = _lib.lookupFunction<_VaultGetAddrNative, _VaultGetAddrDart>('fuego_vault_get_address');
     final result = fn(vaultPtr, vaultBytes.length, index);
     final addr = result.toDartString();
     _freeString(result);
-    calloc.free(vaultPtr);
+    _freeSecret(vaultPtr, vaultBytes.length);
     return addr;
   }
 
@@ -131,18 +132,19 @@ class FuegoNative {
     final result = fn(vaultPtr, vaultBytes.length);
     final seed = result.toDartString();
     _freeString(result);
-    calloc.free(vaultPtr);
+    _freeSecret(vaultPtr, vaultBytes.length);
     return seed;
   }
 
   /// Derive keypair from vault at index.
   Map<String, dynamic> vaultDeriveKeypair(Uint8List vaultBytes, int index) {
+    _requireKeyIndex(index);
     final vaultPtr = _allocUint8List(vaultBytes);
     final fn = _lib.lookupFunction<_VaultDeriveKPNative, _VaultDeriveKPDart>('fuego_vault_derive_keypair');
     final result = fn(vaultPtr, vaultBytes.length, index);
     final json = result.toDartString();
     _freeString(result);
-    calloc.free(vaultPtr);
+    _freeSecret(vaultPtr, vaultBytes.length);
     return _parseJson(json);
   }
 
@@ -154,7 +156,7 @@ class FuegoNative {
     final result = fn(vaultPtr, vaultBytes.length, pathPtr);
     final ok = result.ok;
     if (result.error != nullptr) _freeString(result.error);
-    calloc.free(vaultPtr);
+    _freeSecret(vaultPtr, vaultBytes.length);
     calloc.free(pathPtr);
     return ok;
   }
@@ -171,7 +173,7 @@ class FuegoNative {
 
   /// Generate key derivation.
   String generateKeyDerivation(List<int> key1, List<int> secret2) {
-    assert(key1.length == 32 && secret2.length == 32);
+    _requireLengths({'key1': (key1, 32), 'secret2': (secret2, 32)});
     final key1Ptr = _allocBytes(key1);
     final secret2Ptr = _allocBytes(secret2);
     final fn = _lib.lookupFunction<_GenKeyDerivNative, _GenKeyDerivDart>('fuego_generate_key_derivation');
@@ -179,14 +181,14 @@ class FuegoNative {
     final hex = result.toDartString();
     _freeString(result);
     calloc.free(key1Ptr);
-    calloc.free(secret2Ptr);
+    _freeSecret(secret2Ptr, 32);
     return hex;
   }
 
   /// Derive a one-time public key: P = Hs(D || varint(index)) * G + base.
   /// Returns 64 hex chars, or empty string on invalid base.
   String derivePublicKey(List<int> derivation, int outputIndex, List<int> base) {
-    assert(derivation.length == 32 && base.length == 32);
+    _requireLengths({'derivation': (derivation, 32), 'base': (base, 32)});
     final derivPtr = _allocBytes(derivation);
     final basePtr = _allocBytes(base);
     final fn = _lib.lookupFunction<_DerivePubKeyNative, _DerivePubKeyDart>('fuego_derive_public_key');
@@ -200,7 +202,7 @@ class FuegoNative {
 
   /// Generate key image.
   String generateKeyImage(List<int> pubkey, List<int> secret) {
-    assert(pubkey.length == 32 && secret.length == 32);
+    _requireLengths({'pubkey': (pubkey, 32), 'secret': (secret, 32)});
     final pkPtr = _allocBytes(pubkey);
     final skPtr = _allocBytes(secret);
     final fn = _lib.lookupFunction<_GenKeyImageNative, _GenKeyImageDart>('fuego_generate_key_image');
@@ -208,13 +210,13 @@ class FuegoNative {
     final hex = result.toDartString();
     _freeString(result);
     calloc.free(pkPtr);
-    calloc.free(skPtr);
+    _freeSecret(skPtr, 32);
     return hex;
   }
 
   /// Reverse key derivation: recover spend public key from output key.
   String underivePublicKey(List<int> derivation, int outputIndex, List<int> outputKey) {
-    assert(derivation.length == 32 && outputKey.length == 32);
+    _requireLengths({'derivation': (derivation, 32), 'outputKey': (outputKey, 32)});
     final derivPtr = _allocBytes(derivation);
     final okPtr = _allocBytes(outputKey);
     final fn = _lib.lookupFunction<_UnderivePubKeyNative, _UnderivePubKeyDart>('fuego_underive_public_key');
@@ -228,21 +230,21 @@ class FuegoNative {
 
   /// Sign a message with a 32-byte secret key. Returns 64-byte Ed25519 signature as hex.
   String sign(List<int> secret, List<int> message) {
-    assert(secret.length == 32);
+    _requireLengths({'secret': (secret, 32)});
     final skPtr = _allocBytes(secret);
     final msgPtr = _allocBytes(message);
     final fn = _lib.lookupFunction<_SignNative, _SignDart>('fuego_sign');
     final result = fn(skPtr, msgPtr, message.length);
     final hex = result.toDartString();
     _freeString(result);
-    calloc.free(skPtr);
+    _freeSecret(skPtr, 32);
     calloc.free(msgPtr);
     return hex;
   }
 
   /// Verify an Ed25519 signature.
   bool verify(List<int> pubkey, List<int> message, List<int> signature) {
-    assert(pubkey.length == 32 && signature.length == 64);
+    _requireLengths({'pubkey': (pubkey, 32), 'signature': (signature, 64)});
     final pkPtr = _allocBytes(pubkey);
     final msgPtr = _allocBytes(message);
     final sigPtr = _allocBytes(signature);
@@ -269,7 +271,7 @@ class FuegoNative {
   /// CryptoNote Schnorr (c, r) signature over a 32-byte prefix hash.
   /// Returns 64-byte signature as hex, or '' on failure.
   String cryptoNoteSign(List<int> prefixHash, List<int> pubkey, List<int> secret) {
-    assert(prefixHash.length == 32 && pubkey.length == 32 && secret.length == 32);
+    _requireLengths({'prefixHash': (prefixHash, 32), 'pubkey': (pubkey, 32), 'secret': (secret, 32)});
     final hPtr = _allocBytes(prefixHash);
     final pkPtr = _allocBytes(pubkey);
     final skPtr = _allocBytes(secret);
@@ -280,13 +282,13 @@ class FuegoNative {
     _freeString(result);
     calloc.free(hPtr);
     calloc.free(pkPtr);
-    calloc.free(skPtr);
+    _freeSecret(skPtr, 32);
     return hex;
   }
 
   /// Verify a CryptoNote Schnorr (c, r) signature over a 32-byte prefix hash.
   bool cryptoNoteCheck(List<int> prefixHash, List<int> pubkey, List<int> signature) {
-    assert(prefixHash.length == 32 && pubkey.length == 32 && signature.length == 64);
+    _requireLengths({'prefixHash': (prefixHash, 32), 'pubkey': (pubkey, 32), 'signature': (signature, 64)});
     final hPtr = _allocBytes(prefixHash);
     final pkPtr = _allocBytes(pubkey);
     final sigPtr = _allocBytes(signature);
@@ -310,34 +312,60 @@ class FuegoNative {
     return hex;
   }
 
-  /// Mine CryptoNight shares: try nonces from startNonce, return first valid nonce.
-  /// Returns (found, nonce, hash) - found=true if share found within maxNonces tries.
+  /// Mine CryptoNight shares (Fuego PoW): try nonces from startNonce and return the
+  /// first whose hash meets the stratum target (4- or 8-byte little-endian, as sent
+  /// by the pool). Returns (found, nonce, hash); throws ArgumentError when the native
+  /// side rejects the blob or target.
   (bool found, int nonce, Uint8List hash) mineShare(
       Uint8List blob, Uint8List target, int startNonce, int maxNonces) {
     final blobPtr = _allocBytes(blob);
     final targetPtr = _allocBytes(target);
     final noncePtr = calloc<Uint32>();
     final hashPtr = calloc<Uint8>(32);
-
-    final fn = _lib.lookupFunction<_MineShareNative, _MineShareDart>('fuego_mine_share');
-    final result = fn(blobPtr, blob.length, targetPtr, startNonce, maxNonces, noncePtr, hashPtr);
-
-    final found = result == 0;
-    final nonce = noncePtr.value;
-    final hash = Uint8List(32);
-    for (int i = 0; i < 32; i++) {
-      hash[i] = hashPtr.elementAt(i).value;
+    try {
+      final fn = _lib.lookupFunction<_MineShareNative, _MineShareDart>('fuego_mine_share');
+      final result = fn(blobPtr, blob.length, targetPtr, target.length, startNonce,
+          maxNonces, noncePtr, hashPtr);
+      if (result == -2) {
+        throw ArgumentError('mineShare: blob of ${blob.length} bytes or '
+            '${target.length}-byte target rejected');
+      }
+      final found = result == 0;
+      return (found, found ? noncePtr.value : 0, Uint8List.fromList(hashPtr.asTypedList(32)));
+    } finally {
+      calloc.free(blobPtr);
+      calloc.free(targetPtr);
+      calloc.free(noncePtr);
+      calloc.free(hashPtr);
     }
-
-    calloc.free(blobPtr);
-    calloc.free(targetPtr);
-    calloc.free(noncePtr);
-    calloc.free(hashPtr);
-
-    return (found, nonce, hash);
   }
 
   // ── Helpers ──
+
+  // Rust reads exactly the stated number of bytes from each pointer; a shorter
+  // Dart list would be an out-of-bounds native read. assert() is stripped from
+  // release builds, so these checks are unconditional.
+  static void _requireLengths(Map<String, (List<int>, int)> args) {
+    args.forEach((name, arg) {
+      if (arg.$1.length != arg.$2) {
+        throw ArgumentError.value(arg.$1.length, name, 'must be ${arg.$2} bytes');
+      }
+    });
+  }
+
+  // Vault indices are u32 and the view key uses index + 1.
+  static void _requireKeyIndex(int index) {
+    if (index < 0 || index >= 0xFFFFFFFF) {
+      throw RangeError.range(index, 0, 0xFFFFFFFE, 'index');
+    }
+  }
+
+  // Secret keys, seeds and vault bytes are wiped before their native copy is freed.
+  static void _freeSecret(Pointer<Uint8> ptr, int len) {
+    if (ptr == nullptr) return;
+    if (len > 0) ptr.asTypedList(len).fillRange(0, len, 0);
+    calloc.free(ptr);
+  }
 
   Pointer<Uint8> _allocBytes(List<int> data) {
     final ptr = calloc<Uint8>(data.length);
@@ -400,7 +428,7 @@ final class FuegoResult extends Struct {
 typedef _FreeStringNative = Void Function(Pointer<Utf8>);
 typedef _FreeStringDart = void Function(Pointer<Utf8>);
 
-typedef _FreeBytesNative = Void Function(Pointer<Uint8>, Int32);
+typedef _FreeBytesNative = Void Function(Pointer<Uint8>, Size);
 typedef _FreeBytesDart = void Function(Pointer<Uint8>, int);
 
 typedef _VersionNative = Pointer<Utf8> Function();
@@ -421,17 +449,17 @@ typedef _VaultGenDart = FuegoBytes Function();
 typedef _VaultFromSeedNative = FuegoBytes Function(Pointer<Uint8>);
 typedef _VaultFromSeedDart = FuegoBytes Function(Pointer<Uint8>);
 
-typedef _VaultGetAddrNative = Pointer<Utf8> Function(Pointer<Uint8>, Int32, Int32);
+typedef _VaultGetAddrNative = Pointer<Utf8> Function(Pointer<Uint8>, Size, Uint32);
 typedef _VaultGetAddrDart = Pointer<Utf8> Function(Pointer<Uint8>, int, int);
 
-typedef _VaultGetSeedNative = Pointer<Utf8> Function(Pointer<Uint8>, Int32);
+typedef _VaultGetSeedNative = Pointer<Utf8> Function(Pointer<Uint8>, Size);
 typedef _VaultGetSeedDart = Pointer<Utf8> Function(Pointer<Uint8>, int);
 
 
-typedef _VaultDeriveKPNative = Pointer<Utf8> Function(Pointer<Uint8>, Int32, Int32);
+typedef _VaultDeriveKPNative = Pointer<Utf8> Function(Pointer<Uint8>, Size, Uint32);
 typedef _VaultDeriveKPDart = Pointer<Utf8> Function(Pointer<Uint8>, int, int);
 
-typedef _VaultSaveNative = FuegoResult Function(Pointer<Uint8>, Int32, Pointer<Utf8>);
+typedef _VaultSaveNative = FuegoResult Function(Pointer<Uint8>, Size, Pointer<Utf8>);
 typedef _VaultSaveDart = FuegoResult Function(Pointer<Uint8>, int, Pointer<Utf8>);
 
 typedef _VaultLoadNative = FuegoBytes Function(Pointer<Utf8>);
@@ -440,22 +468,22 @@ typedef _VaultLoadDart = FuegoBytes Function(Pointer<Utf8>);
 typedef _GenKeyDerivNative = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
 typedef _GenKeyDerivDart = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
 
-typedef _DerivePubKeyNative = Pointer<Utf8> Function(Pointer<Uint8>, Int64, Pointer<Uint8>);
+typedef _DerivePubKeyNative = Pointer<Utf8> Function(Pointer<Uint8>, Uint64, Pointer<Uint8>);
 typedef _DerivePubKeyDart = Pointer<Utf8> Function(Pointer<Uint8>, int, Pointer<Uint8>);
 
 typedef _GenKeyImageNative = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
 typedef _GenKeyImageDart = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
 
-typedef _UnderivePubKeyNative = Pointer<Utf8> Function(Pointer<Uint8>, Int64, Pointer<Uint8>);
+typedef _UnderivePubKeyNative = Pointer<Utf8> Function(Pointer<Uint8>, Uint64, Pointer<Uint8>);
 typedef _UnderivePubKeyDart = Pointer<Utf8> Function(Pointer<Uint8>, int, Pointer<Uint8>);
 
-typedef _SignNative = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, Int32);
+typedef _SignNative = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, Size);
 typedef _SignDart = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, int);
 
-typedef _VerifyNative = Bool Function(Pointer<Uint8>, Pointer<Uint8>, Int32, Pointer<Uint8>);
+typedef _VerifyNative = Bool Function(Pointer<Uint8>, Pointer<Uint8>, Size, Pointer<Uint8>);
 typedef _VerifyDart = bool Function(Pointer<Uint8>, Pointer<Uint8>, int, Pointer<Uint8>);
 
-typedef _CnFastHashNative = Pointer<Utf8> Function(Pointer<Uint8>, Int32);
+typedef _CnFastHashNative = Pointer<Utf8> Function(Pointer<Uint8>, Size);
 typedef _CnFastHashDart = Pointer<Utf8> Function(Pointer<Uint8>, int);
 
 typedef _CryptoNoteSignNative = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>);
@@ -464,15 +492,15 @@ typedef _CryptoNoteSignDart = Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uin
 typedef _CryptoNoteCheckNative = Bool Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>);
 typedef _CryptoNoteCheckDart = bool Function(Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint8>);
 
-typedef _Base58EncodeNative = Pointer<Utf8> Function(Pointer<Uint8>, Int32);
+typedef _Base58EncodeNative = Pointer<Utf8> Function(Pointer<Uint8>, Size);
 typedef _Base58EncodeDart = Pointer<Utf8> Function(Pointer<Uint8>, int);
 
 // CryptoNight mining FFI
 typedef _MineShareNative = Int32 Function(
-    Pointer<Uint8> blob, Int32 blobLen, Pointer<Uint8> target,
-    Int32 startNonce, Int32 maxNonces, Pointer<Uint32> outNonce,
+    Pointer<Uint8> blob, Size blobLen, Pointer<Uint8> target, Size targetLen,
+    Uint32 startNonce, Uint32 maxNonces, Pointer<Uint32> outNonce,
     Pointer<Uint8> outHash);
 typedef _MineShareDart = int Function(
-    Pointer<Uint8> blob, int blobLen, Pointer<Uint8> target,
+    Pointer<Uint8> blob, int blobLen, Pointer<Uint8> target, int targetLen,
     int startNonce, int maxNonces, Pointer<Uint32> outNonce,
     Pointer<Uint8> outHash);

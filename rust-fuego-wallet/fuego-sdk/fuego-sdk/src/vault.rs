@@ -45,23 +45,6 @@ impl WalletVault {
         self.inner.get_address(index)
     }
 
-    pub fn new_subaddress(&mut self) -> crypto::Address {
-        self.inner.new_subaddress()
-    }
-
-    pub fn subaddress_count(&self) -> u32 {
-        self.inner.subaddress_count
-    }
-
-    pub fn get_subaddress_spend_index(&self, subaddress_number: u32) -> u32 {
-        self.inner.get_subaddress_spend_index(subaddress_number)
-    }
-
-    pub fn get_subaddress_view_index(&self, subaddress_number: u32) -> u32 {
-        self.inner.get_subaddress_view_index(subaddress_number)
-    }
-
-
     pub fn add_guardian(&mut self, address: crypto::Address) -> Result<()> {
         self.inner.add_guardian(address).map_err(SdkError::Vault)
     }

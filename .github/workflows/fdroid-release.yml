@@ -26,6 +26,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
 
       - name: Verify FLOSS compliance
         run: |
@@ -67,27 +69,8 @@ jobs:
       - name: Enable Android support
         run: flutter config --enable-android
 
-      - name: Build Rust libraries for Android
-        run: |
-          echo "=== Building Rust libraries for Android ==="
-
-          # Install Rust cross-compilation targets
-          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-
-          # Install Android NDK if needed
-          if [ ! -d "$ANDROID_HOME/ndk/27.0.12077973" ]; then
-            sdkmanager --install "ndk;27.0.12077973" 2>/dev/null || true
-          fi
-
-          # Build FFI library for each Android target
-          cd rust-fuego-wallet/fuego-sdk
-
-          for target in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android; do
-            echo "Building for $target..."
-            cargo build --release --target $target -p fuego-ffi
-          done
-
-          echo "✅ Rust libraries built"
+      - name: Build Android natives (fuego-ffi, fuego_walletd)
+        uses: ./.github/actions/build-android-natives
 
       - name: Install dependencies
         run: flutter pub get

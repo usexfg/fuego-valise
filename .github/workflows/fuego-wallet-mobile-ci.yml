@@ -42,6 +42,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -58,50 +61,8 @@ jobs:
       - name: Enable Android
         run: flutter config --enable-android
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: stable
-          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
-
-      - name: Set up NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r25b
-
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk
-
-      - name: Build Rust libraries for Android (fuego_crypto & fuego_ffi)
-        run: |
-          # Build fuego-crypto
-          cd native/crypto
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 --platform 25 -- build --release
-          cd ../..
-
-          # Build fuego-ffi
-          cd rust-fuego-wallet/fuego-sdk/fuego-ffi
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 --platform 25 -- build --release
-          cd ../../../
-
-      - name: Copy Rust libraries to Android jniLibs
-        run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
-          mkdir -p android/app/src/main/jniLibs/x86_64
-          mkdir -p android/app/src/main/jniLibs/x86
-
-          # Copy fuego_crypto
-          cp native/crypto/target/aarch64-linux-android/release/libfuego_crypto.so android/app/src/main/jniLibs/arm64-v8a/
-          cp native/crypto/target/armv7-linux-androideabi/release/libfuego_crypto.so android/app/src/main/jniLibs/armeabi-v7a/
-          cp native/crypto/target/x86_64-linux-android/release/libfuego_crypto.so android/app/src/main/jniLibs/x86_64/
-          cp native/crypto/target/i686-linux-android/release/libfuego_crypto.so android/app/src/main/jniLibs/x86/
-
-          # Copy fuego_ffi
-          cp rust-fuego-wallet/target/aarch64-linux-android/release/libfuego_ffi.so android/app/src/main/jniLibs/arm64-v8a/
-          cp rust-fuego-wallet/target/armv7-linux-androideabi/release/libfuego_ffi.so android/app/src/main/jniLibs/armeabi-v7a/
-          cp rust-fuego-wallet/target/x86_64-linux-android/release/libfuego_ffi.so android/app/src/main/jniLibs/x86_64/
-          cp rust-fuego-wallet/target/i686-linux-android/release/libfuego_ffi.so android/app/src/main/jniLibs/x86/
+      - name: Build Android natives (fuego-ffi, fuego_walletd)
+        uses: ./.github/actions/build-android-natives
 
       - name: Install dependencies
         run: flutter pub get
@@ -129,9 +90,8 @@ jobs:
   build-ios:
     name: Build iOS
     runs-on: macos-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     needs: analyze
-    continue-on-error: true
 
     steps:
       - name: Select Xcode
@@ -141,6 +101,9 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -155,41 +118,39 @@ jobs:
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
-          targets: aarch64-apple-ios
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
 
-      - name: Build Rust libraries for iOS
+      # Runner force-loads target/<triple>/release/libfuego_ffi.a per SDK/arch
+      # (ios/Runner.xcodeproj OTHER_LDFLAGS).
+      - name: Build fuego-ffi staticlib (device + simulator)
         run: |
-          # Build fuego-crypto
-          cd native/crypto
-          cargo build --release --target aarch64-apple-ios
-          cd ../..
-
-          # Build fuego-ffi
-          cd rust-fuego-wallet/fuego-sdk/fuego-ffi
-          cargo build --release --target aarch64-apple-ios
-          cd ../../../
+          for t in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+            cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target "$t"
+          done
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS App
-        run: flutter build ios --release --no-codesign
+      # An archive applies release stripping (STRIP_STYLE), unlike `flutter build ios`,
+      # so this is where lost fuego_* symbols would show up.
+      - name: Archive iOS App (unsigned)
+        run: flutter build ipa --release --no-codesign
 
-      - name: Bundle Rust libraries into iOS app
-        run: |
-          APP="build/ios/iphoneos/Runner.app"
-          mkdir -p "$APP/Frameworks"
-          cp native/crypto/target/aarch64-apple-ios/release/libfuego_crypto.dylib "$APP/Frameworks/"
-          cp rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.dylib "$APP/Frameworks/"
-          cp native/crypto/target/aarch64-apple-ios/release/libfuego_crypto.dylib "$APP/"
-          cp rust-fuego-wallet/target/aarch64-apple-ios/release/libfuego_ffi.dylib "$APP/"
+      - name: Verify FFI symbols survived archive stripping
+        run: ./scripts/check-ios-ffi-symbols.sh build/ios/archive/Runner.xcarchive
+
+      - name: Build for simulator
+        run: flutter build ios --simulator --debug
+
+      - name: Verify FFI symbols in simulator build
+        run: ./scripts/check-ios-ffi-symbols.sh build/ios/iphonesimulator/Runner.app/Runner
 
       - name: Package iOS App (.ipa)
         run: |
+          mkdir -p build/ios/iphoneos/Payload
+          cp -R build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
-          mkdir Payload
-          mv Runner.app Payload/
-          zip -r Fuego-Wallet-iOS.ipa Payload
+          zip -qr Fuego-Wallet-iOS.ipa Payload
 
       - name: Upload iOS App
         uses: actions/upload-artifact@v4

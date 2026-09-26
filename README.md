@@ -110,7 +110,6 @@ lib/
 │   ├── wallet.dart
 │   └── wallet.g.dart
 ├── services/                          # Business logic
-│   ├── cli_service.dart
 │   ├── daemon_event_bus.dart          # Unified daemon health monitoring
 │   ├── daemon_manager.dart            # Daemon lifecycle management
 │   ├── fuego_daemon_client.dart       # Fuego node RPC client
@@ -123,7 +122,6 @@ lib/
 │   ├── swap_config_service.dart
 │   ├── swap_daemon_client.dart
 │   ├── wallet_service.dart
-│   ├── walletd_service.dart
 │   └── web3_multi_chain_service.dart
 ├── providers/                         # State management
 │   └── wallet_provider.dart

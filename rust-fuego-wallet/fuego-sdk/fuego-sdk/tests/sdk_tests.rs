@@ -25,7 +25,13 @@ fn test_keypair_generation() {
 fn test_keypair_from_secret() {
     let secret = [42u8; 32];
     let kp = crypto::keypair_from_secret(secret);
-    assert_eq!(kp.secret.as_bytes(), &secret);
+    // The secret is kept as the canonical scalar mod l.
+    let mut reduced = secret;
+    fuego_crypto::ref10::sc_reduce32(&mut reduced);
+    assert_eq!(kp.secret.as_bytes(), &reduced);
+    // Every vault-style key must be usable for CryptoNote derivation.
+    let other = crypto::keypair_from_secret([0xffu8; 32]);
+    assert!(crypto::generate_key_derivation(&other.public, &kp.secret).is_some());
 }
 
 #[test]

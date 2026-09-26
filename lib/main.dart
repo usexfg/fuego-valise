@@ -20,6 +20,7 @@ import 'bloc/wallet/wallet_cubit.dart';
 import 'core/core.dart';
 import 'models/network_config.dart';
 import 'providers/wallet_provider.dart';
+import 'screens/auth/pin_entry_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/daemon_manager.dart';
 import 'services/evm_account_service.dart';
@@ -42,12 +43,14 @@ final EvmAccountService _evmAccountService = EvmAccountService();
 
 String? _daemonError;
 
-bool get useTestnet =>
-    Platform.environment['FUEGO_TESTNET'] == '1' ||
-    Platform.environment['FUEGO_TESTNET'] == 'true';
+/// Network at launch: FUEGO_TESTNET wins, else the choice saved in Settings → Network.
+bool _startupTestnet = false;
+
+/// Current network; follows runtime switches made through [nodeConnection].
+bool get useTestnet => nodeConnection.networkConfig.isTestnet;
 
 NetworkConfig get _activeConfig =>
-    useTestnet ? NetworkConfig.testnet : NetworkConfig.mainnet;
+    _startupTestnet ? NetworkConfig.testnet : NetworkConfig.mainnet;
 
 /// Platform default: desktop → local, mobile → remote.
 /// Prefer [nodeConnection.useLocalNode] after prefs load.
@@ -75,6 +78,11 @@ late final FuegoDaemonClient daemon = FuegoDaemonClient(
   walletPort: _backendPort,
 );
 
+late final hearth.FuegoDaemonClient hearthClient = hearth.FuegoDaemonClient(
+  host: nodeConnection.remoteHost,
+  networkConfig: _activeConfig,
+);
+
 void _logDebug(String message) {
   if (kDebugMode) {
     debugPrint(message);
@@ -97,6 +105,15 @@ Future<void> _startBackend() async {
     '${nodeConnection.remotePort}  walletPort=$_backendPort',
   );
 
+  // Every (re)connect, including Settings → Network switches, retargets the chain clients.
+  nodeConnection.addListener((ep) {
+    daemon.updateNode(ep.chainHost, newPort: ep.chainPort);
+    // Wallet calls always go to the local proxy; without one, ep.walletPort is the
+    // remote chain port and must not replace it.
+    if (ep.proxyRunning) daemon.walletPort = ep.walletPort;
+    hearthClient.updateNode(ep.chainHost, port: ep.chainPort);
+  });
+
   ConnectionEndpoints endpoints;
   try {
     endpoints = await nodeConnection.connect(useTestnet: useTestnet);
@@ -115,9 +132,6 @@ Future<void> _startBackend() async {
     '[backend] wallet=${endpoints.walletBaseUrl} '
     'chain=${endpoints.chainBaseUrl} proxy=${endpoints.proxyRunning}',
   );
-
-  // Keep chain client in sync with resolved endpoint
-  daemon.updateNode(endpoints.chainHost, newPort: endpoints.chainPort);
 
   if (!_backendReady.isCompleted) _backendReady.complete();
 }
@@ -161,9 +175,18 @@ Future<void> main() async {
     _log.warning('EVM account registry probe failed (non-fatal)');
   }
 
-  // Apply persisted font preference before the first frame.
+  final envTestnet = Platform.environment['FUEGO_TESTNET'];
+  if (envTestnet != null) {
+    _startupTestnet = envTestnet == '1' || envTestnet == 'true';
+  }
+
+  // Apply persisted font and network preferences before the first frame.
   try {
     final prefs = await SharedPreferences.getInstance();
+    if (envTestnet == null) {
+      _startupTestnet =
+          prefs.getString(NodeConnection.prefsNetworkKey) == 'testnet';
+    }
     AppTheme.fontFamily = prefs.getString('app_font_family') ?? 'IBMPlexSans';
     await XfgTicker.load();
   } catch (_) {
@@ -204,6 +227,10 @@ class FuegoApp extends StatefulWidget {
 }
 
 class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  WalletProvider? _walletProvider;
+  bool _lockedInBackground = false;
+
   @override
   void initState() {
     super.initState();
@@ -219,9 +246,45 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Only `paused` (fully backgrounded) locks the vault. `inactive` also
+    // fires for transient interruptions — a notification pull-down, an
+    // incoming call banner, and critically the biometric system prompt
+    // itself — so locking on it would force PIN re-entry during normal use
+    // and could relock the vault mid biometric-unlock.
+    if (state == AppLifecycleState.paused) {
+      // Lock through the provider so cached balance/history and the unlocked flag
+      // go with the vault secrets, not just the secrets.
+      final wp = _walletProvider;
+      if (wp != null) {
+        unawaited(wp.lockWallet());
+      } else {
+        widget.vaultService.lock();
+      }
+      _lockedInBackground = true;
+    }
+    if (state == AppLifecycleState.resumed && _lockedInBackground) {
+      _lockedInBackground = false;
+      unawaited(_requireUnlock());
+    }
     if (state == AppLifecycleState.detached) {
       unawaited(stopBackend());
     }
+  }
+
+  /// After a background lock, nothing wallet-related may show until the PIN is
+  /// entered again. With no PIN set there is nothing to re-check.
+  Future<void> _requireUnlock() async {
+    bool hasPin;
+    try {
+      hasPin = await widget.securityService.hasPIN();
+    } catch (_) {
+      hasPin = true; // fail closed, as the splash screen does
+    }
+    if (!hasPin || !mounted) return;
+    _navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const PinEntryScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -236,6 +299,7 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
               vault: widget.vaultService,
             );
             wp.waitForBackend(widget.backendReady);
+            _walletProvider = wp;
             return wp;
           },
         ),
@@ -271,12 +335,7 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
                   CdCubit(rpcService, backendReady: widget.backendReady),
             ),
             BlocProvider<HearthCubit>(
-              create: (_) => HearthCubit(
-                hearth.FuegoDaemonClient(
-                  host: nodeConnection.remoteHost,
-                  networkConfig: _activeConfig,
-                ),
-              ),
+              create: (_) => HearthCubit(hearthClient),
             ),
             BlocProvider<DexCubit>(
               create: (_) {
@@ -290,6 +349,11 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
                     return dex.init(host: host, port: port);
                   }),
                 );
+                nodeConnection.addListener((ep) {
+                  if (ep.proxyRunning) {
+                    unawaited(dex.init(host: ep.walletHost, port: ep.walletPort));
+                  }
+                });
                 return dex;
               },
             ),
@@ -300,6 +364,7 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: ThemeMode.dark,
+            navigatorKey: _navigatorKey,
             home: const SplashScreen(),
             debugShowCheckedModeBanner: false,
             useInheritedMediaQuery: true,

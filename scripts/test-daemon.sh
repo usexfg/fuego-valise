@@ -53,10 +53,10 @@ echo ""
 print_status "Step 1: Finding unified daemon binary..."
 
 UNIFIED_BIN=""
-if [ -f "xfgo/build/src/unified" ]; then
-    UNIFIED_BIN="$(pwd)/xfgo/build/src/unified"
-elif [ -f "xfgo/build/release/src/unified" ]; then
-    UNIFIED_BIN="$(pwd)/xfgo/build/release/src/unified"
+if [ -f "fuego-suite/build/src/unified" ]; then
+    UNIFIED_BIN="$(pwd)/fuego-suite/build/src/unified"
+elif [ -f "fuego-suite/build/release/src/unified" ]; then
+    UNIFIED_BIN="$(pwd)/fuego-suite/build/release/src/unified"
 elif [ -f "build/src/unified" ]; then
     UNIFIED_BIN="$(pwd)/build/src/unified"
 fi
@@ -64,13 +64,12 @@ fi
 if [ -z "$UNIFIED_BIN" ]; then
     print_warn "Unified binary not found. Building from source..."
     
-    if [ ! -d "xfgo" ]; then
-        print_status "Cloning fuego-suite..."
-        git clone --depth 1 --recurse-submodules --shallow-submodules \
-            https://github.com/usexfg/fuego-suite.git xfgo
+    if [ ! -f "fuego-suite/CMakeLists.txt" ]; then
+        print_status "Initializing fuego-suite submodule..."
+        git submodule update --init --recursive --depth 1 fuego-suite
     fi
     
-    cd xfgo
+    cd fuego-suite
     
     if [ ! -d "build" ]; then
         print_status "Building unified daemon..."
@@ -88,7 +87,7 @@ if [ -z "$UNIFIED_BIN" ]; then
     fi
     
     cd ..
-    UNIFIED_BIN="$(pwd)/xfgo/build/src/unified"
+    UNIFIED_BIN="$(pwd)/fuego-suite/build/src/unified"
 fi
 
 if [ ! -f "$UNIFIED_BIN" ]; then

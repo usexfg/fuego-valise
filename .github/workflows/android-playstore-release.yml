@@ -25,6 +25,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -40,6 +43,9 @@ jobs:
 
       - name: Enable Android support
         run: flutter config --enable-android
+
+      - name: Build Android natives (fuego-ffi, fuego_walletd)
+        uses: ./.github/actions/build-android-natives
 
       - name: Install dependencies
         run: flutter pub get

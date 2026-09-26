@@ -4,13 +4,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-/// Dart EventBus mirroring the xfgo dashboard's unified daemon monitoring.
+/// Dart EventBus mirroring the fuego-suite dashboard's unified daemon monitoring.
 ///
 /// Polls all 3 daemons (fuegod, walletd, xfg-swapd) on independent timers,
 /// broadcasts typed events to all listeners. Single source of truth for
 /// daemon health, chain state, and swap status.
 class DaemonEventBus {
-  // ── Event types (matches xfgo dashboard) ─────────────────────────
+  // ── Event types (matches fuego-suite dashboard) ─────────────────────────
   static const String eventHealth = 'health';
   static const String eventBlock = 'block';
   static const String eventHeat = 'heat_metric';
@@ -75,7 +75,7 @@ class DaemonEventBus {
     _pollWalletd();
     _pollSwapd();
 
-    // Then on timers (matches xfgo dashboard intervals)
+    // Then on timers (matches fuego-suite dashboard intervals)
     _fuegodTimer = Timer.periodic(
         const Duration(seconds: 5), (_) => _pollFuegod());
     _walletdTimer = Timer.periodic(
@@ -103,7 +103,7 @@ class DaemonEventBus {
     poolInfo.dispose();
   }
 
-  // ── Pollers (mirrors xfgo dashboard pollDaemon/pollWallet/pollSwapd) ──
+  // ── Pollers (mirrors fuego-suite dashboard pollDaemon/pollWallet/pollSwapd) ──
 
   String get _fuegodBase => 'http://$fuegodHost:$fuegodPort';
 
@@ -170,7 +170,7 @@ class DaemonEventBus {
         _updateHealth(fuegodOk: false, fuegodError: 'Connection refused');
       }
 
-      // HEAT metrics (matches xfgo pollDaemon line 195)
+      // HEAT metrics (matches fuego-suite pollDaemon line 195)
       try {
         final heatClient = HttpClient()
           ..connectionTimeout = const Duration(seconds: 3);
@@ -187,7 +187,7 @@ class DaemonEventBus {
         }
       } catch (_) {}
 
-      // Pool info (matches xfgo pollDaemon line 200)
+      // Pool info (matches fuego-suite pollDaemon line 200)
       try {
         final poolClient = HttpClient()
           ..connectionTimeout = const Duration(seconds: 3);
