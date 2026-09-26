@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -162,7 +161,7 @@ class _DexScreenState extends State<DexScreen>
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: Image.asset(
-            'assets/coin icons/xfg.png',
+            'assets/coin-icons/xfg.png',
             width: 20,
             height: 20,
             errorBuilder: (_, __, ___) => Container(
@@ -1430,6 +1429,16 @@ class _DexScreenState extends State<DexScreen>
       case ChainTypeSdk.base: return 'base';
       case ChainTypeSdk.bnb: return 'bsc';
       case ChainTypeSdk.polygon: return 'poly';
+      case ChainTypeSdk.avax: return 'avax';
+      case ChainTypeSdk.gleec: return 'gleec';
+      case ChainTypeSdk.robinhood: return 'rh';
+      case ChainTypeSdk.cro: return 'cro';
+      case ChainTypeSdk.bob: return 'bob';
+      case ChainTypeSdk.unichain: return 'uni';
+      case ChainTypeSdk.plasma: return 'xpl';
+      case ChainTypeSdk.pulsex: return 'pls';
+      case ChainTypeSdk.monad: return 'monad';
+      case ChainTypeSdk.optimism: return 'op';
       default: return null;
     }
   }

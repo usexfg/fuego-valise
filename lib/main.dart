@@ -22,6 +22,7 @@ import 'models/network_config.dart';
 import 'providers/wallet_provider.dart';
 import 'screens/splash_screen.dart';
 import 'services/daemon_manager.dart';
+import 'services/evm_account_service.dart';
 import 'services/fuego_daemon_client.dart' as hearth;
 import 'services/fuego_rpc_service.dart';
 import 'services/fuego_vault_service.dart';
@@ -37,6 +38,7 @@ final SecurityService _securityService = SecurityService();
 final FuegoVaultService _vaultService = FuegoVaultService(
   security: _securityService,
 );
+final EvmAccountService _evmAccountService = EvmAccountService();
 
 String? _daemonError;
 
@@ -163,6 +165,11 @@ Future<void> main() async {
   } catch (e) {
     _log.warning('Vault probe failed (non-fatal)');
   }
+  try {
+    await _evmAccountService.init();
+  } catch (e) {
+    _log.warning('EVM account registry probe failed (non-fatal)');
+  }
 
   final envTestnet = Platform.environment['FUEGO_TESTNET'];
   if (envTestnet != null) {
@@ -189,6 +196,7 @@ Future<void> main() async {
         backendReady: _backendReady.future,
         vaultService: _vaultService,
         securityService: _securityService,
+        evmAccountService: _evmAccountService,
       ),
     ),
   );
@@ -200,12 +208,14 @@ class FuegoApp extends StatefulWidget {
   final Future<void> backendReady;
   final FuegoVaultService vaultService;
   final SecurityService securityService;
+  final EvmAccountService evmAccountService;
 
   const FuegoApp({
     super.key,
     required this.backendReady,
     required this.vaultService,
     required this.securityService,
+    required this.evmAccountService,
   });
 
   @override
@@ -266,6 +276,9 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
           ),
           RepositoryProvider<SecurityService>.value(
             value: widget.securityService,
+          ),
+          RepositoryProvider<EvmAccountService>.value(
+            value: widget.evmAccountService,
           ),
         ],
         child: MultiBlocProvider(

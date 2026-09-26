@@ -70,6 +70,7 @@ class Erc20State extends Equatable {
 
 class Erc20Cubit extends Cubit<Erc20State> {
   final Erc20Service _erc20;
+  // ignore: unused_field — retained for future multi-chain routing via Web3MultiChainService
   final Web3MultiChainService? _web3;
   bool _ownsErc20 = false;
 

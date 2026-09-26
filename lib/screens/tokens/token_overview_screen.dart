@@ -131,21 +131,26 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
         children: [
           const Text('Chain', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
           const SizedBox(width: 12),
-          DropdownButton<EvmChainKey>(
-            value: _chain,
-            dropdownColor: AppTheme.cardColor,
-            underline: const SizedBox.shrink(),
-            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-            items: EvmChainKey.values
-                .map((c) => DropdownMenuItem(value: c, child: Text('${c.key.toUpperCase()} (${c.chainId})')))
-                .toList(),
-            onChanged: (v) => setState(() => _chain = v ?? EvmChainKey.eth),
+          Flexible(
+            child: DropdownButton<EvmChainKey>(
+              value: _chain,
+              dropdownColor: AppTheme.cardColor,
+              underline: const SizedBox.shrink(),
+              isExpanded: false,
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              items: EvmChainKey.values
+                  .map((c) => DropdownMenuItem(value: c, child: Text('${c.key.toUpperCase()} (${c.chainId})')))
+                  .toList(),
+              onChanged: (v) => setState(() => _chain = v ?? EvmChainKey.eth),
+            ),
           ),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: () => _showAddTokenDialog(context),
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Add Token', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: TextButton.icon(
+              onPressed: () => _showAddTokenDialog(context),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Token', style: TextStyle(fontSize: 12)),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.refresh, color: AppTheme.primaryColor, size: 18),
@@ -191,7 +196,10 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
           ),
           title: Row(
             children: [
-              Text(token.symbol, style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
+              Flexible(
+                child: Text(token.symbol, overflow: TextOverflow.ellipsis, maxLines: 1,
+                  style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
+              ),
               const SizedBox(width: 6),
               Text(token.chainKey.toUpperCase(), style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
               if (isCustom) ...[
@@ -261,8 +269,8 @@ class _TokenOverviewScreenState extends State<TokenOverviewScreen> {
         builder: (dctx, setDState) => AlertDialog(
           backgroundColor: AppTheme.cardColor,
           title: const Text('Add Token', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
-          content: SizedBox(
-            width: 360,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,

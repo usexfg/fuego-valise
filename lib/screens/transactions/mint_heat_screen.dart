@@ -220,13 +220,18 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-        Text(
-          value,
-          style: TextStyle(
-            color: bold ? AppTheme.textPrimary : AppTheme.textSecondary,
-            fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-            fontSize: 15,
-            fontFamily: AppTheme.numberFontFamily,
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: bold ? AppTheme.textPrimary : AppTheme.textSecondary,
+              fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+              fontSize: 15,
+              fontFamily: AppTheme.numberFontFamily,
+            ),
           ),
         ),
       ],
@@ -509,13 +514,18 @@ class _MintHeatScreenState extends State<MintHeatScreen> {
                                       fontSize: 14,
                                     ),
                                   ),
-                                  Text(
-                                    '1 XFG = ${_twapRate.toStringAsFixed(4)} ΗΞΔŦ',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.textPrimary,
-                                      fontFamily: AppTheme.numberFontFamily,
+                                  Flexible(
+                                    child: Text(
+                                      '1 XFG = ${_twapRate.toStringAsFixed(4)} ΗΞΔŦ',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary,
+                                        fontFamily: AppTheme.numberFontFamily,
+                                      ),
                                     ),
                                   ),
                                 ],

@@ -31,7 +31,7 @@ chains:
     rpc: https://eth.llamarpc.com
     gasToken: ETH
     color: "#627EEA"
-    icon: assets/coin icons/eth.png
+    icon: assets/coin-icons/eth.png
     tier: swap
     confirmBlocks: 12
 
@@ -43,7 +43,7 @@ chains:
     rpc: https://arb1.arbitrum.io/rpc
     gasToken: ETH
     color: "#28A0F0"
-    icon: assets/coin icons/arb.png
+    icon: assets/coin-icons/arb.png
     tier: swap
     confirmBlocks: 20   # L2 — ~1s soft confirm; 20 covers L1 finalization window
 
@@ -55,7 +55,7 @@ chains:
     rpc: https://mainnet.base.org
     gasToken: ETH
     color: "#0052FF"
-    icon: assets/coin icons/base.png
+    icon: assets/coin-icons/base.png
     tier: swap
     confirmBlocks: 1
 
@@ -67,7 +67,7 @@ chains:
     rpc: https://bsc-dataseed.binance.org
     gasToken: BNB
     color: "#F0B90B"
-    icon: assets/coin icons/bnb.png
+    icon: assets/coin-icons/bnb.png
     tier: swap
     confirmBlocks: 3
 
@@ -79,7 +79,7 @@ chains:
     rpc: https://polygon-rpc.com
     gasToken: POL
     color: "#8247E5"
-    icon: assets/coin icons/matic.png
+    icon: assets/coin-icons/matic.png
     tier: swap
     confirmBlocks: 1
 
@@ -91,8 +91,8 @@ chains:
     rpc: https://mainnet.optimism.io
     gasToken: ETH
     color: "#FF0420"
-    icon: assets/coin icons/op.jpg
-    tier: wallet
+    icon: assets/coin-icons/op.jpg
+    tier: swap
     confirmBlocks: 1
 
   - key: avax
@@ -103,8 +103,8 @@ chains:
     rpc: https://api.avax.network/ext/bc/C/rpc
     gasToken: AVAX
     color: "#E84142"
-    icon: assets/coin icons/avax.png
-    tier: wallet
+    icon: assets/coin-icons/avax.png
+    tier: swap
     confirmBlocks: 1
 
   - key: cro
@@ -115,8 +115,8 @@ chains:
     rpc: https://evm.cronos.org
     gasToken: CRO
     color: "#002D74"
-    icon: assets/coin icons/cronos.png
-    tier: wallet
+    icon: assets/coin-icons/cronos.png
+    tier: swap
     confirmBlocks: 1
 
   - key: monad
@@ -127,8 +127,8 @@ chains:
     rpc: https://rpc.monad.xyz
     gasToken: MON
     color: "#836EF9"
-    icon: assets/coin icons/monad.png
-    tier: wallet
+    icon: assets/coin-icons/monad.png
+    tier: swap
     confirmBlocks: 1
 
   - key: xpl
@@ -139,8 +139,8 @@ chains:
     rpc: https://rpc.plasma.to
     gasToken: XPL
     color: "#4FA9E0"
-    icon: assets/coin icons/xpl.png
-    tier: wallet
+    icon: assets/coin-icons/xpl.png
+    tier: swap
     confirmBlocks: 1
 
   - key: pls
@@ -151,8 +151,8 @@ chains:
     rpc: https://rpc.pulsechain.com
     gasToken: PLS
     color: "#9C27B0"
-    icon: assets/coin icons/pls.png
-    tier: wallet
+    icon: assets/coin-icons/pls.png
+    tier: swap
     confirmBlocks: 1
 
   - key: uni
@@ -163,8 +163,8 @@ chains:
     rpc: https://mainnet.unichain.org
     gasToken: ETH
     color: "#FF007A"
-    icon: assets/coin icons/uni.png
-    tier: wallet
+    icon: assets/coin-icons/uni.png
+    tier: swap
     confirmBlocks: 1
 
   - key: rh
@@ -175,8 +175,8 @@ chains:
     rpc: https://rpc.mainnet.chain.robinhood.com
     gasToken: ETH
     color: "#6B7280"
-    icon: assets/coin icons/rhc.png
-    tier: wallet
+    icon: assets/coin-icons/rhc.png
+    tier: swap
     confirmBlocks: 1
 
   - key: bob
@@ -187,8 +187,8 @@ chains:
     rpc: https://rpc.nodeflare.app/bob/public
     gasToken: ETH
     color: "#FF6D00"
-    icon: assets/coin icons/bob.png
-    tier: wallet
+    icon: assets/coin-icons/bob.png
+    tier: swap
     confirmBlocks: 1
 
   - key: gleec
@@ -199,8 +199,8 @@ chains:
     rpc: https://evm-rpc.gleec.com
     gasToken: GLEEC
     color: "#00A3C4"
-    icon: assets/coin icons/gleec.png
-    tier: wallet
+    icon: assets/coin-icons/gleec.png
+    tier: swap
     confirmBlocks: 1
 
   - key: linea
@@ -211,7 +211,7 @@ chains:
     rpc: https://rpc.linea.build
     gasToken: ETH
     color: "#61DFFF"
-    icon: assets/coin icons/linea.png
+    icon: assets/coin-icons/linea.png
     tier: wallet
     confirmBlocks: 1
 
@@ -223,7 +223,7 @@ chains:
     rpc: https://mainnet.era.zksync.io
     gasToken: ETH
     color: "#8C8DFC"
-    icon: assets/coin icons/zksync.png
+    icon: assets/coin-icons/zksync.png
     tier: wallet
     confirmBlocks: 1
 
@@ -235,7 +235,7 @@ chains:
     rpc: https://rpc.hyperliquid.xyz/evm
     gasToken: HYPE
     color: "#97FCE4"
-    icon: assets/coin icons/hyperevm.png
+    icon: assets/coin-icons/hyperevm.png
     tier: wallet
     confirmBlocks: 1
 
@@ -247,7 +247,7 @@ chains:
     rpc: https://rpc-gel.inkonchain.com
     gasToken: ETH
     color: "#7132F5"
-    icon: assets/coin icons/ink.png
+    icon: assets/coin-icons/ink.png
     tier: wallet
     confirmBlocks: 1
 
@@ -259,7 +259,7 @@ chains:
     rpc: https://public-node.rsk.co
     gasToken: RBTC
     color: "#E9B64E"
-    icon: assets/coin icons/rsk.png
+    icon: assets/coin-icons/rsk.png
     tier: wallet
     confirmBlocks: 15
 
@@ -271,7 +271,7 @@ chains:
     rpc: https://rpc.gnosischain.com
     gasToken: XDAI
     color: "#1D6C4E"
-    icon: assets/coin icons/gnosis.png
+    icon: assets/coin-icons/gnosis.png
     tier: wallet
     confirmBlocks: 1
 
@@ -283,7 +283,7 @@ chains:
     rpc: https://flare-api.flare.network/ext/C-rpc
     gasToken: FLR
     color: "#E6413E"
-    icon: assets/coin icons/flare.png
+    icon: assets/coin-icons/flare.png
     tier: wallet
     confirmBlocks: 1
 
@@ -295,7 +295,7 @@ chains:
     rpc: https://public-en.node.kaia.io
     gasToken: KAIA
     color: "#FF1D01"
-    icon: assets/coin icons/kaia.png
+    icon: assets/coin-icons/kaia.png
     tier: wallet
     confirmBlocks: 1
 
@@ -307,7 +307,7 @@ chains:
     rpc: https://rpc.scroll.io
     gasToken: ETH
     color: "#EBC28E"
-    icon: assets/coin icons/scroll.png
+    icon: assets/coin-icons/scroll.png
     tier: wallet
     confirmBlocks: 1
 
@@ -319,7 +319,7 @@ chains:
     rpc: https://rpc.abstract.xyz
     gasToken: ETH
     color: "#202020"
-    icon: assets/coin icons/abstract.png
+    icon: assets/coin-icons/abstract.png
     tier: wallet
     confirmBlocks: 1
 
@@ -331,7 +331,7 @@ chains:
     rpc: https://rpc.plume.org
     gasToken: PLUME
     color: "#FF3D00"
-    icon: assets/coin icons/plume.png
+    icon: assets/coin-icons/plume.png
     tier: wallet
     confirmBlocks: 1
 
@@ -343,7 +343,7 @@ chains:
     rpc: https://rpc.soneium.org
     gasToken: ETH
     color: "#937DFF"
-    icon: assets/coin icons/soneium.png
+    icon: assets/coin-icons/soneium.png
     tier: wallet
     confirmBlocks: 1
 
@@ -355,7 +355,7 @@ chains:
     rpc: https://rpc.doma.xyz
     gasToken: ETH
     color: "#4F46E5"
-    icon: assets/coin icons/doma.png
+    icon: assets/coin-icons/doma.png
     tier: wallet
     confirmBlocks: 1
 
@@ -367,7 +367,7 @@ chains:
     rpc: https://build.onbeam.com/rpc
     gasToken: BEAM
     color: "#0BDBB5"
-    icon: assets/coin icons/beam.png
+    icon: assets/coin-icons/beam.png
     tier: wallet
     confirmBlocks: 1
 
@@ -379,7 +379,7 @@ chains:
     rpc: https://rpc.api.moonriver.moonbeam.network
     gasToken: MOVR
     color: "#F5B700"
-    icon: assets/coin icons/moonriver.png
+    icon: assets/coin-icons/moonriver.png
     tier: wallet
     confirmBlocks: 1
 
@@ -391,7 +391,7 @@ chains:
     rpc: https://peaq.api.onfinality.io/public
     gasToken: PEAQ
     color: "#7A2BF5"
-    icon: assets/coin icons/peaq.png
+    icon: assets/coin-icons/peaq.png
     tier: wallet
     confirmBlocks: 1
 
@@ -403,7 +403,7 @@ chains:
     rpc: https://rpc.tempo.xyz
     gasToken: ''
     color: "#111111"
-    icon: assets/coin icons/tempo.png
+    icon: assets/coin-icons/tempo.png
     tier: wallet
     confirmBlocks: 1
 
@@ -415,6 +415,6 @@ chains:
     rpc: https://evm-rpc.sei-apis.com
     gasToken: SEI
     color: "#9E1F19"
-    icon: assets/coin icons/sei.png
+    icon: assets/coin-icons/sei.png
     tier: wallet
     confirmBlocks: 1

@@ -200,11 +200,13 @@ class FuegoRPCService {
     return sha256.convert(bytes).toString().substring(0, 64);
   }
 
-  Future<String> registerAlias(String alias) async {
+  Future<String> registerAlias(String alias, {String? address}) async {
     try {
-      final response = await _makeRPCCall('register_alias', {
-        'alias': alias,
-      });
+      final params = <String, dynamic>{'alias': alias};
+      if (address != null && address.isNotEmpty) {
+        params['address'] = address;
+      }
+      final response = await _makeRPCCall('register_alias', params);
       return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
     } catch (e) {
       throw FuegoRPCException('Failed to register alias: $e');
@@ -321,9 +323,11 @@ class FuegoRPCService {
     required String amount,
     int? durationBlocks,
   }) async {
+    // The walletd expects atomic units (COIN = 10^7); convert display HEAT.
+    final atomic = (double.tryParse(amount) ?? 0) * 10000000;
     final params = <String, dynamic>{
       'coin': coin,
-      'amount': amount,
+      'amount': atomic.round().toString(),
     };
     if (durationBlocks != null) {
       params['duration_blocks'] = durationBlocks;
@@ -332,9 +336,40 @@ class FuegoRPCService {
     return CdCreateResult.fromJson(response);
   }
 
+  Future<Map<String, dynamic>> cdConfig() async {
+    final response = await _makeRPCCall('cd::config', {});
+    return response;
+  }
+
+  Future<CdCreateResult> cdCreateLadder(List<Map<String, dynamic>> rungs) async {
+    final response = await _makeRPCCall('cd::create_ladder', {'rungs': rungs});
+    // Return first tx as representative; ladder creates multiple
+    final hashes = response['tx_hashes'] as List<dynamic>?;
+    final tx = hashes != null && hashes.isNotEmpty ? hashes.first as String : '';
+    return CdCreateResult.fromJson({
+      'cd_id': tx,
+      'tx_hash': tx,
+      'coin': 'HEAT',
+      'amount': '',
+      'maturity_at': '',
+    });
+  }
+
   Future<CdClaimResult> cdClaim(String cdId) async {
     final response = await _makeRPCCall('claim_cd', {'cd_id': cdId});
     return CdClaimResult.fromJson(response);
+  }
+
+  Future<CdRolloverResult> cdRollover({
+    required String cdId,
+    int? newTerm,
+  }) async {
+    final params = <String, dynamic>{'cd_id': cdId};
+    if (newTerm != null) {
+      params['new_term'] = newTerm;
+    }
+    final response = await _makeRPCCall('rollover_cd', params);
+    return CdRolloverResult.fromJson(response);
   }
 
   Future<CdMarketListResult> cdMarketList() async {

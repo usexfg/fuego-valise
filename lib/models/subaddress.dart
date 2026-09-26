@@ -99,12 +99,18 @@ class SubaddressStore {
 
   Future<void> _save() async {
     try {
-      final file = await _file();
-      await file.writeAsString(jsonEncode({
+      final dst = await _file();
+      final tmp = File('${dst.path}.tmp');
+      await tmp.writeAsString(jsonEncode({
         'version': _version,
         'legacyRegistered': _legacyRegistered,
         'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
       }), flush: true);
+      // Mobile app sandboxes are already private, and iOS forbids spawning processes.
+      if (Platform.isLinux || Platform.isMacOS) {
+        try { await Process.run('chmod', ['600', tmp.path]); } catch (_) {}
+      }
+      await tmp.rename(dst.path);
     } catch (e) {
       debugPrint('[subaddress] failed to save: $e');
     }
@@ -116,9 +122,14 @@ class SubaddressStore {
     required String address,
     required String label,
   }) async {
+    final trimmed = address.trim();
+    if (trimmed.isEmpty || trimmed.length < 90) {
+      throw ArgumentError('Invalid address');
+    }
+    if (label.length > 64) throw ArgumentError('Label too long');
     final sub = Subaddress(
-      address: address,
-      label: label,
+      address: trimmed,
+      label: label.trim(),
       index: index,
       createdAt: DateTime.now(),
     );

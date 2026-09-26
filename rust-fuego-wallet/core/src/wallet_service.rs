@@ -1479,13 +1479,24 @@ impl WalletService {
     }
 
     /// create_cd: HEAT CD with an explicit block term (the GUI passes
-    /// duration_blocks directly).
+    /// duration_blocks directly). The 8 HEAT tier (80,000,000 atomic) is
+    /// epoch-to-epoch only: a single 1-epoch (EPOCH_DURATION_BLOCKS) term
+    /// that auto-rolls at each epoch boundary until the user withdraws.
     pub async fn create_cd(
         &self,
         amount: u64,
         term_blocks: u32,
     ) -> std::result::Result<String, String> {
-        if term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM {
+        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
+        // 8 HEAT tier: epoch-to-epoch auto-rollover CD (1 epoch term).
+        if amount == 8 * COIN {
+            if term_blocks != epoch_blocks as u32 {
+                return Err(format!(
+                    "8 HEAT CDs are epoch-to-epoch only (term must be {} blocks)",
+                    epoch_blocks
+                ));
+            }
+        } else if term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM {
             return Err(format!(
                 "term must be in {}..={} blocks",
                 DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
@@ -1605,6 +1616,99 @@ impl WalletService {
         .map_err(|e| format!("build: {e}"))?;
 
         let key_images: Vec<[u8; 32]> = deposits.iter().map(|d| d.key_image).collect();
+        self.broadcast_built(built, key_images).await
+    }
+
+    /// rollover_cd: reinvest a single matured CD (principal + accrued
+    /// interest) into a new finite-term commitment. `new_term` is in blocks;
+    /// when 0 the original term is kept. For the 8 HEAT tier the term is
+    /// always one epoch (epoch-to-epoch auto-rollover).
+    pub async fn rollover_cd(
+        &self,
+        cd_id: &str,
+        new_term: u32,
+    ) -> std::result::Result<String, String> {
+        let id_bytes = hex::decode(cd_id).map_err(|_| "invalid cd_id".to_string())?;
+        if id_bytes.len() != 32 {
+            return Err("invalid cd_id length".into());
+        }
+        let mut want = [0u8; 32];
+        want.copy_from_slice(&id_bytes);
+
+        let height = self.wallet.lock().unwrap().height();
+        let deposits: Vec<fuego_sdk::scanner::CommitmentEntry> = self
+            .wallet
+            .lock()
+            .unwrap()
+            .deposits()
+            .into_iter()
+            .filter(|d| d.tx_hash == want && d.global_index != 0)
+            .collect();
+        let deposit = deposits
+            .first()
+            .ok_or("deposit not found or already spent")?;
+        if deposit.block_height + deposit.term as u64 > height {
+            return Err("deposit is not yet mature".into());
+        }
+
+        let interest = self
+            .daemon
+            .estimate_cd_yield(deposit.amount, deposit.block_height as u32)
+            .await
+            .unwrap_or(0);
+        let rolled_amount = deposit.amount.saturating_add(interest);
+
+        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
+        // 8 HEAT tier is epoch-to-epoch only; keep one epoch on rollover.
+        let term_blocks: u32 = if deposit.amount == 8 * COIN {
+            epoch_blocks as u32
+        } else if new_term == 0 {
+            deposit.term
+        } else {
+            new_term
+        };
+        if deposit.amount != 8 * COIN
+            && (term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM)
+        {
+            return Err(format!(
+                "new term must be in {}..={} blocks",
+                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
+            ));
+        }
+
+        let fee = MINIMUM_FEE;
+        let mixin = DEFAULT_MIXIN;
+        let decoys = self.commitment_decoys(deposit, mixin).await?;
+        let keys = self.wallet.lock().unwrap().wallet_keys();
+
+        let commitment_dests = vec![BuildCommitmentDestination {
+            amount: rolled_amount,
+            term: term_blocks,
+            view_pub: None,
+        }];
+
+        let spends = vec![CommitmentDeposit {
+            amount: deposit.amount,
+            commit_key: deposit.commit_key,
+            key_scalar: deposit.key_scalar,
+            key_image: deposit.key_image,
+            global_index: deposit.global_index,
+            claimed_interest: interest,
+        }];
+        let built = build_commitment_spend_transaction(
+            &spends,
+            std::slice::from_ref(&decoys),
+            mixin,
+            &[],
+            &commitment_dests,
+            &keys.view_public,
+            fee,
+            &[],
+            &mut rand::thread_rng(),
+        )
+        .map_err(|e| format!("build: {e}"))?;
+
+        let key_images: Vec<[u8; 32]> = vec![deposit.key_image];
         self.broadcast_built(built, key_images).await
     }
 
@@ -1838,14 +1942,65 @@ impl WalletService {
         Ok(out)
     }
 
-    pub async fn list_cds(&self) -> Vec<String> {
-        self.wallet
+    /// list_cds: rich CD objects matching the GUI model. The deposit list is
+    /// derived from the local scanner state (finite-term HEAT commitments).
+    /// Each entry reports ownership, term/maturity in blocks, and accrued
+    /// interest estimated by the daemon (estimate_cd_yield), with a display
+    /// friendly amount in HEAT atomic-to-decimal form.
+    pub async fn list_cds(&self) -> Vec<serde_json::Value> {
+        let height = self.wallet.lock().unwrap().height();
+        let owner = self.address().await;
+        let deposits: Vec<fuego_sdk::scanner::CommitmentEntry> = self
+            .wallet
             .lock()
             .unwrap()
             .deposits()
-            .iter()
-            .map(|d| format!("{}:{}:{}", hex::encode(d.tx_hash), d.amount, d.term))
-            .collect()
+            .into_iter()
+            .filter(|d| d.global_index != 0)
+            .collect();
+
+        let mut out = Vec::with_capacity(deposits.len());
+        for d in deposits {
+            let maturity_height = d.block_height.saturating_add(d.term as u64);
+            let blocks_to_maturity = maturity_height.saturating_sub(height);
+            let matured = blocks_to_maturity == 0 && height >= maturity_height;
+            let interest = self
+                .daemon
+                .estimate_cd_yield(d.amount, d.block_height as u32)
+                .await
+                .unwrap_or(0);
+            let total = d.amount.saturating_add(interest);
+            let rate_pct = if d.amount > 0 {
+                interest as f64 / d.amount as f64 * 100.0
+            } else {
+                0.0
+            };
+            out.push(serde_json::json!({
+                "cd_id": hex::encode(d.tx_hash),
+                "owner": owner,
+                "coin": "HEAT",
+                "amount": Self::display_heat(d.amount),
+                "interest_rate": format!("{:.2}", rate_pct),
+                "maturity_height": maturity_height,
+                "deposit_height": d.block_height,
+                "accrued_interest": Self::display_heat(interest),
+                "total_value": Self::display_heat(total),
+                "blocks_to_maturity": blocks_to_maturity,
+                "matured": matured,
+                "for_sale": false,
+            }));
+        }
+        out
+    }
+
+    /// Format an atomic HEAT amount as a human HEAT decimal (max 7 dp).
+    fn display_heat(atomic: u64) -> String {
+        let whole = atomic / COIN;
+        let frac = atomic % COIN;
+        if frac == 0 {
+            return whole.to_string();
+        }
+        format!("{}.{:07}", whole, frac).trim_end_matches('0').to_string()
     }
 }
 

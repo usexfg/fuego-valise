@@ -93,7 +93,7 @@ flutter:
     - assets/logo/
     - assets/data/
     - assets/charts/
-    - assets/coin icons/
+    - assets/coin-icons/
     - assets/brand/
 
   fonts:
@@ -190,4 +190,5 @@ flutter:
       fonts:
         - asset: assets/fonts/Tilt_Prism/static/TiltPrism-Variable.ttf
 
-dependency_overrides:
+# dependency_overrides:
+# (empty — keep commented until a real override is needed)

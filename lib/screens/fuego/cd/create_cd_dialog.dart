@@ -11,9 +11,15 @@ class CreateCdDialog extends StatefulWidget {
 }
 
 class _CreateCdDialogState extends State<CreateCdDialog> {
+  /// Term tiers for fixed-term HEAT CDs (epochs). 8 HEAT CDs are excluded —
+  /// they are epoch-to-epoch auto-rollover only and never expose a term picker.
   static const _termTiers = [6, 18, 36, 72];
-  static const _amountTiers = [8.0, 80.0, 800.0, 8000.0];
-  static const _chipLabels = ['8', '80', '800', '8,000'];
+  static const _amountTiers = [8.0, 1000.0, 10000.0, 100000.0, 1000000.0];
+  static const _chipLabels = ['8', '1,000', '10,000', '100,000', '1M'];
+
+  /// 8 HEAT CDs run epoch-to-epoch from their start: at the end of the first
+  /// epoch they unlock but auto-roll over until the user pulls them out.
+  static const double _autoRollAmount = 8.0;
 
   int _selectedTerm = 6;
   double _selectedAmount = 8.0;
@@ -22,17 +28,27 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
 
   static const _epochBlocks = 900;
 
+  bool get _isAutoRoll => _selectedAmount == _autoRollAmount;
+
   String _fmtHeat(double value) {
+    if (value >= 1000000) {
+      final millions = value / 1000000;
+      return '${millions.toStringAsFixed(millions == millions.roundToDouble() ? 0 : 2)}M';
+    }
+    if (value >= 1000) {
+      final thousands = value / 1000;
+      return '${thousands.toStringAsFixed(thousands == thousands.roundToDouble() ? 0 : 2)}k';
+    }
+    if (value >= 100) return value.toStringAsFixed(0);
     if (value < 1) {
       return '${value.toStringAsFixed(1)}𐅪';
     }
-    if (value >= 100) return value.toStringAsFixed(0);
     return value.toStringAsFixed(2);
   }
 
   @override
   Widget build(BuildContext context) {
-    final totalBlocks = _selectedTerm * _epochBlocks;
+    final totalBlocks = _isAutoRoll ? _epochBlocks : _selectedTerm * _epochBlocks;
     final blockTimeSec = 480;
     final days = (totalBlocks * blockTimeSec) ~/ 86400;
     final interest = _selectedAmount * 0.02;
@@ -67,24 +83,33 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
               )),
             ),
             const SizedBox(height: 20),
-            const Text('Term (epochs)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            if (_isAutoRoll)
+              const Text('Epoch-to-epoch · auto-rolls until you withdraw',
+                  style: TextStyle(color: AppTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.w600))
+            else
+              const Text('Term (epochs)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _termTiers.map((t) => ChoiceChip(
-                label: Text('$t epochs'),
-                selected: _selectedTerm == t,
-                selectedColor: AppTheme.primaryColor,
-                labelStyle: TextStyle(
-                  color: _selectedTerm == t ? Colors.white : AppTheme.textPrimary,
-                ),
-                backgroundColor: AppTheme.surfaceColor,
-                onSelected: (_) => setState(() => _selectedTerm = t),
-              )).toList(),
-            ),
+            if (!_isAutoRoll)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _termTiers.map((t) => ChoiceChip(
+                  label: Text('$t epochs'),
+                  selected: _selectedTerm == t,
+                  selectedColor: AppTheme.primaryColor,
+                  labelStyle: TextStyle(
+                    color: _selectedTerm == t ? Colors.white : AppTheme.textPrimary,
+                  ),
+                  backgroundColor: AppTheme.surfaceColor,
+                  onSelected: (_) => setState(() => _selectedTerm = t),
+                )).toList(),
+              ),
+            if (_isAutoRoll)
+              const Text('Unlocks at first epoch end and auto-rolls over '
+                  'each epoch until you withdraw.',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
             const SizedBox(height: 8),
-            Text('≈ $days days — ${_selectedTerm * _epochBlocks} blocks at 8 min/block',
+            Text('≈ $days days — $totalBlocks blocks at 8 min/block',
                 style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
             const SizedBox(height: 12),
             _buildDetailRow('Deposit', _fmtHeat(_selectedAmount) + (_selectedAmount < 1 ? '' : ' HΞ∆T')),
@@ -96,7 +121,8 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 12)),
               ),
-            const Text('0.1% fee to @fuegoxfg developer fund',
+            const Text('(0.1% CD creation fee of 0.1% routes to @fuegoxfg '
+                'development fund. There are no fees on CD claims)',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 10, fontStyle: FontStyle.italic)),
           ],
         ),
@@ -139,8 +165,8 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
     try {
       await context.read<CdCubit>().createCd(
             coin: 'HEAT',
-            amount: _selectedAmount.toString(),
-            durationBlocks: _selectedTerm * _epochBlocks,
+            amount: _selectedAmount.toStringAsFixed(0),
+            durationBlocks: _isAutoRoll ? _epochBlocks : _selectedTerm * _epochBlocks,
           );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

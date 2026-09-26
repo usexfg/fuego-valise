@@ -98,13 +98,33 @@ class DaemonManager {
 
   // ── Lifecycle ────────────────────────────────────────────────────
 
-  /// Kill any process occupying [port], then return the freed port.
+  /// Kill any Fuego-owned process occupying [port], then return the freed port.
   /// Returns error message if port is occupied and cannot be freed.
+  /// Safety: verifies PID is a Fuego daemon before SIGKILL to avoid killing
+  /// unrelated system/user processes that happen to hold the port.
   Future<String?> _freePort(int port) async {
     final pid = await _findPidOnPort(port);
     if (pid == null) return null;
 
-    debugPrint('[daemon] Port $port in use by PID $pid — killing');
+    // Safety rails: never kill init/system processes.
+    if (pid <= 1 || pid < 100) {
+      return 'Port $port is occupied by system PID $pid — refusing to kill';
+    }
+
+    if (!await _isFuegoPid(pid)) {
+      debugPrint('[daemon] Port $port held by PID $pid (non-Fuego) — not killing');
+      return 'Port $port is occupied by PID $pid (non-Fuego process) — '
+          'stop that process or choose a different port';
+    }
+
+    // TOCTOU re-check: PID may have died and been reused between ps and kill
+    final recheck = await _findPidOnPort(port);
+    if (recheck != pid) {
+      debugPrint('[daemon] Port $port PID changed $pid->$recheck during verify — aborting kill');
+      return 'Port $port holder changed during verification — retry';
+    }
+
+    debugPrint('[daemon] Port $port in use by PID $pid — killing (verified Fuego)');
     final killed = await _killPid(pid);
     if (!killed) return 'Port $port is occupied by PID $pid and could not be killed';
 
@@ -114,6 +134,50 @@ class DaemonManager {
       if (await _findPidOnPort(port) == null) return null;
     }
     return 'Port $port was occupied by PID $pid — killed but port not yet released';
+  }
+
+  /// True if [pid] looks like a Fuego daemon (fuegod, fuego_walletd, xfg-swapd,
+  /// unified) by inspecting `ps -o comm=` / `args` or Windows `wmic`/`tasklist`.
+  /// Returns false on unknown/unreadable (fail-closed: do not kill).
+  /// Single-ps-then-recheck pattern mitigates TOCTOU; caller should re-verify
+  /// PID still holds port before kill.
+  Future<bool> _isFuegoPid(int pid) async {
+    try {
+      if (Platform.isWindows) {
+        // Fail-closed on Windows: verify via wmic/tasklist, not blind true.
+        try {
+          final r = await Process.run('wmic', ['process', 'where', 'ProcessId=$pid', 'get', 'CommandLine', '/format:list']);
+          final out = (r.stdout as String).toLowerCase();
+          if (out.contains('fuego') || out.contains('walletd') || out.contains('swapd') || out.contains('unified') || out.contains('fuegod')) {
+            return true;
+          }
+        } catch (_) {}
+        try {
+          final r2 = await Process.run('tasklist', ['/FI', 'PID eq $pid', '/FO', 'CSV', '/NH']);
+          final out2 = (r2.stdout as String).toLowerCase();
+          if (out2.contains('fuego') || out2.contains('walletd') || out2.contains('swapd') || out2.contains('unified')) {
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+      // Unix: single snapshot — prefer comm, fallback to args; require exact basename or path segment, not substring.
+      final comm = await Process.run('ps', ['-o', 'comm=', '-p', pid.toString()]);
+      final commStr = (comm.stdout as String).trim().toLowerCase();
+      final commBase = commStr.split('/').last.split(' ').first;
+      const allowed = {'fuegod', 'fuego_walletd', 'fuego-walletd', 'xfg-swapd', 'swapd', 'unified'};
+      if (allowed.contains(commBase)) return true;
+      final args = await Process.run('ps', ['-o', 'args=', '-p', pid.toString()]);
+      final argsStr = (args.stdout as String).toLowerCase();
+      // Check for path segments like /fuegod or /unified to avoid 'notfuego' false positive
+      if (argsStr.contains('/fuegod') || argsStr.contains('/fuego_walletd') || argsStr.contains('/xfg-swapd') || argsStr.contains('/unified') || argsStr.contains(' fuegod ') || argsStr.contains(' unified ')) {
+        return true;
+      }
+      return allowed.any((a) => argsStr.contains(a) && argsStr.contains('/$a'));
+    } catch (e) {
+      debugPrint('[daemon] _isFuegoPid ps failed for $pid: $e');
+      return false;
+    }
   }
 
   /// Find PID of process listening on [port].
@@ -259,12 +323,11 @@ class DaemonManager {
   }
 
   Future<_HealthResult> _checkHealthDetailed(String url, {Duration timeout = const Duration(seconds: 3)}) async {
+    final client = HttpClient()..connectionTimeout = timeout;
     try {
-      final client = HttpClient()..connectionTimeout = timeout;
       final req = await client.getUrl(Uri.parse(url));
       final resp = await req.close().timeout(timeout);
       await resp.drain<void>();
-      client.close(force: true);
       if (resp.statusCode == 200) return _HealthResult.ok();
       return _HealthResult.error('HTTP ${resp.statusCode}');
     } on SocketException catch (e) {
@@ -280,6 +343,8 @@ class DaemonManager {
     } catch (e) {
       final msg = e.toString();
       return _HealthResult.error(msg.length > 80 ? '${msg.substring(0, 77)}...' : msg);
+    } finally {
+      client.close(force: true);
     }
   }
 
@@ -620,12 +685,11 @@ class DaemonManager {
   /// body is missing the keys or reports the embedded chain offline —
   /// used to detect stale walletd processes in local mode.
   Future<bool> _walletdEmbeddedFuegodOk(int port) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
       final req = await client.getUrl(Uri.parse('http://127.0.0.1:$port/health'));
       final resp = await req.close().timeout(const Duration(seconds: 2));
       final body = await resp.transform(utf8.decoder).join();
-      client.close(force: true);
       if (resp.statusCode != 200) return false;
       final data = jsonDecode(body);
       if (data is Map<String, dynamic>) {
@@ -637,12 +701,14 @@ class DaemonManager {
       return false;
     } catch (_) {
       return false;
+    } finally {
+      client.close(force: true);
     }
   }
 
   Future<bool> _probeJsonRpcReady(int port) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
       final req = await client.postUrl(Uri.parse('http://127.0.0.1:$port/json_rpc'));
       req.headers.contentType = ContentType.json;
       req.write(jsonEncode({
@@ -653,10 +719,11 @@ class DaemonManager {
       }));
       final resp = await req.close().timeout(const Duration(seconds: 2));
       await resp.drain<void>();
-      client.close(force: true);
       return resp.statusCode == 200;
     } catch (_) {
       return false;
+    } finally {
+      client.close(force: true);
     }
   }
 
@@ -692,64 +759,80 @@ class DaemonManager {
       }
     }
 
-     // Unified daemon needs --container-file and --container-password
-     final security = SecurityService();
-     final appDir = await getApplicationSupportDirectory();
-     final walletDir = p.join(appDir.path, 'wallet');
-     await Directory(walletDir).create(recursive: true);
-     final containerFile = p.join(walletDir, 'fuego_wallet');
-     String? containerPassword;
-     try {
-       containerPassword = await security.getOrCreateWalletdPassword();
-       debugPrint('[daemon] Got wallet password from Keychain');
-     } catch (e) {
-       debugPrint('[daemon] Keychain unavailable ($e), starting without container password');
-     }
-
-      // Generate container if it doesn't exist yet
-      final containerExists = await File(containerFile).exists();
-      if (!containerExists) {
-        debugPrint('[daemon] Container not found at $containerFile — generating...');
-        final genArgs = <String>[
-          '--generate-container',
-          '--container-file', containerFile,
-        ];
-        if (containerPassword != null) {
-          genArgs.add('--container-password');
-          genArgs.add(containerPassword);
-        }
-        if (useTestnet) genArgs.add('--testnet');
-        debugPrint('[daemon] unified generate-container args: $genArgs');
-        final genProc = await Process.run(binary, genArgs);
-        debugPrint('[daemon] generate-container exit code: ${genProc.exitCode}');
-        if (genProc.exitCode != 0) {
-          final err = genProc.stderr.toString().trim();
-          debugPrint('[daemon] generate-container stderr: $err');
-          return 'Failed to generate wallet container: $err';
-        }
-        debugPrint('[daemon] Wallet container generated at $containerFile');
+     // Unified daemon needs --container-file and --container-password (via file, not argv)
+      final security = SecurityService();
+      final appDir = await getApplicationSupportDirectory();
+      final walletDir = p.join(appDir.path, 'wallet');
+      await Directory(walletDir).create(recursive: true);
+      final containerFile = p.join(walletDir, 'fuego_wallet');
+      String? containerPassword;
+      String? pwFile;
+      try {
+        containerPassword = await security.getOrCreateWalletdPassword();
+        debugPrint('[daemon] Got wallet password from Keychain');
+      } catch (e) {
+        debugPrint('[daemon] Keychain unavailable, starting without container password');
       }
-
-      final args = <String>[
-        '--bind-port', walletdPort.toString(),
-        '--container-file', containerFile,
-      ];
+      // Write password to 0600 file if available — avoids argv leak (CWE-214)
       if (containerPassword != null) {
-        args.add('--container-password');
-        args.add(containerPassword);
+        try {
+          pwFile = p.join(walletDir, '.container_pw');
+          await File(pwFile).writeAsString(containerPassword, flush: true);
+          if (!Platform.isWindows) await Process.run('chmod', ['600', pwFile]);
+        } catch (_) {
+          pwFile = null;
+        }
       }
-      if (useLocalNode) {
-        args.add('--local');
-      } else {
-        args.addAll(['--daemon-host', daemonHost, '--daemon-port', daemonPort.toString()]);
-      }
-      if (useTestnet) args.add('--testnet');
 
-      debugPrint('[daemon] unified args: $args');
+       // Generate container if it doesn't exist yet
+       final containerExists = await File(containerFile).exists();
+       if (!containerExists) {
+         debugPrint('[daemon] Container not found at $containerFile — generating...');
+         final genArgs = <String>[
+           '--generate-container',
+           '--container-file', containerFile,
+         ];
+         if (pwFile != null) {
+           genArgs.addAll(['--container-password-file', pwFile]);
+         } else if (containerPassword != null) {
+           // Fallback only if file write failed and Rust supports env; avoid argv if possible
+           genArgs.addAll(['--container-password', containerPassword]);
+         }
+         if (useTestnet) genArgs.add('--testnet');
+         debugPrint('[daemon] unified generate-container (password redacted)');
+         final genEnv = containerPassword != null ? {'WALLETD_CONTAINER_PASSWORD': containerPassword} : null;
+         final genProc = await Process.run(binary, genArgs, environment: genEnv);
+         debugPrint('[daemon] generate-container exit code: ${genProc.exitCode}');
+         if (genProc.exitCode != 0) {
+           final err = genProc.stderr.toString().trim();
+           debugPrint('[daemon] generate-container stderr: $err');
+           return 'Failed to generate wallet container: $err';
+         }
+         debugPrint('[daemon] Wallet container generated at $containerFile');
+       }
+
+       final args = <String>[
+         '--bind-port', walletdPort.toString(),
+         '--container-file', containerFile,
+       ];
+       if (pwFile != null) {
+         args.addAll(['--container-password-file', pwFile]);
+       } else if (containerPassword != null) {
+         args.addAll(['--container-password', containerPassword]);
+       }
+       if (useLocalNode) {
+         args.add('--local');
+       } else {
+         args.addAll(['--daemon-host', daemonHost, '--daemon-port', daemonPort.toString()]);
+       }
+       if (useTestnet) args.add('--testnet');
+
+       debugPrint('[daemon] unified starting (password redacted)');
 
     try {
       debugPrint('[daemon] Spawning unified daemon...');
-      _unified = await Process.start(binary, args);
+      final env = containerPassword != null ? {'WALLETD_CONTAINER_PASSWORD': containerPassword, ...Platform.environment} : null;
+      _unified = await Process.start(binary, args, environment: env);
       debugPrint('[daemon] unified process started (PID ${_unified!.pid})');
       if (kDebugMode) {
         _unified!.stdout.transform<String>(utf8.decoder).listen((l) => debugPrint('[unified:out] $l'));
@@ -791,13 +874,13 @@ class DaemonManager {
         return daemonErrors['unified'] ?? 'unified daemon exited during startup';
       }
 
+      HttpClient? client;
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+        client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
         final req = await client.getUrl(
             Uri.parse('http://127.0.0.1:$walletdPort/health'));
         final resp = await req.close().timeout(const Duration(seconds: 2));
         await resp.drain<void>();
-        client.close(force: true);
         if (resp.statusCode == 200) {
           debugPrint('[daemon] unified daemon healthy on port $walletdPort (attempt ${i + 1})');
           return null;
@@ -808,6 +891,8 @@ class DaemonManager {
         if (i % 10 == 0) {
           debugPrint('[daemon] health check attempt ${i + 1}: $e');
         }
+      } finally {
+        client?.close(force: true);
       }
     }
     debugPrint('[daemon] unified daemon not ready after 180s');
@@ -1000,6 +1085,11 @@ class DaemonManager {
   bool get anyRunning =>
       _unified != null || _walletd != null || _fuegod != null || _swapd != null ||
       _walletdExternallyRunning || _fuegodExternallyRunning || _swapdExternallyRunning;
+
+  void dispose() {
+    status.dispose();
+    eventBus.stop();
+  }
 }
 
 /// Snapshot of daemon health status.

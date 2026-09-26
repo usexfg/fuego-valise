@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obsidian Reserve — Heatwave — Print Spread Mockup</title>
+<style>
+  :root {
+    --obsidian: #0D0B08;
+    --warm-obsidian: #181512;
+    --champagne: #C5A059;
+    --muted-gold: #8C734B;
+    --midnight: #3D5A80;
+    --cream: #F5F1E8;
+    --muted: #8A8278;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .spread {
+    width: 820px;
+    max-width: 100%;
+    aspect-ratio: 8.5 / 11;
+    background: var(--obsidian);
+    border: 1px solid rgba(197, 160, 89, 0.18);
+    border-radius: 4px;
+    color: var(--cream);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 72px 76px 56px;
+    position: relative;
+  }
+  .spread::before {
+    content: "";
+    position: absolute;
+    inset: 14px;
+    border: 1px solid rgba(61, 90, 128, 0.55);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  .kicker {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    color: var(--muted-gold);
+    text-transform: uppercase;
+  }
+  h1 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 500;
+    font-size: 64px;
+    line-height: 1.08;
+    color: var(--champagne);
+    margin: 28px 0 20px;
+  }
+  .sub {
+    font-size: 19px;
+    line-height: 1.6;
+    color: var(--cream);
+    max-width: 560px;
+    font-style: italic;
+  }
+  .rule {
+    width: 120px;
+    height: 1px;
+    background: var(--champagne);
+    margin: 36px 0;
+    opacity: 0.8;
+  }
+  .body {
+    font-size: 17px;
+    line-height: 1.75;
+    color: var(--cream);
+    max-width: 540px;
+  }
+  .body p + p { margin-top: 14px; }
+  .plate {
+    margin: 34px 0 0;
+    border: 1px solid rgba(197, 160, 89, 0.28);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+  .plate img {
+    display: block;
+    width: 100%;
+    height: 300px;
+    object-fit: cover;
+    object-position: center 38%;
+    filter: grayscale(32%) brightness(0.82) sepia(14%);
+  }
+  .plate::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(13, 11, 8, 0.55), rgba(13, 11, 8, 0) 55%);
+    pointer-events: none;
+  }
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-top: 1px solid rgba(197, 160, 89, 0.18);
+    padding-top: 20px;
+  }
+  .house {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 22px;
+    letter-spacing: 0.12em;
+    color: var(--champagne);
+    text-transform: uppercase;
+  }
+  .spec {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: right;
+    line-height: 2;
+  }
+</style>
+</head>
+<body>
+  <main class="spread">
+    <div>
+      <div class="kicker">Obsidian Reserve &middot; Heatwave</div>
+      <h1>The time has come.<br>Not for you.<br>For everyone else.</h1>
+      <p class="sub">A private exchange preview, engineered in the Swiss tradition. Midnight Blue. Champagne Gold. No daylight required.</p>
+      <div class="rule"></div>
+      <div class="body">
+        <p>Private exchange does not announce itself. It arrives like a hand-crafted timepiece &mdash; silent, precise, uncompromising.</p>
+        <p>We carry no insurance on deposits. We carry sound money.</p>
+      </div>
+      <figure class="plate">
+        <img src="img/watch-obsidian.jpg" alt="Luxury timepiece dial in low light">
+      </figure>
+    </div>
+    <div class="footer">
+      <div class="house">Obsidian Reserve</div>
+      <div class="spec">Code name: Heatwave<br>Status: unreleased preview</div>
+    </div>
+  </main>
+</body>
+</html>

@@ -149,8 +149,13 @@ class FuegoVaultService {
   Future<void> _saveRegistry() async {
     final dir = await getApplicationDocumentsDirectory();
     final data = {'active': _activeId, 'wallets': _wallets.map((w) => w.toJson()).toList()};
-    await File('${dir.path}/$_registryFileName')
-        .writeAsString(json.encode(data), flush: true);
+    final tmp = File('${dir.path}/$_registryFileName.tmp');
+    final dst = File('${dir.path}/$_registryFileName');
+    await tmp.writeAsString(json.encode(data), flush: true);
+    if (!Platform.isWindows) {
+      try { await Process.run('chmod', ['600', tmp.path]); } catch (_) {}
+    }
+    await tmp.rename(dst.path);
   }
 
   WalletEntry _requireEntry(String id) {
@@ -179,7 +184,7 @@ class FuegoVaultService {
       throw StateError('Failed to create vault from seed via FFI');
     }
 
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final id = _generateWalletId();
     final file = 'fuego_vault_$id.enc';
     await _persistEncrypted(file, bytes, password);
     await _loadInMemory(bytes);
@@ -334,8 +339,10 @@ class FuegoVaultService {
     }
   }
 
-  /// Wipe secrets from memory (does not delete disk).
+  /// Wipe secrets from memory (does not delete disk) — zeroizes before deref.
   void lock() {
+    try { _vaultBytes?.fillRange(0, _vaultBytes!.length, 0); } catch (_) {}
+    // Strings cannot be zeroized in Dart — drop references and hint GC
     _vaultBytes = null;
     _cachedAddress = null;
     _spendPublicKey = null;
@@ -445,13 +452,17 @@ class FuegoVaultService {
   ) async {
     final dir = await getApplicationDocumentsDirectory();
     final enc = await _security.encryptBytesWithPin(plain, password);
-    await File('${dir.path}/$fileName').writeAsString(enc, flush: true);
+    final encFile = File('${dir.path}/$fileName');
+    await encFile.writeAsString(enc, flush: true);
+    if (!Platform.isWindows) try { await Process.run('chmod', ['600', encFile.path]); } catch (_) {}
 
     // Biometric re-entry envelope using a random device-bound key (never
     // derived from the wallet password or the app PIN).
     final bioKey = await _security.getOrCreateBioKey();
     final bio = await _security.encryptBytesWithKey(plain, bioKey);
-    await File('${dir.path}/$fileName.bio').writeAsString(bio, flush: true);
+    final bioFile = File('${dir.path}/$fileName.bio');
+    await bioFile.writeAsString(bio, flush: true);
+    if (!Platform.isWindows) try { await Process.run('chmod', ['600', bioFile.path]); } catch (_) {}
   }
 
   Future<void> _loadInMemory(Uint8List bytes) async {
@@ -496,5 +507,12 @@ class FuegoVaultService {
       await File('${dir.path}/${entry.file}.bio')
           .writeAsString(bio, flush: true);
     }
+  }
+
+  static String _generateWalletId() {
+    // 128-bit entropy + timestamp to avoid collisions, not predictable seq.
+    final rnd = SecurityService.secureRandomBytes(16);
+    final hex = rnd.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${DateTime.now().microsecondsSinceEpoch}_$hex';
   }
 }

@@ -106,12 +106,16 @@ class _SplashScreenState extends State<SplashScreen>
       final securityService = SecurityService();
       final walletProvider = Provider.of<WalletProvider>(context, listen: false);
 
+      // Do NOT clear lockout unconditionally — that bypasses brute-force protection.
+      // isLockedOut() already clears only if expired; stale lockout must persist until expiry.
       bool hasWallet = false;
       bool hasPIN = false;
+      bool isLocked = false;
       bool checkFailed = false;
       try {
         hasWallet = await walletProvider.hasWalletData();
         hasPIN = await securityService.hasPIN();
+        isLocked = await securityService.isLockedOut();
       } catch (e) {
         // Fail closed: a thrown check (e.g. transient Android Keystore /
         // iOS Keychain error right after reboot, before first unlock) must
@@ -126,11 +130,26 @@ class _SplashScreenState extends State<SplashScreen>
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
 
+      setState(() => _isInitializing = false);
+
+      // Enforce PIN gate: if wallet exists and PIN set, require unlock before main.
+      if (isLocked) {
+        final remain = await securityService.lockoutRemaining();
+        setState(() {
+          _initMessage = remain != null
+              ? 'Too many attempts — try again in ${remain.inMinutes}m ${remain.inSeconds % 60}s'
+              : 'Wallet locked — try again later';
+        });
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (!mounted) return;
+        _navigateToScreen(const PinEntryScreen());
+        return;
+      }
       if (checkFailed || (hasWallet && hasPIN)) {
         _navigateToScreen(const PinEntryScreen());
-      } else {
-        _navigateToScreen(const MainScreen());
+        return;
       }
+      _navigateToScreen(const MainScreen());
     } catch (e) {
       if (!mounted) return;
 

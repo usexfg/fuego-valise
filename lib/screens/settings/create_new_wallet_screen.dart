@@ -386,7 +386,8 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
   }
 
   Widget _buildPasswordPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -467,11 +468,13 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
   Widget _buildVerifyPinPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -533,11 +536,13 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
   Widget _buildSetupPinPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -566,11 +571,13 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
   Widget _buildConfirmPinPage() {
-    return Padding(
+    return SingleChildScrollView(
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -628,6 +635,7 @@ class _CreateNewWalletScreenState extends State<CreateNewWalletScreen> {
             ),
           ],
         ],
+      ),
       ),
     );
   }

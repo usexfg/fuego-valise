@@ -14,7 +14,7 @@ import '../transactions/mint_heat_screen.dart';
 import '../transactions/receive_screen.dart';
 import '../../utils/xfg_ticker.dart';
 
-// Shared prestige palette — Obsidian case + Champagne dial (Bank of XFG house)
+// Shared prestige palette — Obsidian case + Champagne dial (Obsidian Reserve house)
 const Color _obsidian = Color(0xFF0D0B08);
 const Color _champagne = Color(0xFFC5A059); // Champagne gold — muted, not peachy
 const Color _platinum = Color(0xFFF5F1E8); // Cream parchment

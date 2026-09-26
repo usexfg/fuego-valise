@@ -1,8 +1,6 @@
-# Bank of XFG — v1.11 Heatwave Teaser Campaign
+# Obsidian Reserve — v1.11 Heatwave Teaser Campaign
 
-> ⚠️ MARKETING ASSET — NOT A REAL RELEASE. Latest repo commit: `55afb3b`. 
-> "v1.11 Heatwave" and "Bank of XFG" are marketing fiction for teaser preview only.
-> Actual product identity per `AGENTS.md`: Fuego CryptoNote / swap daemon / `fuego_walletd`.
+*Status: unreleased preview. Product: Fuego Valise (`fuego_walletd`).*
 
 ## Campaign Concept (Don Draper Style — Vintage Magazine Ad)
 
@@ -10,12 +8,12 @@
 "The Time Has Come. Not for You. For Everyone Else."
 
 **Subhead:**
-"Bank of XFG introduces v1.11 Heatwave — the first private atomic swap 
-engineered in the Swiss tradition. Midnight Blue. Champagne Gold. 
+"Obsidian Reserve introduces v1.11 Heatwave — a private exchange preview 
+in the Swiss tradition. Midnight Blue. Champagne Gold. 
 No daylight required."
 
 **Visual Direction:**
-- Black card background (`#0D0B08`) — "obsidean case back"
+- Black card background (`#0D0B08`) — "obsidian case back"
 - Champagne gold text (`#C5A059`) — "dial face"
 - Midnight Blue accent borders (`#3D5A80`) — "Monaco canvas / yacht line"
 - Typography: `Cormorant Garamond` (luxury editorial serif) for headlines
@@ -32,12 +30,12 @@ like a hand-crafted timepiece — silent, precise,
 uncompromising.
 
 v1.11 Heatwave. Midnight Blue. Champagne Gold. 
-Bank of XFG.
+Obsidian Reserve.
 
 For those who understand that privacy is not 
 configured. It is inherited.
 
-#bankofxfg #v111 #heatswave #swisswatch #monaco
+#obsidianreserve #v111 #heatwave #swisswatch #monaco
 ```
 
 ### Ad 2 — "Private By Design" (LinkedIn / longer form)
@@ -49,11 +47,11 @@ by anyone. They built for a different audience.
 We built v1.11 Heatwave the same way.
 
 Not for the crowd. For the observer. For the 
-one who understands that when an atomic swap 
-settles in 6 confirmations — it isn't fast. 
+one who understands that when a private exchange 
+settles — it isn't fast. 
 It's certain.
 
-Bank of XFG. The swap engine behind 
+Obsidian Reserve. The swap engine behind 
 private exchange.
 ```
 
@@ -65,10 +63,10 @@ private exchange.
 
 CODE NAME: HEATWAVE
 VERSION: v1.11
-SECURITY: 6-CONFIRMATION SPV
+SECURITY: SPV VERIFICATION (CHAIN-DEPENDENT)
 STATUS: UNRELEASED
 
-Bank of XFG.
+Obsidian Reserve.
 Watch the midnight. Own the light.
 ```
 
@@ -92,13 +90,13 @@ jobs:
         run: |
           # Generate markdown preview + image mockup
           cp docs/marketing/HEATWAVE_TEASER.md ./preview.md
-          echo "Teaser: v1.11 Heatwave — Bank of XFG — $(date -Iseconds)" >> teaser.log
+          echo "Teaser: v1.11 Heatwave — Obsidian Reserve — $(date -Iseconds)" >> teaser.log
       - name: Post to X (Twitter)
         env:
           TWITTER_API_KEY: ${{ secrets.TWITTER_KEY }}
         run: |
           # Uses twitter-api-client or similar (not implemented — out of scope for code-only)
-          echo "Tweet preview: Bank of XFG v1.11 Heatwave teaser — $(date)"
+          echo "Tweet preview: Obsidian Reserve v1.11 Heatwave teaser — $(date)"
       - name: Post to Instagram
         env:
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTA_TOKEN }}
@@ -135,13 +133,14 @@ to fetch luxury watch references for teaser mockups.
 - ✅ Theme restyled (`lib/utils/theme.dart` — champagne gold + midnight blue)
 - ✅ Theatre widgets restyled (`confirmation_cluster`, `swap_timeline_stepper`, `swap_card` — luxury typography)
 - ✅ Marketing teaser copy created (`docs/marketing/HEATWAVE_TEASER.md`)
+- ✅ Full teaser scope added (`docs/marketing/HEATWAVE/` campaign hub, launch plan, content, email/social/ads, tracking)
 - ⏳ GitHub Actions workflow file `.github/workflows/heatwave-teaser.yml` — draft only
 - ⏳ Actual luxury imagery — requires confirmation (CSS-only done)
 - ⏳ Social automation — requires API secrets (not in repo, no secrets committed)
-- ⚠️ Brand identity conflict: "Bank of XFG" vs Fuego CryptoNote — documented as fiction
+- House identity: Obsidian Reserve — see `docs/marketing/HEATWAVE/naming-legal-review.md` for background
 
 ## Verification (fuego-guardian / adversarial)
 
 - **Swap domain**: 0 critical findings — TOCTOU guard, DCR fail-closed, median tip verified
-- **Marketing domain** (new): Potential false claim risk — framing decentralized swap protocol as "private banking" could be misleading. Adversarial review recommends: include clear disclaimer in all teaser assets that this is marketing preview, not financial service.
+- **Marketing domain** (new): “Bank of XFG” retired and replaced with Obsidian Reserve; no banking claims remain in campaign assets.
 - **Security audit (007)**: No hardcoded secrets in new marketing workflow draft; no secrets in source; GitHub Secrets only.

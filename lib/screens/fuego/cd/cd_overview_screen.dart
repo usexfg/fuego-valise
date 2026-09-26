@@ -42,11 +42,27 @@ class CdOverviewScreen extends StatelessWidget {
             ],
           ),
           body: _buildBody(context, state),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showCreateCdSheet(context),
-            backgroundColor: AppTheme.primaryColor,
-            icon: const Icon(Icons.add),
-            label: const Text('New CD'),
+          floatingActionButton: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              FloatingActionButton.extended(
+                heroTag: 'ladder',
+                onPressed: () => _showLadderSheet(context),
+                backgroundColor: AppTheme.surfaceColor,
+                foregroundColor: AppTheme.primaryColor,
+                icon: const Icon(Icons.account_tree_outlined),
+                label: const Text('Ladder'),
+              ),
+              const SizedBox(height: 12),
+              FloatingActionButton.extended(
+                heroTag: 'newCd',
+                onPressed: () => _showCreateCdSheet(context),
+                backgroundColor: AppTheme.primaryColor,
+                icon: const Icon(Icons.add),
+                label: const Text('New CD'),
+              ),
+            ],
           ),
         );
       },
@@ -169,6 +185,16 @@ class CdOverviewScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _showLadderSheet(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => BlocProvider.value(
+        value: context.read<CdCubit>(),
+        child: const _LadderBuilderDialog(),
+      ),
+    );
+  }
 }
 
 // ── Marketplace Section ──
@@ -245,10 +271,11 @@ class _MarketplaceSection extends StatelessWidget {
 
   String _amountBucket(String amount) {
     final parsed = double.tryParse(amount.replaceAll(',', '')) ?? 0;
-    if (parsed <= 8) return '8 XFG';
-    if (parsed <= 80) return '80 XFG';
-    if (parsed <= 800) return '800 XFG';
-    return '8,000 XFG';
+    if (parsed <= 8) return '8 HEAT';
+    if (parsed <= 1000) return '1,000 HEAT';
+    if (parsed <= 10000) return '10,000 HEAT';
+    if (parsed <= 100000) return '100,000 HEAT';
+    return '1M HEAT';
   }
 
   int _parseBucketAmount(String bucket) {
@@ -422,6 +449,13 @@ class _UserCdCard extends StatelessWidget {
 
   const _UserCdCard({required this.cd});
 
+  /// 8 HEAT CDs run epoch-to-epoch from their start: at the end of the first
+  /// epoch they unlock but auto-roll over until the user withdraws them.
+  bool get _isAutoRoll {
+    final amount = double.tryParse(cd.amount.replaceAll(',', '')) ?? 0;
+    return amount == 8 && cd.coin == 'HEAT';
+  }
+
   @override
   Widget build(BuildContext context) {
     final matured = cd.matured;
@@ -454,9 +488,19 @@ class _UserCdCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(cd.coin, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                if (_isAutoRoll) ...[
+                  const SizedBox(width: 6),
+                  const Text('AUTO-ROLL',
+                    style: TextStyle(color: AppTheme.accentColor, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                ],
                 const Spacer(),
-                Text(cd.amount, style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontFamily: AppTheme.numberFontFamily)),
+                Flexible(
+                  child: Text(cd.amount,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontFamily: AppTheme.numberFontFamily)),
+                ),
               ],
             ),
             const SizedBox(height: 6),
@@ -464,7 +508,12 @@ class _UserCdCard extends StatelessWidget {
               children: [
                 Text('${cd.interestRate} APY', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
                 const Spacer(),
-                Text('Earned: ${cd.accruedInterest}', style: const TextStyle(color: AppTheme.successColor, fontSize: 11)),
+                Flexible(
+                  child: Text('Earned: ${cd.accruedInterest}',
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: const TextStyle(color: AppTheme.successColor, fontSize: 11)),
+                ),
               ],
             ),
             if (!matured) ...[
@@ -481,22 +530,264 @@ class _UserCdCard extends StatelessWidget {
             ],
             if (matured) ...[
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => context.read<CdCubit>().claimCd(cd.cdId),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.successColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+              if (_isAutoRoll)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => context.read<CdCubit>().claimCd(cd.cdId),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    child: const Text('Withdraw', style: TextStyle(fontSize: 12)),
                   ),
-                  child: const Text('Claim', style: TextStyle(fontSize: 12)),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => context.read<CdCubit>().claimCd(cd.cdId),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.successColor,
+                          side: BorderSide(color: AppTheme.successColor.withOpacity(0.6)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        child: const Text('Claim', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _rollover(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        child: const Text('Rollover', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  /// Manual rollover for fixed-term CDs: reinvest principal + interest into a
+  /// new CD with a selectable term product (6/18/36/72). 8 HEAT CDs auto-roll
+  /// and only offer withdraw.
+  void _rollover(BuildContext context) {
+    final origEpochs = (cd.maturityHeight - cd.depositHeight) ~/ 900;
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        int selectedTerm = [6, 18, 36, 72].contains(origEpochs) ? origEpochs : 6;
+        return StatefulBuilder(
+          builder: (ctx, setState) => AlertDialog(
+            backgroundColor: AppTheme.cardColor,
+            title: const Text('Rollover CD', style: TextStyle(color: AppTheme.textPrimary)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Reinvest ${cd.amount} HEAT (plus ${cd.accruedInterest} interest) into a new term.',
+                  style: const TextStyle(color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                const Text('New term', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [6, 18, 36, 72].map((t) => ChoiceChip(
+                    label: Text('$t epochs'),
+                    selected: selectedTerm == t,
+                    selectedColor: AppTheme.primaryColor,
+                    labelStyle: TextStyle(color: selectedTerm == t ? Colors.white : AppTheme.textPrimary),
+                    backgroundColor: AppTheme.surfaceColor,
+                    onSelected: (_) => setState(() => selectedTerm = t),
+                  )).toList(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  final blocks = selectedTerm * 900;
+                  context.read<CdCubit>().rolloverCd(cdId: cd.cdId, newTerm: blocks);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                child: const Text('Rollover'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Ladder Builder ──
+
+class _LadderRung {
+  double amount;
+  int termEpochs;
+  _LadderRung({required this.amount, required this.termEpochs});
+}
+
+class _LadderBuilderDialog extends StatefulWidget {
+  const _LadderBuilderDialog();
+
+  @override
+  State<_LadderBuilderDialog> createState() => _LadderBuilderDialogState();
+}
+
+class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
+  static const _amountTiers = [8.0, 1000.0, 10000.0, 100000.0, 1000000.0];
+  static const _amountLabels = ['8', '1,000', '10,000', '100,000', '1M'];
+  static const _termOptions = [6, 18, 36, 72];
+
+  final List<_LadderRung> _rungs = [
+    _LadderRung(amount: 10000, termEpochs: 6),
+    _LadderRung(amount: 10000, termEpochs: 18),
+    _LadderRung(amount: 10000, termEpochs: 36),
+    _LadderRung(amount: 10000, termEpochs: 72),
+  ];
+  bool _submitting = false;
+  String? _error;
+
+  double get _total => _rungs.fold(0, (s, r) => s + r.amount);
+
+  Future<void> _createLadder() async {
+    setState(() { _submitting = true; _error = null; });
+    try {
+      final cubit = context.read<CdCubit>();
+      for (final r in _rungs) {
+        final blocks = r.amount == 8.0 ? 900 : r.termEpochs * 900;
+        await cubit.createCd(
+          coin: 'HEAT',
+          amount: r.amount.toStringAsFixed(0),
+          durationBlocks: blocks,
+        );
+      }
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      setState(() { _submitting = false; _error = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppTheme.cardColor,
+      title: const Text('Build CD Ladder', style: TextStyle(color: AppTheme.textPrimary)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Stagger maturities across terms for steady liquidity. Each rung is a separate CD. AI agents can POST the same rung array to cd::create_ladder.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            ..._rungs.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final rung = entry.value;
+              final isAuto = rung.amount == 8.0;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('Rung ${idx + 1}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
+                          onPressed: _rungs.length > 1 ? () => setState(() => _rungs.removeAt(idx)) : null,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: List.generate(_amountTiers.length, (i) => ChoiceChip(
+                        label: Text(_amountLabels[i], style: const TextStyle(fontSize: 11)),
+                        selected: rung.amount == _amountTiers[i],
+                        selectedColor: AppTheme.primaryColor,
+                        labelStyle: TextStyle(color: rung.amount == _amountTiers[i] ? Colors.white : AppTheme.textPrimary),
+                        backgroundColor: AppTheme.backgroundColor,
+                        onSelected: (_) => setState(() => rung.amount = _amountTiers[i]),
+                      )),
+                    ),
+                    const SizedBox(height: 6),
+                    if (isAuto)
+                      const Text('Epoch-to-epoch · AUTO-ROLL', style: TextStyle(color: AppTheme.primaryColor, fontSize: 10, fontWeight: FontWeight.w600))
+                    else
+                      Wrap(
+                        spacing: 6,
+                        children: _termOptions.map((t) => ChoiceChip(
+                          label: Text('$t', style: const TextStyle(fontSize: 11)),
+                          selected: rung.termEpochs == t,
+                          selectedColor: AppTheme.primaryColor,
+                          labelStyle: TextStyle(color: rung.termEpochs == t ? Colors.white : AppTheme.textPrimary),
+                          backgroundColor: AppTheme.backgroundColor,
+                          onSelected: (_) => setState(() => rung.termEpochs = t),
+                        )).toList(),
+                      ),
+                  ],
+                ),
+              );
+            }),
+            TextButton.icon(
+              onPressed: () => setState(() => _rungs.add(_LadderRung(amount: 10000, termEpochs: 6))),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add rung', style: TextStyle(fontSize: 12)),
+            ),
+            const SizedBox(height: 8),
+            Text('Total: ${_total.toStringAsFixed(0)} HEAT across ${_rungs.length} rungs',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 11)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+        ),
+        ElevatedButton(
+          onPressed: _submitting ? null : _createLadder,
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+          child: _submitting
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Text('Create ${_rungs.length} CDs'),
+        ),
+      ],
     );
   }
 }

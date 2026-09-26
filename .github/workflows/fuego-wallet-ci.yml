@@ -30,8 +30,52 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze (warnings are errors; infos reported)
+        run: |
+          flutter analyze --fatal-warnings 2>&1 | tee analyze.log
+          EXIT=${PIPESTATUS[0]}
+          echo "## Analyzer summary" >> $GITHUB_STEP_SUMMARY
+          grep -E "warning -|error -" analyze.log | wc -l | xargs echo "Warnings+Errors:" >> $GITHUB_STEP_SUMMARY || true
+          grep -E "info -" analyze.log | wc -l | xargs echo "Infos:" >> $GITHUB_STEP_SUMMARY || true
+          # Debt: strict-inference warnings exist (see PRODUCTION_AUDIT_REPORT.md). Gate currently on warnings only.
+          # Roadmap: fix inference + cascade/const infos, then enable --fatal-infos.
+          exit $EXIT
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed lib/ test/
+
+      - name: Run tests (with coverage)
+        run: |
+          flutter test --coverage
+          test -f coverage/lcov.info || (echo "coverage/lcov.info missing" && exit 1)
+
+  rust-sdk:
+    name: Rust SDK (tests + binding consistency)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
+          submodules: true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
+
+      - name: Test Rust workspace (walletd, SDK, crypto, vault, FFI)
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml --workspace
+
+      # Every Dart lookup must match a Rust export in arity and C width/signedness,
+      # and #[repr(C)] structs must match their Dart mirrors.
+      - name: Binding consistency
+        run: python3 .claude/skills/fuego-ffi/scripts/check_ffi_bindings.py --strict --unused
+
+      - name: Clippy (report-only)
+        continue-on-error: true
+        run: cargo clippy --manifest-path rust-fuego-wallet/fuego-sdk/fuego-ffi/Cargo.toml
 
   build-macos:
     name: Build macOS

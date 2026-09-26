@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obsidian Reserve — Heatwave — Social Set Mockup</title>
+<style>
+  :root {
+    --obsidian: #0D0B08;
+    --warm-obsidian: #181512;
+    --champagne: #C5A059;
+    --muted-gold: #8C734B;
+    --midnight: #3D5A80;
+    --cream: #F5F1E8;
+    --muted: #8A8278;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    color: var(--cream);
+    font-family: Georgia, 'Times New Roman', serif;
+    padding: 40px 16px 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 48px;
+  }
+  h1 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 500;
+    color: var(--champagne);
+    font-size: 30px;
+    letter-spacing: 0.04em;
+  }
+  .label {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    text-align: center;
+  }
+  .card {
+    background: var(--obsidian);
+    border: 1px solid rgba(197, 160, 89, 0.18);
+    border-radius: 6px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 48px;
+    overflow: hidden;
+  }
+  .card::after {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border: 1px solid rgba(61, 90, 128, 0.5);
+    border-radius: 3px;
+    pointer-events: none;
+  }
+  .card .kicker {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--muted-gold);
+  }
+  .card h2 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 500;
+    color: var(--champagne);
+    line-height: 1.12;
+  }
+  .card .foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .card .house {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--champagne);
+  }
+  .card .status {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .x-card {
+    width: min(960px, 100%);
+    aspect-ratio: 16 / 9;
+    background:
+      linear-gradient(to right, rgba(13, 11, 8, 0.92) 34%, rgba(13, 11, 8, 0.25) 68%),
+      url("img/monaco-dusk.jpg") center 62% / cover no-repeat;
+  }
+  .x-card h2 { font-size: 56px; margin: 18px 0; }
+  .x-card .house { font-size: 20px; }
+  .ig-card {
+    width: min(620px, 100%);
+    aspect-ratio: 1 / 1;
+    background:
+      linear-gradient(to top, rgba(13, 11, 8, 0.94) 30%, rgba(13, 11, 8, 0.30) 62%),
+      url("img/watch-obsidian.jpg") center 40% / cover no-repeat;
+  }
+  .ig-card h2 { font-size: 52px; margin: 18px 0; }
+  .ig-card .house { font-size: 19px; }
+  .yt-card {
+    width: min(960px, 100%);
+    aspect-ratio: 16 / 9;
+    align-items: center;
+    text-align: center;
+    background:
+      linear-gradient(to bottom, rgba(13, 11, 8, 0.86), rgba(13, 11, 8, 0.55)),
+      url("img/monaco-dusk.jpg") center 30% / cover no-repeat;
+  }
+  .yt-card h2 { font-size: 72px; letter-spacing: 0.06em; margin: 16px 0; }
+  .yt-card .foot { width: 100%; }
+  .yt-card .house { font-size: 20px; }
+</style>
+</head>
+<body>
+  <h1>Heatwave &mdash; Social Set</h1>
+
+  <section>
+    <div class="label">X / landscape &middot; 16:9</div>
+    <div class="card x-card">
+      <div>
+        <div class="kicker">Obsidian Reserve &middot; Heatwave</div>
+        <h2>The temperature<br>is changing.</h2>
+      </div>
+      <div class="foot">
+        <div class="house">Obsidian Reserve</div>
+        <div class="status">Unreleased preview</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">Instagram / square &middot; 1:1</div>
+    <div class="card ig-card">
+      <div>
+        <div class="kicker">Obsidian Reserve</div>
+        <h2>The warmth<br>you don't<br>feel.</h2>
+      </div>
+      <div class="foot">
+        <div class="house">Heatwave</div>
+        <div class="status">Unreleased preview</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">YouTube thumbnail &middot; 16:9</div>
+    <div class="card yt-card">
+      <div>
+        <div class="kicker">Code name</div>
+        <h2>HEATWAVE</h2>
+      </div>
+      <div class="foot">
+        <div class="house">Obsidian Reserve</div>
+        <div class="status">Unreleased preview</div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

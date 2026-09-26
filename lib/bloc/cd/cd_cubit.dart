@@ -95,6 +95,15 @@ class CdCubit extends Cubit<CdState> {
     return result;
   }
 
+  Future<CdRolloverResult> rolloverCd({
+    required String cdId,
+    int? newTerm,
+  }) async {
+    final result = await _rpc.cdRollover(cdId: cdId, newTerm: newTerm);
+    await loadAll();
+    return result;
+  }
+
   Future<CdSellResult> sellCd({required String cdId, required String price}) async {
     final result = await _rpc.cdSell(cdId: cdId, price: price);
     await loadAll();

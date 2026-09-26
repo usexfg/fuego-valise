@@ -129,7 +129,10 @@ fn main() {
         // The portable and ARM-without-crypto paths otherwise put the 2 MiB scratchpad
         // on the stack; Dart isolate threads have ~1 MiB. AES-NI/ARM-crypto paths ignore it.
         .define("FORCE_USE_HEAP", None)
-        .flag_if_supported("-std=c11")
+        // slow-hash.c uses mmap MAP_ANONYMOUS / MAP_HUGETLB, which strict
+        // -std=c11 hides on glibc; opt in explicitly (monero does the same).
+        .define("_GNU_SOURCE", None)
+        .flag_if_supported("-std=gnu11")
         .flag_if_supported("-O2");
 
     // Only add -maes on x86_64

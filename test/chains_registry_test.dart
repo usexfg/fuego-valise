@@ -11,17 +11,30 @@ import 'package:fuego/services/web3_multi_chain_service.dart';
 void main() {
   group('ChainRegistry <-> EvmChainKey sync (golden)', () {
     // Test A — every enum entry has a registry entry with a matching chainId.
-    test('every EvmChainKey exists in the generated registry with same chainId', () {
-      expect(EvmChainKey.values.length, 33);
-      expect(kChains.length, EvmChainKey.values.length,
-          reason: 'chains.yaml must cover exactly the EvmChainKey set');
-      for (final v in EvmChainKey.values) {
-        final c = kChainByKey[v.key];
-        expect(c, isNotNull, reason: 'EvmChainKey.${v.name} missing from chains.yaml');
-        expect(c!.chainId, v.chainId,
-            reason: 'chainId drift for "${v.key}" between enum and chains.yaml');
-      }
-    });
+    test(
+      'every EvmChainKey exists in the generated registry with same chainId',
+      () {
+        expect(EvmChainKey.values.length, 33);
+        expect(
+          kChains.length,
+          EvmChainKey.values.length,
+          reason: 'chains.yaml must cover exactly the EvmChainKey set',
+        );
+        for (final v in EvmChainKey.values) {
+          final c = kChainByKey[v.key];
+          expect(
+            c,
+            isNotNull,
+            reason: 'EvmChainKey.${v.name} missing from chains.yaml',
+          );
+          expect(
+            c!.chainId,
+            v.chainId,
+            reason: 'chainId drift for "${v.key}" between enum and chains.yaml',
+          );
+        }
+      },
+    );
 
     test('registry order is deterministic (yaml order) and maps agree', () {
       final keys = kChains.map((c) => c.key).toList();
@@ -40,26 +53,57 @@ void main() {
     test('dart run tool/gen_chains.dart --check exits 0', () async {
       ProcessResult r;
       try {
-        r = await Process.run('dart', ['run', 'tool/gen_chains.dart', '--check']);
+        r = await Process.run('dart', [
+          'run',
+          'tool/gen_chains.dart',
+          '--check',
+        ]);
       } on ProcessException {
         // dart SDK not resolvable in this sandbox — treat as skip.
         return;
       }
-      expect(r.exitCode, 0,
-          reason: 'lib/models/chain_registry.g.dart drifted from chains.yaml\n'
-              'stdout: ${r.stdout}\nstderr: ${r.stderr}');
+      expect(
+        r.exitCode,
+        0,
+        reason:
+            'lib/models/chain_registry.g.dart drifted from chains.yaml\n'
+            'stdout: ${r.stdout}\nstderr: ${r.stderr}',
+      );
     });
 
     // Test C — tier partition: wallet ∪ swap-evm == all yaml keys.
     test('tiers partition the registry; ChainInfo derives from it', () {
-      final swapKeys = kChains.where((c) => c.tier == 'swap').map((c) => c.key).toSet();
+      final swapKeys = kChains
+          .where((c) => c.tier == 'swap')
+          .map((c) => c.key)
+          .toSet();
       final covered = {...kWalletTierKeys, ...swapKeys};
-      expect(covered.containsAll(kChains.map((c) => c.key)), isTrue,
-          reason: 'some yaml key is neither swap- nor wallet-tier');
+      expect(
+        covered.containsAll(kChains.map((c) => c.key)),
+        isTrue,
+        reason: 'some yaml key is neither swap- nor wallet-tier',
+      );
       expect(covered.length, kChains.length);
 
-      // The five EVM swap chains are exactly the EVM members of swapableChains.
-      expect(swapKeys, {'eth', 'arb', 'base', 'bsc', 'poly'});
+      // Every EVM chain backed by one of the daemon's 29 SwapPair entries is
+      // swap-tier; unsupported wallet-only EVM networks remain excluded.
+      expect(swapKeys, {
+        'eth',
+        'arb',
+        'base',
+        'bsc',
+        'poly',
+        'op',
+        'avax',
+        'cro',
+        'monad',
+        'xpl',
+        'pls',
+        'uni',
+        'rh',
+        'bob',
+        'gleec',
+      });
 
       // ChainInfo.walletOnlyChains is derived from kWalletTierKeys.
       expect(
@@ -97,7 +141,10 @@ void main() {
     test('ChainInfo keeps legacy ticker aliases alongside generated keys', () {
       expect(ChainInfo.names['MON'], 'Monad'); // legacy alias
       expect(ChainInfo.names['monad'], 'Monad'); // generated key
-      expect(ChainInfo.names['RHC'], 'Robinhood Chain(ETH)'); // legacy wording kept
+      expect(
+        ChainInfo.names['RHC'],
+        'Robinhood Chain(ETH)',
+      ); // legacy wording kept
       expect(ChainInfo.names['rh'], 'Robinhood Chain');
       expect(ChainInfo.names['BASE'], 'Base(ETH)');
       expect(ChainInfo.colors['SOL'], const Color(0xFF9945FF));
