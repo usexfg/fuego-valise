@@ -33,7 +33,14 @@ diff `hash-ops.h`.
 Check a target with
 `clang --target=<triple> -dM -E -x c /dev/null | grep ARM_FEATURE_CRYPTO`.
 
-## Known defects on the portable path (in fuego-suite, so fuegod has them too)
+## Defects on the portable path (in fuego-suite, so fuegod has them too)
+
+This repo compiles corrected code: `build.rs` applies fixes 1 and 3 to a
+copy in `OUT_DIR` and defines `FORCE_USE_HEAP`, and `fuego_cn_slow_hash`
+rejects the arguments from item 4. The upstream patch for fixes 1 and 3
+is `rust-fuego-wallet/fuego-sdk/fuego-ffi/patches/slow-hash-portable.patch`.
+A fuegod built for ARM without the crypto extension, or with `NO_AES`,
+still computes the wrong PoW until suite takes the patch.
 
 1. **Wrong hash for variant 2 + light.** The SSE2/NEON macros load from
    the swapped offsets and store to the fixed offsets `^0x10`, `^0x20`,
@@ -50,17 +57,17 @@ Check a target with
    stack, so the call overflows. The result is SIGSEGV/SIGBUS, or
    silently stepping over the guard page. `build.rs` should
    `.define("FORCE_USE_HEAP", None)`. The hardware-AES paths ignore it.
-3. **armv7 unaligned load in `VARIANT1_INIT64`.** An eval run reported
-   `ldrd` at `data+35` faulting (SIGBUS) under qemu. The fix is a
-   `memcpy`. Variant 1 only.
+3. **armv7 unaligned load in `VARIANT1_INIT64`.** An `ldrd` at
+   `data+35` faults (SIGBUS) on armv7. The fix is a `memcpy`. Variant 1
+   only.
 4. `_exit(1)` on variant 1 with fewer than 43 bytes, and variant ≥ 3
    silently hashed as variant 2. Validate arguments in the Rust export
    so the app is never killed.
 
-Suite is a submodule, and this repo cannot patch it in place. Fixes 1 and
-3 belong upstream in `fuego-suite/src/crypto/slow-hash.c`. After they
-land, move the pin. Fix 2 and the argument checks from item 4 belong in
-this repo's `build.rs` and `lib.rs`.
+Verified: with the fixes, the unpatched portable output `11a8d02b…` for
+block 1,000,001 becomes `ce75e028…`. That is byte-identical to AES-NI and
+meets the block's difficulty. The tests pass on x86_64, `-DNO_AES`,
+aarch64 without crypto (qemu) and armv7 (qemu).
 
 ## Testing the non-x86 paths without ARM hardware
 
@@ -78,22 +85,19 @@ this repo's `build.rs` and `lib.rs`.
   (`RUST_MIN_STACK=1048576` for test threads) to catch a missing
   `FORCE_USE_HEAP`.
 
-The in-tree tests (`cn_v0_vectors`, `cn_v2_vectors`) cover v0 and v2
-with `light = 0` only. **Nothing tests variant 2 + light**, the actual
-PoW. A known-answer vector for it must come from fuegod's own x86_64
-path, which is consensus. For example, hash a mainnet block's hashing
-blob, then check the result against that block's difficulty. An eval run
-reported that suite's `tests/PowBytes` block 1,000,001 parent blob
-hashes to
-`ce75e0286b8039a0db4f02c026d2a908c0b82da8de0daec1310e6c2387000000`.
-Re-derive it before pinning it in a test.
+The in-tree tests are:
+- `cn_v0_vectors` and `cn_v2_vectors` (canonical vectors)
+- `fuego_pow_meets_mainnet_difficulty` (variant 2 + light on mainnet
+  block 1,000,001's parent blob, checked against the block's difficulty
+  31,300,056 and pinned to `ce75e028…87000000`)
+- argument rejection, stratum target semantics, and agreement between
+  `mine_share` and `cn_slow_hash`
 
 ## Share checking in `fuego_mine_share`
 
-Stratum sends a 4-byte little-endian target `t`. A share is valid when
-the hash, read as a little-endian 256-bit number, satisfies
-`hash_u64_at_offset_24 < u64::MAX / (u32::MAX / t)`. That is xmrig's
-check on the **last** 8 bytes. `fuego_mine_share` compares the **first**
-4 bytes against `t`, so the pool rejects the shares it reports and misses
-real ones. Fixing this changes the function's semantics, so add a test
-with a known share when you do.
+`fuego_mine_share(blob, blob_len, target, target_len, …)` takes the
+stratum target as sent: 4 or 8 bytes, little-endian. It checks shares the
+way pools (xmrig) do. The u64 at hash offset 24 must be below
+`u64::MAX / (u32::MAX / t)` for a 4-byte `t`, or below the 8-byte value
+directly. It returns 0 when found, -1 when nothing in range qualifies,
+and -2 on bad arguments.

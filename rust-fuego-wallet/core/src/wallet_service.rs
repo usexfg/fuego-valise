@@ -96,6 +96,28 @@ pub struct SyncEngine {
 
 const KEY_HEIGHT: &[u8] = b"height";
 const KEY_TOP_HASH: &[u8] = b"top_hash";
+/// Which address received each owned output: Vec<([u8; 32], OutputOwner)>.
+const KEY_OWNERS: &[u8] = b"owners";
+/// Number of suite-scheme sub-addresses handed out (u32).
+const KEY_SUBADDRESS_COUNT: &[u8] = b"subaddress_count";
+/// Pre-suite-scheme sub-address indices to scan and sweep (Vec<u32>).
+const KEY_LEGACY_SUBADDRESSES: &[u8] = b"legacy_subaddresses";
+/// Set when the next sync must start over from genesis.
+const KEY_RESCAN: &[u8] = b"rescan_requested";
+/// Version of the scan rules the stored state was built with (u32).
+const KEY_SCAN_VERSION: &[u8] = b"scan_version";
+/// 2: vault secrets are reduced mod l (before, sc_check rejected most view keys,
+/// so most wallets found no outputs) and sub-address outputs are detected.
+/// State scanned under older rules is rebuilt once from genesis.
+const SCAN_VERSION: u32 = 2;
+
+fn db_get<T: serde::de::DeserializeOwned>(db: &sled::Db, key: &[u8]) -> Option<T> {
+    db.get(key).ok().flatten().and_then(|b| bincode::deserialize::<T>(&b).ok())
+}
+
+fn db_put<T: serde::Serialize>(db: &sled::Db, key: &[u8], value: &T) {
+    let _ = bincode::serialize(value).ok().and_then(|b| db.insert(key, b).ok());
+}
 
 fn meta_tree(db: &sled::Db) -> sled::Tree {
     db.open_tree("meta").expect("open meta tree")
@@ -116,6 +138,13 @@ impl WalletService {
             afk_secrets: Arc::new(Mutex::new(HashMap::new())),
         };
         service.sync_engine().load_state();
+        if db_get::<u32>(&service.db, KEY_SCAN_VERSION) != Some(SCAN_VERSION) {
+            if service.wallet.lock().unwrap().height() > 0 {
+                let _ = service.db.insert(KEY_RESCAN, &[1u8][..]);
+            }
+            db_put(&service.db, KEY_SCAN_VERSION, &SCAN_VERSION);
+            let _ = service.db.flush();
+        }
         Ok(service)
     }
 
@@ -174,10 +203,19 @@ impl SyncEngine {
                         .flatten()
                         .and_then(|b| bincode::deserialize::<Vec<fuego_sdk::scanner::HistoryEntry>>(&b).ok())
                         .unwrap_or_default(),
+                    owners: db_get(db, KEY_OWNERS).unwrap_or_default(),
                 };
                 wallet.restore_state(&snapshot);
             }
         }
+
+        // Sub-addresses handed out so far, and legacy ones still to scan.
+        let count: u32 = db_get(db, KEY_SUBADDRESS_COUNT).unwrap_or(0);
+        if count > 0 {
+            wallet.subaddress(count);
+        }
+        let legacy: Vec<u32> = db_get(db, KEY_LEGACY_SUBADDRESSES).unwrap_or_default();
+        wallet.set_legacy_subaddresses(&legacy);
 
         // Re-reserve pending sends (persist-before-broadcast: never release
         // these automatically).
@@ -201,6 +239,7 @@ impl SyncEngine {
         let _ = bincode::serialize(&snapshot.commitments).ok().and_then(|b| db.insert(b"commitments", b).ok());
         let _ = bincode::serialize(&snapshot.spent_images).ok().and_then(|b| db.insert(b"spent", b).ok());
         let _ = bincode::serialize(&snapshot.history).ok().and_then(|b| db.insert(b"history", b).ok());
+        db_put(db, KEY_OWNERS, &snapshot.owners);
         if let Ok(Some(bytes)) = db.get(KEY_TOP_HASH) {
             let _ = db.flush();
             let _ = bytes;
@@ -239,6 +278,9 @@ impl SyncEngine {
     /// One incremental sync round over /queryblockslite.bin. Returns the
     /// number of blocks scanned.
     pub async fn sync_once(&self) -> std::result::Result<u64, String> {
+        if matches!(self.db.get(KEY_RESCAN), Ok(Some(_))) {
+            self.start_rescan();
+        }
         let info = self.daemon.get_info().await?;
         let our_height = self.wallet.lock().unwrap().height();
 
@@ -331,6 +373,23 @@ impl SyncEngine {
         }
     }
 
+    /// Drop scanned state so the next round starts from genesis (run only on the
+    /// sync task, so no batch in flight re-advances the height afterwards).
+    /// Pending sends stay reserved.
+    fn start_rescan(&self) {
+        {
+            let wallet = self.wallet.lock().unwrap();
+            wallet.reset_scan_state();
+            let images: Vec<[u8; 32]> =
+                self.pending().iter().flat_map(|p| p.key_images.clone()).collect();
+            wallet.reserve_pending(&images);
+        }
+        let _ = self.db.remove(KEY_TOP_HASH);
+        let _ = self.db.remove(KEY_RESCAN);
+        self.persist_state();
+        log::info!("rescanning from genesis");
+    }
+
     /// Remove pending entries whose transaction is now in a scanned block.
     fn confirm_pending(&self, prefixes: &[fuego_sdk::serialization::TxPrefixInfo]) {
         let mut pending = self.pending();
@@ -404,7 +463,30 @@ impl WalletService {
                 .map_err(|e| format!("coin selection: {e}"))?
         };
 
-        // Fetch decoys per input amount.
+        let decoys = self.fetch_decoys(&selected, mixin).await?;
+
+        let dests: Vec<(fuego_sdk::Address, u64)> = destinations
+            .iter()
+            .map(|(addr, amount)| (fuego_sdk::Address(addr.clone()), *amount))
+            .collect();
+
+        let built = {
+            let wallet = self.wallet.lock().unwrap();
+            wallet
+                .build_with_selection(&selected, &dests, fee, mixin, &decoys, &mut rand::thread_rng())
+                .map_err(|e| format!("build: {e}"))?
+        };
+
+        let key_images: Vec<[u8; 32]> = selected.iter().map(|u| u.key_image).collect();
+        self.broadcast_built(built, key_images).await
+    }
+
+    /// Fetch `mixin` decoys for each selected input, excluding the real output.
+    async fn fetch_decoys(
+        &self,
+        selected: &[fuego_sdk::scanner::UtxoEntry],
+        mixin: usize,
+    ) -> std::result::Result<Vec<Vec<DecoyEntry>>, String> {
         let amounts: Vec<u64> = selected.iter().map(|u| u.amount).collect();
         let groups = self.daemon.get_random_outs(&amounts, (mixin + 1) as u64).await?;
 
@@ -438,20 +520,100 @@ impl WalletService {
             decoys.push(entries);
         }
 
-        let dests: Vec<(fuego_sdk::Address, u64)> = destinations
-            .iter()
-            .map(|(addr, amount)| (fuego_sdk::Address(addr.clone()), *amount))
-            .collect();
+        Ok(decoys)
+    }
 
+    // ------------------------------------------------------------ sub-addresses
+
+    fn address_prefix(&self) -> u64 {
+        if self.testnet {
+            fuego_crypto::TESTNET_ADDRESS_BASE58_PREFIX
+        } else {
+            fuego_crypto::ADDRESS_BASE58_PREFIX
+        }
+    }
+
+    /// Suite-scheme sub-address `minor` (>= 1) as a string for this network.
+    fn subaddress_string(&self, minor: u32) -> Option<String> {
+        let (spend, view) = self.wallet.lock().unwrap().subaddress(minor)?;
+        Some(fuego_crypto::make_address_with_prefix(&spend, &view, self.address_prefix()).0)
+    }
+
+    /// Hand out the next sub-address. Returns (index, address).
+    pub fn create_subaddress(&self) -> std::result::Result<(u32, String), String> {
+        let next = db_get::<u32>(&self.db, KEY_SUBADDRESS_COUNT).unwrap_or(0) + 1;
+        let address = self.subaddress_string(next).ok_or("sub-address derivation failed")?;
+        db_put(&self.db, KEY_SUBADDRESS_COUNT, &next);
+        let _ = self.db.flush();
+        Ok((next, address))
+    }
+
+    /// Every handed-out sub-address with its unspent balance, then legacy
+    /// sub-addresses with the balance still waiting to be swept.
+    pub fn list_subaddresses(&self) -> (Vec<(u32, String, u64)>, Vec<(u32, u64)>) {
+        use fuego_sdk::scanner::OutputOwner;
+        let count: u32 = db_get(&self.db, KEY_SUBADDRESS_COUNT).unwrap_or(0);
+        let (balances, legacy) = {
+            let wallet = self.wallet.lock().unwrap();
+            (wallet.balance_by_owner(), wallet.legacy_subaddresses())
+        };
+        let subs = (1..=count)
+            .filter_map(|n| {
+                let addr = self.subaddress_string(n)?;
+                Some((n, addr, *balances.get(&OutputOwner::Subaddress(n)).unwrap_or(&0)))
+            })
+            .collect();
+        let legacy = legacy
+            .into_iter()
+            .map(|n| (n, *balances.get(&OutputOwner::LegacySubaddress(n)).unwrap_or(&0)))
+            .collect();
+        (subs, legacy)
+    }
+
+    /// Start scanning pre-suite-scheme sub-addresses (vault keys n, n + 1).
+    /// New indices trigger one rescan from genesis, since their outputs may
+    /// already be on chain. Returns true when a rescan was scheduled.
+    pub fn register_legacy_subaddresses(&self, indices: &[u32]) -> bool {
+        let grew = self.wallet.lock().unwrap().set_legacy_subaddresses(indices);
+        if grew {
+            let all = self.wallet.lock().unwrap().legacy_subaddresses();
+            db_put(&self.db, KEY_LEGACY_SUBADDRESSES, &all);
+            let _ = self.db.insert(KEY_RESCAN, &[1u8][..]);
+            let _ = self.db.flush();
+        }
+        grew
+    }
+
+    /// Move every confirmed output on legacy sub-addresses to the primary
+    /// address. Legacy sub-address 1's spend key equals the primary view key,
+    /// so anything left there is spendable by whoever holds the view key.
+    pub async fn sweep_legacy_subaddresses(&self) -> std::result::Result<Option<String>, String> {
+        let selected: Vec<_> = self
+            .wallet
+            .lock()
+            .unwrap()
+            .legacy_utxos()
+            .into_iter()
+            .filter(|u| u.global_index != 0)
+            .collect();
+        if selected.is_empty() {
+            return Ok(None);
+        }
+        let total: u64 = selected.iter().map(|u| u.amount).sum();
+        let fee = MINIMUM_FEE;
+        if total <= fee {
+            return Err(format!("legacy balance {total} does not cover the fee {fee}"));
+        }
+        let decoys = self.fetch_decoys(&selected, DEFAULT_MIXIN).await?;
+        let own = fuego_sdk::Address(self.primary_address_string());
         let built = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .build_with_selection(&selected, &dests, fee, mixin, &decoys, &mut rand::thread_rng())
+                .build_with_selection(&selected, &[(own, total - fee)], fee, DEFAULT_MIXIN, &decoys, &mut rand::thread_rng())
                 .map_err(|e| format!("build: {e}"))?
         };
-
         let key_images: Vec<[u8; 32]> = selected.iter().map(|u| u.key_image).collect();
-        self.broadcast_built(built, key_images).await
+        self.broadcast_built(built, key_images).await.map(Some)
     }
 
     /// Persist-before-broadcast + reserve + submit, shared by all send paths.
@@ -1736,5 +1898,80 @@ mod tests {
         assert_ne!(lock_sha, h_point_sha);
         assert_ne!(lock_keccak, h_point_keccak);
         assert_ne!(lock_sha, lock_keccak);
+    }
+}
+
+#[cfg(test)]
+mod subaddress_service_tests {
+    use super::*;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "fuego-walletd-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn subaddresses_follow_suite_scheme_and_persist() {
+        let dir = temp_dir("sub");
+        let seed = [0x42u8; 32];
+        {
+            let svc = WalletService::new(seed, "http://127.0.0.1:1", dir.clone(), false).unwrap();
+            let (i1, a1) = svc.create_subaddress().unwrap();
+            let (i2, _) = svc.create_subaddress().unwrap();
+            assert_eq!((i1, i2), (1, 2));
+
+            let keys = svc.wallet.lock().unwrap().wallet_keys();
+            let (spend, view) = fuego_crypto::parse_address(&a1).unwrap();
+            let expect = fuego_crypto::derive_subaddress_keys(&keys.view_secret, &keys.spend_public, None, 0, 1).unwrap();
+            assert_eq!(spend, expect.spend_public);
+            assert_eq!(view, keys.view_public);
+        }
+        // Restart: the count survives, so indices keep increasing.
+        let svc = WalletService::new(seed, "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        assert_eq!(svc.create_subaddress().unwrap().0, 3);
+        let (subs, legacy) = svc.list_subaddresses();
+        assert_eq!(subs.iter().map(|s| s.0).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert!(legacy.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn legacy_registration_schedules_one_rescan() {
+        let dir = temp_dir("legacy");
+        let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        assert!(!matches!(svc.db.get(KEY_RESCAN), Ok(Some(_))), "fresh wallet: nothing to rescan");
+        assert!(svc.register_legacy_subaddresses(&[1, 2]));
+        assert!(matches!(svc.db.get(KEY_RESCAN), Ok(Some(_))));
+        let _ = svc.db.remove(KEY_RESCAN);
+        assert!(!svc.register_legacy_subaddresses(&[2, 1]), "already known");
+        assert!(!matches!(svc.db.get(KEY_RESCAN), Ok(Some(_))));
+        drop(svc);
+        // Legacy indices survive a restart.
+        let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        assert_eq!(svc.list_subaddresses().1.iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn state_from_older_scan_rules_is_rescanned() {
+        let dir = temp_dir("upgrade");
+        {
+            let svc = WalletService::new([9u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+            // Simulate state written by an older walletd: scanned height, no version.
+            svc.wallet.lock().unwrap().set_height(1234);
+            svc.sync_engine().persist_state();
+            let _ = svc.db.remove(KEY_SCAN_VERSION);
+            let _ = svc.db.flush();
+        }
+        let svc = WalletService::new([9u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        assert!(matches!(svc.db.get(KEY_RESCAN), Ok(Some(_))));
+        svc.sync_engine().start_rescan();
+        assert_eq!(svc.wallet.lock().unwrap().height(), 0);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

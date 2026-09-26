@@ -31,6 +31,9 @@ class WalletState extends Equatable {
   final int scannedHeight;
   final List<Subaddress> subaddresses;
 
+  /// Unspent funds on old-scheme sub-addresses, waiting to be swept.
+  final int legacySubaddressBalance;
+
   const WalletState({
     this.isLoading = false,
     this.isConnected = false,
@@ -50,6 +53,7 @@ class WalletState extends Equatable {
     this.peerCount = 0,
     this.scannedHeight = 0,
     this.subaddresses = const [],
+    this.legacySubaddressBalance = 0,
   });
 
   WalletState copyWith({
@@ -72,6 +76,7 @@ class WalletState extends Equatable {
     int? peerCount,
     int? scannedHeight,
     List<Subaddress>? subaddresses,
+    int? legacySubaddressBalance,
   }) => WalletState(
     isLoading: isLoading ?? this.isLoading,
     isConnected: isConnected ?? this.isConnected,
@@ -91,6 +96,7 @@ class WalletState extends Equatable {
     peerCount: peerCount ?? this.peerCount,
     scannedHeight: scannedHeight ?? this.scannedHeight,
     subaddresses: subaddresses ?? this.subaddresses,
+    legacySubaddressBalance: legacySubaddressBalance ?? this.legacySubaddressBalance,
   );
 
   double get balanceXfg => balance / atomicPerCoin;
@@ -120,6 +126,7 @@ class WalletState extends Equatable {
     peerCount,
     scannedHeight,
     subaddresses,
+    legacySubaddressBalance,
   ];
 }
 
@@ -287,6 +294,8 @@ class WalletCubit extends Cubit<WalletState> {
           txs = await _daemon.getTransactions(count: 50);
         } catch (_) {}
 
+        await _syncSubaddresses();
+
         // Fetch ΗΞΔŦ balance
         int unlockedHeat = 0;
         int lockedHeat = 0;
@@ -359,30 +368,52 @@ class WalletCubit extends Cubit<WalletState> {
     }
   }
 
+  /// Sub-addresses come from fuego_walletd, which derives them with fuego-suite's
+  /// scheme and scans them with the wallet's one view key. Old-scheme entries
+  /// are registered once so walletd finds (and can sweep) funds sent to them.
   Future<Subaddress?> createSubaddress(String label) async {
-    if (_vault == null || !_vault!.isUnlocked || _vault!.vaultBytes == null) {
-      return null;
-    }
     try {
-      final index = _subaddressStore.nextIndex;
-      final address = _vault!.ffi.vaultGetAddress(_vault!.vaultBytes!, index);
-      if (address.isEmpty) return null;
-      final sub = await _subaddressStore.add(address: address, label: label);
+      final (index, address) = await _daemon.createSubaddress();
+      final sub = await _subaddressStore.add(index: index, address: address, label: label);
       emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
       return sub;
     } catch (e) {
-      _log('[wallet] createSubaddress failed');
+      _log('[wallet] createSubaddress failed: $e');
       return null;
     }
   }
 
-  Future<void> removeSubaddress(int index) async {
-    await _subaddressStore.remove(index);
+  Future<void> _syncSubaddresses() async {
+    try {
+      final legacy = _subaddressStore.legacy;
+      if (legacy.isNotEmpty && !_subaddressStore.legacyRegistered) {
+        await _daemon.registerLegacySubaddresses(legacy.map((s) => s.index).toList());
+        await _subaddressStore.markLegacyRegistered();
+      }
+      final r = await _daemon.getSubaddresses();
+      final legacyBalance = (r['legacy'] as List<dynamic>? ?? const [])
+          .fold<int>(0, (sum, e) => sum + ((e as Map<String, dynamic>)['balance'] as int? ?? 0));
+      emit(state.copyWith(legacySubaddressBalance: legacyBalance));
+    } catch (e) {
+      _log('[wallet] sub-address sync failed: $e');
+    }
+  }
+
+  /// Moves funds on old-scheme sub-addresses to the main address. Returns the
+  /// transaction hash, or null when nothing was confirmed there yet.
+  Future<String?> sweepLegacySubaddresses() async {
+    final tx = await _daemon.sweepLegacySubaddresses();
+    await refreshWallet();
+    return tx;
+  }
+
+  Future<void> removeSubaddress(Subaddress sub) async {
+    await _subaddressStore.remove(sub.index, legacy: sub.legacy);
     emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
   }
 
-  Future<void> updateSubaddressLabel(int index, String label) async {
-    await _subaddressStore.updateLabel(index, label);
+  Future<void> updateSubaddressLabel(Subaddress sub, String label) async {
+    await _subaddressStore.updateLabel(sub.index, label, legacy: sub.legacy);
     emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
   }
 

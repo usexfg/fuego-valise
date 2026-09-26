@@ -97,18 +97,24 @@ Struct fields follow the same rule: `FuegoBytes.len` is `@Size()`.
   on JSON you built yourself is the one accepted `unwrap`.
 - **Fixed-size inputs.** Keys, hashes and seeds are exactly 32 bytes and
   signatures 64. Rust reads that many bytes from the pointer, so the Dart
-  side must `assert` the length before allocating.
+  side checks with `_requireLengths` before allocating. Don't use
+  `assert`: it is stripped from release builds, and the native read then
+  goes out of bounds.
 - **Memory ownership.** Rust frees only what Rust allocated, and Dart
   frees only what Dart allocated (`calloc`/`toNativeUtf8` →
   `calloc.free`). Every `Pointer<Utf8>` result goes through `_freeString`,
   and every `FuegoBytes` through `_bytesToList`, which copies, then frees.
   Read a returned string with `toDartString()` before freeing it.
 - **Secrets.** Secret keys, seeds and vault bytes pass through native
-  memory. Before `calloc.free`, zero Dart-allocated buffers holding
-  secrets (`ptr.asTypedList(n).fillRange(0, n, 0)`). New Rust code
-  returning secrets should zero its copies too. The `zeroize` crate is not
-  yet a dependency, so adding it is a deliberate choice, not a silent one.
-  Existing code does neither; do not copy that gap into new functions.
+  memory. Free Dart-allocated secret buffers with `_freeSecret(ptr, n)`,
+  which wipes then frees. `fuego_string_free` and `fuego_bytes_free` wipe
+  what Rust returns. A seed returned as a Dart `String` cannot be wiped,
+  so prefer bytes for new secret-returning calls.
+- **Scalars are reduced.** `Keypair::from_secret` stores the secret mod l.
+  CryptoNote routines (`generate_key_derivation`, `derive_secret_key`)
+  reject unreduced scalars through `sc_check`. When the vault still kept
+  the raw hash, about 15 of 16 wallets could never find or spend their
+  outputs.
 
 ## Adding a function
 
@@ -142,21 +148,33 @@ Run what applies. Say plainly which gates you could not run and why.
 | Symbols in the built library | Linux: `nm -D --defined-only rust-fuego-wallet/target/release/libfuego_ffi.so \| grep fuego_`. macOS: `nm -gU …/libfuego_ffi.dylib`. iOS app: `nm -gU build/ios/iphoneos/Runner.app/Runner \| grep _fuego_` |
 | Wire format vs fuegod | `FUEGOD_RPC_URL=http://127.0.0.1:28180 cargo test -p fuego-sdk --test fuegod_wire -- --ignored` against `fuegod --testnet` (CI job `fuegod-wire-check`) |
 
-CI coverage: `fuego-wallet-ci.yml` runs `cargo test -p fuego-ffi`.
-`fuego-wallet-mobile-ci.yml` builds Android (cargo-ndk, four ABIs) and iOS,
-then checks `_fuego_(mine_share|vault_from_seed|make_address)` in Runner.
-`ios-release.yml` and `appstore-release.yml` build the iOS staticlib and
-check symbols after archive. **No workflow builds `fuego_ffi.dll` for
-Windows**, so Windows FFI is unverified.
+CI coverage:
+- `fuego-wallet-ci.yml` runs `cargo test -p fuego-ffi` on x86_64. Its job
+  `ffi-cryptonight-paths` repeats the tests on the portable path
+  (`-DNO_AES`) and on aarch64 and armv7 under qemu, and checks Fuego's
+  PoW against mainnet block 1,000,001.
+- Android natives come from `.github/actions/build-android-natives`, used
+  by mobile CI, the Play Store workflow and F-Droid. It builds four ABIs
+  with 16 KB page alignment and checks alignment and exports.
+- iOS: `scripts/check-ios-ffi-symbols.sh` checks a Runner binary, an
+  xcarchive or an IPA. Mobile CI and both release workflows run it,
+  including after IPA export.
+- **No workflow builds `fuego_ffi.dll` for Windows**, so Windows FFI is
+  unimplemented.
 
 ## CryptoNight is not platform-neutral
 
 The C in `slow-hash.c` compiles a different implementation per target
-(AES-NI, ARM crypto, portable). The portable one gives a **different
-Fuego PoW hash** and puts a 2 MiB scratchpad on the stack, and it is what
-every Android ABI builds. The x86_64 tests cannot see either problem.
-Read `references/cryptonight.md` before any mining or hashing work, and
-test the portable path with `CFLAGS=-DNO_AES cargo test -p fuego-ffi`.
+(AES-NI, ARM crypto, portable), and every Android ABI builds the portable
+one. Upstream, that path computes a **different Fuego PoW hash**.
+`build.rs` corrects the compiled copy: it applies exact-text fixes
+(`SLOW_HASH_FIXES`) to `OUT_DIR/slow-hash.c` and defines
+`FORCE_USE_HEAP`. The same fixes are in
+`fuego-ffi/patches/slow-hash-portable.patch` for upstreaming. Once suite
+carries them, `build.rs` skips them. If suite changes the text some other
+way, the build stops so someone reviews it. Read
+`references/cryptonight.md` before any mining or hashing work, and test
+the portable path with `CFLAGS=-DNO_AES cargo test -p fuego-ffi`.
 
 ## Submodule bumps
 
@@ -171,40 +189,51 @@ wallet's mining hash with no Rust diff. On such a PR:
   still selects variant 2 + light. `fuego_mine_share` hardcodes that
   selection.
 - Run `cargo test -p fuego-ffi`, then run it again with `CFLAGS=-DNO_AES`
-  (portable path). The CN v0/v2 known-answer vectors are the guard. They
-  do not cover variant 2 + light, so also compare that hash between the
-  old and new pins. If a vector fails, the suite changed consensus-relevant hashing.
-  Stop and report; never update the expected hex to make it pass.
+  (portable path). The guards are the CN v0/v2 known-answer vectors and
+  `fuego_pow_meets_mainnet_difficulty`, which is variant 2 + light on a
+  real mainnet block checked against its difficulty. If one fails, suite
+  changed consensus-relevant hashing. Stop and report; never update the
+  expected hex to make it pass.
+- A panic in `build.rs` naming a `SLOW_HASH_FIXES` entry means suite
+  edited the code the fix targets. If suite now carries the fix, the
+  build skips it by itself. Otherwise re-derive the fix against the new
+  source.
 - If suite adds or renames a `.c` file the hash depends on, update the
   `cn_sources` list in `build.rs`. A link error naming a missing symbol
   such as `blake256_hash` or `groestl` is the usual sign.
 
-## Known debt (as of this skill's writing)
+## Sub-addresses
 
-`check_ffi_bindings.py` reports these. They are real, not checker noise.
-Fix them when you are asked to, or when you touch the function anyway, and
-say so.
-- Ten `usize` parameters are bound as `Int32`: the `len`/`*_len`
-  arguments of `bytes_free`, `cn_fast_hash`, `base58_encode`, `sign`,
-  `verify`, the four `vault_*` calls and `mine_share`.
-- `u32`/`u64` parameters are bound as signed `Int32`/`Int64`. This is
-  harmless at the bit level, but the checker flags it under `--strict`.
-- `fuego_cn_slow_hash` and `fuego_mine_share` are safe `extern "C" fn`s
-  that dereference raw pointers without null checks.
-- Secret buffers are freed without zeroing, and `vaultGetSeed` returns
-  the seed as an immutable Dart `String`.
-- CryptoNight portable-path defects (wrong v2-light hash, stack
-  scratchpad, armv7 alignment) and `fuego_mine_share` comparing the
-  wrong hash bytes against the pool target. See `references/cryptonight.md`.
-- `Vault::get_address(n)` uses keys `n` (spend) and `n+1` (view). The
-  Dart subaddress store starts at `n = 1`
-  (`lib/models/subaddress.dart`, `WalletCubit.createSubaddress`), so
-  subaddress 1's spend secret is the main wallet's view secret. Anyone
-  holding the view key can spend from it, and the main-key scan cannot
-  see funds sent to it. The vault already has a non-overlapping
-  `100 + 2n` scheme (`get_subaddress_spend_index`) that Dart does not
-  use.
-- `fuego_make_address` always uses the mainnet prefix. No FFI call
-  takes the network.
+Sub-addresses follow fuego-suite's scheme (`crypto/subaddress.cpp`, ported
+as `fuego_crypto::derive_subaddress_keys`):
+- The spend key is `D = B + H_s("Sublime" || a || major || minor)·G`.
+- The view key is the master `A`.
+- The prefix is the same as the primary address, so senders need no
+  support for them.
+
+`fuego_walletd` hands them out (`create_subaddress`, major 0, minor from
+1). It finds outputs with one master derivation per transaction plus a
+spend-key table that looks 50 sub-addresses ahead. Every sub-address
+carries `A`, so they are linkable to each other. The UI copy says so.
+
+Earlier "sub-addresses" were vault keypairs `n` (spend) and `n+1` (view),
+starting at n = 1. As a result, sub-address 1's spend key is the main view
+key. Dart marks those entries `legacy`, and walletd scans them after
+`register_legacy_subaddresses` (one rescan from genesis).
+`sweep_legacy_subaddresses` moves their funds to the primary address.
+Never hand one out again.
+
+## Known debt
+
+- `fuego_make_address` always uses the mainnet prefix. No FFI call takes
+  the network.
+- No export uses `catch_unwind`. A panic in deeper Rust (bincode, serde)
+  aborts the app.
+- `Keypair::sign` / `fuego_sign` / `fuego_verify` use ed25519-dalek on the
+  raw secret. Their public key is not the CryptoNote public key the
+  wallet uses, so `fuego_verify` cannot verify against wallet keys.
+  Nothing in Dart calls them today.
+- `vaultGetSeed` returns the seed as a Dart `String`, which cannot be
+  wiped.
 - 13 exports have no Dart caller (`--unused` lists them). They are not
   dead: they are future API for swaps. Delete one only when asked.

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
+import '../../core/constants.dart';
 import '../../models/subaddress.dart';
 import '../../utils/theme.dart';
 
@@ -317,9 +318,9 @@ class _ReceiveScreenState extends State<ReceiveScreen>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'For maximum privacy, use a new subaddress for each payment. '
-              'Sending always uses your master address — recipients cannot link '
-              'subaddresses back to you or to each other.',
+              'Use a new subaddress per payer to tell payments apart. Every '
+              'subaddress carries this wallet\'s view key, so anyone who sees two '
+              'of them can tell they belong to the same wallet.',
               style: TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 13,
@@ -335,7 +336,8 @@ class _ReceiveScreenState extends State<ReceiveScreen>
   Widget _buildSubaddressSection() {
     return BlocBuilder<WalletCubit, WalletState>(
       builder: (context, state) {
-        final subaddresses = state.subaddresses;
+        final subaddresses = state.subaddresses.where((s) => !s.legacy).toList();
+        final legacy = state.subaddresses.where((s) => s.legacy).toList();
 
         return Container(
           width: double.infinity,
@@ -358,7 +360,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                'Each subaddress can only be used once for best privacy.',
+                'Payments to any subaddress arrive in this wallet\'s balance.',
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -400,6 +402,12 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                 )
               else
                 ...subaddresses.map((sub) => _buildSubaddressTile(sub)),
+              if (legacy.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildLegacyNotice(state.legacySubaddressBalance),
+                const SizedBox(height: 8),
+                ...legacy.map((sub) => _buildSubaddressTile(sub)),
+              ],
             ],
           ),
         );
@@ -407,11 +415,66 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     );
   }
 
+  Widget _buildLegacyNotice(int balance) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.errorColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Old-format subaddresses — stop sharing these',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'They were created with keys that overlap your main keys: funds on the '
+            'first one can be spent by anyone holding your view key. The wallet now '
+            'scans them and can move what is there to your main address.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+          ),
+          if (balance > 0) ...[
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: _sweepLegacy,
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+              child: Text('Move ${(balance / atomicPerCoin).toStringAsFixed(7)} XFG to main address'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sweepLegacy() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final tx = await context.read<WalletCubit>().sweepLegacySubaddresses();
+      messenger.showSnackBar(SnackBar(
+        content: Text(tx == null
+            ? 'Nothing confirmed on old subaddresses yet'
+            : 'Moved to main address (tx ${tx.substring(0, 12)}…)'),
+        backgroundColor: tx == null ? AppTheme.warningColor : AppTheme.successColor,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not move funds: $e'),
+        backgroundColor: AppTheme.errorColor,
+      ));
+    }
+  }
+
   Widget _buildSubaddressTile(Subaddress sub) {
     final isSelected = _selectedAddress == sub.address;
 
     return GestureDetector(
-      onTap: () => _selectAddress(sub.address),
+      // Old-format addresses must not be handed out again.
+      onTap: sub.legacy ? null : () => _selectAddress(sub.address),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(10),
@@ -439,6 +502,20 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                         ),
                       ),
+                      if (sub.legacy) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppTheme.errorColor.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: const Text(
+                            'OLD FORMAT',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.errorColor),
+                          ),
+                        ),
+                      ],
                       if (isSelected) ...[
                         const SizedBox(width: 6),
                         Container(
@@ -467,14 +544,16 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                 ],
               ),
             ),
+            if (!sub.legacy)
+              IconButton(
+                onPressed: () => _copyToClipboard(sub.address, 'Subaddress'),
+                icon: const Icon(Icons.copy, size: 16),
+                tooltip: 'Copy',
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
             IconButton(
-              onPressed: () => _copyToClipboard(sub.address, 'Subaddress'),
-              icon: const Icon(Icons.copy, size: 16),
-              tooltip: 'Copy',
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-            IconButton(
-              onPressed: () => _showDeleteDialog(sub),
+              // Legacy entries are the only record of which old keys to scan.
+              onPressed: sub.legacy ? null : () => _showDeleteDialog(sub),
               icon: const Icon(Icons.delete_outline, size: 16, color: AppTheme.errorColor),
               tooltip: 'Delete',
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -503,7 +582,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              context.read<WalletCubit>().removeSubaddress(sub.index);
+              context.read<WalletCubit>().removeSubaddress(sub);
               if (_selectedAddress == sub.address) {
                 _selectMasterAddress();
               }

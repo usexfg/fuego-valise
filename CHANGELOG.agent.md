@@ -1,5 +1,31 @@
 # CHANGELOG.agent.md
 
+## [2026-09-26] Fuego PoW on Android, FFI ABI, sub-addresses, key and address fixes (user: "fix 1-7 all"; sub-address design: suite scheme)
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 58 | `build.rs` compiles suite `slow-hash.c` from `OUT_DIR` with exact-text fixes: the `VARIANT2_PORTABLE_SHUFFLE_ADD` light-mode store offsets (wrong CN-UPX/2 on every Android ABI) and the `VARIANT1_INIT64` unaligned load (armv7 SIGBUS). It also defines `FORCE_USE_HEAP` (the 2 MiB stack scratchpad overflowed ~1 MiB isolate stacks). Upstream patch: `fuego-ffi/patches/slow-hash-portable.patch` | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 59 | `fuego_cn_slow_hash`: `unsafe`, null/variant/length checks (the C code `_exit(1)`s on short v1 input). `fuego_mine_share`: xmrig share rule (u64 at hash[24..32] vs expanded 4-/8-byte stratum target; it compared hash[0..4]), `target_len` parameter, null checks, -2 on bad arguments | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 60 | Tests: mainnet block 1,000,001 PoW meets its difficulty (pinned `ce75e028…`); argument rejection; stratum target semantics; `mine_share` agrees with `cn_slow_hash`. CI job `ffi-cryptonight-paths`: `-DNO_AES`, aarch64 (no crypto) and armv7 under qemu | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 61 | Dart FFI: `usize` → `Size`, `u32`/`u64` → `Uint32`/`Uint64` (checker `--strict` clean). Length `assert`s (stripped in release) replaced by unconditional checks, plus a u32 index range check. Secret buffers wiped before free (Dart `_freeSecret`; Rust `fuego_string_free`/`fuego_bytes_free` wipe) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 62 | `.github/actions/build-android-natives`: cargo-ndk, 4 ABIs, 16 KB page alignment, readelf alignment and export checks. Used by mobile CI, Play Store (never built the FFI before) and F-Droid (never linked or bundled it) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 63 | `scripts/check-ios-ffi-symbols.sh` (Runner, xcarchive or IPA) in mobile CI and both iOS release workflows, now also after IPA export. `ios-release.yml` maps the signing secrets into job `env` (its gated steps always skipped) | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 64 | `Keypair::from_secret` stores the reduced scalar. Vault secrets were raw Keccak output, rejected by `sc_check` in `generate_key_derivation`/`derive_secret_key` for ~15/16 seeds (probe: 3/64 passed), so walletd found and spent nothing for those wallets. Walletd `scan_version` 2 triggers one rescan of older state | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 65 | `parse_address` stripped the "fire"/"TEST" base58 lead and required ≥72 decoded bytes (addresses are 71), so it parsed 0/32 addresses; every walletd send and tx proof failed. It now decodes the whole string. `decode_block` rejects overflow, which used to panic in debug | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 66 | Sub-addresses in suite's scheme: `fuego_crypto::derive_subaddress_keys` (byte-identical to suite C++ on 5 vectors). Scanner uses one master derivation plus a spend-key table (lookahead 50) and records the owner per output. Walletd adds `create_subaddress`, `get_subaddresses`, `register_legacy_subaddresses` (one rescan) and `sweep_legacy_subaddresses`. Dart: store v2 marks old entries legacy, creation goes through walletd, the receive screen shows a sweep banner and legacy entries can't be copied or selected, and the privacy copy is corrected (sub-addresses are linkable). Removed the vault's unused incompatible `100+2n` helpers | claude-opus-5-5 | 2026-09-26 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test --workspace` (x86_64) | ✅ all pass |
+| `cargo test -p fuego-ffi` with `-DNO_AES`; aarch64 and armv7 under qemu | ✅ 6/6 each |
+| Unpatched portable path on block 1,000,001 (negative control) | ✅ `11a8d02b…` (misses difficulty) vs patched `ce75e028…` |
+| `check_ffi_bindings.py --strict` | ✅ 0 errors, 0 warnings |
+| `flutter analyze` on changed Dart | ✅ 0 errors, no new warnings (4 fewer) |
+| Workflow/action YAML parses; readelf alignment and iOS symbol scripts exercised on real/fake inputs | ✅ |
+| Android NDK build, iOS archive/IPA, sweep against a live node | — not runnable here (no NDK, macOS or funded wallet) |
+
 ## [2026-09-25] fuego-ffi skill
 
 | # | Task | Owner | Date | Status |

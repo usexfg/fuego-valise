@@ -147,6 +147,49 @@ class FuegoDaemonClient {
     return (result['address'] as String?) ?? '';
   }
 
+  Future<Map<String, dynamic>> _walletRpc(
+    String method, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    final r = await _post('/json_rpc', {
+      'jsonrpc': '2.0',
+      'id': 'fuego_core',
+      'method': method,
+      'params': params,
+    }, useWallet: true);
+    return r['result'] as Map<String, dynamic>? ?? const {};
+  }
+
+  // ── Sub-addresses (fuego-suite scheme, derived and scanned by walletd) ──
+
+  /// Hands out the next sub-address. Returns (index, address).
+  Future<(int, String)> createSubaddress() async {
+    final r = await _walletRpc('create_subaddress');
+    final index = r['index'] as int?;
+    final address = r['address'] as String?;
+    if (index == null || address == null || address.isEmpty) {
+      throw FuegoRpcException('create_subaddress: malformed response');
+    }
+    return (index, address);
+  }
+
+  /// Sub-addresses with unspent balances, and legacy sub-addresses with the
+  /// balance still to be swept.
+  Future<Map<String, dynamic>> getSubaddresses() => _walletRpc('get_subaddresses');
+
+  /// Starts scanning old-scheme sub-addresses; walletd rescans once when the set grows.
+  Future<bool> registerLegacySubaddresses(List<int> indices) async {
+    final r = await _walletRpc('register_legacy_subaddresses', {'indices': indices});
+    return r['rescan'] as bool? ?? false;
+  }
+
+  /// Moves confirmed legacy sub-address funds to the primary address.
+  /// Returns the transaction hash, or null when there was nothing to move.
+  Future<String?> sweepLegacySubaddresses() async {
+    final r = await _walletRpc('sweep_legacy_subaddresses');
+    return r['txHash'] as String?;
+  }
+
   Future<String> getAddress() async {
     final r = await _post('/json_rpc', {
       'jsonrpc': '2.0',

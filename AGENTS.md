@@ -132,3 +132,24 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
 - Mainnet/testnet: `FUEGO_TESTNET` env wins at launch, else the choice saved by Settings → Network (`node_network` pref). `NodeConnection.switchNetwork()` retargets ports/seeds, persists, and reconnects at runtime; `useTestnet` in `main.dart` follows it.
 - Chain clients (`daemon`, `hearthClient`) and `DexCubit` follow every reconnect through `NodeConnection.addListener`.
+
+## Sub-addresses
+
+- They follow fuego-suite's scheme (`src/crypto/subaddress.cpp`, ported to Rust as `fuego_crypto::derive_subaddress_keys`):
+  - The spend key is `D = B + H_s("Sublime" || a || major || minor)·G`.
+  - The view key is the master `A`.
+  - The prefix is the same as a main address, so senders need no changes.
+- `fuego_walletd` owns them: JSON-RPC `create_subaddress`, `get_subaddresses`, `register_legacy_subaddresses`, `sweep_legacy_subaddresses`.
+  - The scanner underives each output with the one master derivation and looks the result up in a spend-key table that runs 50 past the highest sub-address used.
+- They are linkable: every sub-address carries the master view key.
+- Pre-scheme "sub-addresses" (vault keypairs n and n+1) are `legacy` in `SubaddressStore`.
+  - Legacy sub-address 1's spend key is the main view key.
+  - Walletd rescans once when they are registered, and the receive screen offers to sweep them.
+
+## CryptoNight / keys
+
+- `fuego-ffi/build.rs` compiles suite's `slow-hash.c` with two fixes to the portable path, which every Android ABI uses:
+  - the variant-2 light shuffle store offsets, which gave the wrong Fuego PoW;
+  - an unaligned `VARIANT1_INIT64` load.
+  It also defines `FORCE_USE_HEAP`. The fixes are skipped automatically once suite carries `fuego-ffi/patches/slow-hash-portable.patch`.
+- `Keypair::from_secret` stores the scalar reduced mod l. Unreduced secrets fail `sc_check`, so scanning and spending failed for about 15 of 16 wallets. Walletd rescans once when its stored `scan_version` is older.

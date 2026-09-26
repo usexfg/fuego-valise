@@ -7,7 +7,7 @@ a C source or a system library that changes how the library links.
 |---|---|---|---|---|
 | macOS | `libfuego_ffi.dylib` (cdylib) | `.github/actions/build-desktop-backends` copies it to `macos/Runner/` | `Contents/Frameworks/` via Xcode's "Bundle Framework" copy phase | `DynamicLibrary.open` over candidate paths, `Frameworks/` first |
 | Linux | `libfuego_ffi.so` (cdylib) | `build-desktop-backends` → `backends/` | `<bundle>/lib/libfuego_ffi.so` via `bundle-desktop-backends` | `DynamicLibrary.open('<exe dir>/lib/libfuego_ffi.so')`, falling back to the bare name |
-| Android | `libfuego_ffi.so` per ABI (cdylib) | cargo-ndk, `--platform 25`, in `fuego-wallet-mobile-ci.yml` | `android/app/src/main/jniLibs/<abi>/` | `DynamicLibrary.open('libfuego_ffi.so')` |
+| Android | `libfuego_ffi.so` per ABI (cdylib) | `.github/actions/build-android-natives` (cargo-ndk, `--platform 25`, 16 KB pages) | `android/app/src/main/jniLibs/<abi>/` | `DynamicLibrary.open('libfuego_ffi.so')` |
 | iOS | `libfuego_ffi.a` (staticlib) | `cargo build -p fuego-ffi --target <triple>` | linked into the Runner binary | `DynamicLibrary.process()` |
 | Windows | `fuego_ffi.dll` | **nothing**; no workflow builds it | — | `DynamicLibrary.open('fuego_ffi.dll')` |
 
@@ -43,24 +43,14 @@ a C source or a system library that changes how the library links.
 - `useLegacyPackaging = true` in `android/app/build.gradle` exists for
   `libfuego_walletd.so` (a spawned executable that must be extracted).
   It is harmless for the FFI library.
-- **`android-playstore-release.yml` never builds or bundles
-  `libfuego_ffi.so`.** Play Store builds therefore ship without it, the
-  same failure as F-Droid below.
-- **16 KB pages.** Android 15+ devices with 16 KB pages refuse to load a
-  `.so` whose segments are 4 KB-aligned. Mobile CI uses NDK r25b, which
-  aligns to 4 KB by default. Either link with
-  `-C link-arg=-Wl,-z,max-page-size=16384` or move to an NDK whose default
-  is 16 KB. Check with `llvm-readelf -l libfuego_ffi.so`; `LOAD` segments
-  need `Align 0x4000`.
+- Mobile CI, `android-playstore-release.yml` and `fdroid-release.yml` all
+  use `.github/actions/build-android-natives`. It builds `libfuego_ffi.so`
+  and `fuego_walletd` for four ABIs with
+  `-Wl,-z,max-page-size=16384`, then fails if any `LOAD` segment is not
+  `0x4000`-aligned or `fuego_mine_share` is not exported. Android 15+
+  devices with 16 KB pages refuse 4 KB-aligned libraries.
 - CryptoNight on Android takes the portable path (no ARM crypto
-  extension in the NDK default), which has the wrong-hash and 2 MiB-stack
-  defects described in `cryptonight.md`.
-- **`fdroid-release.yml` is broken for FFI.** It runs plain
-  `cargo build --target <android triple> -p fuego-ffi` with no NDK linker
-  configured, and never copies anything into `jniLibs`. The F-Droid APK
-  therefore has no `libfuego_ffi.so`, and every `FuegoNative()` call
-  fails at runtime. Use the cargo-ndk steps from
-  `fuego-wallet-mobile-ci.yml` there.
+  extension in the NDK default). See `cryptonight.md`.
 
 ## iOS
 
@@ -85,20 +75,14 @@ a C source or a system library that changes how the library links.
   `cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios`
   (simulator builds use `aarch64-apple-ios-sim` or `x86_64-apple-ios`).
   A missing `.a` fails the link with "file not found" on that path.
-- Check the result: `nm -gU build/ios/iphoneos/Runner.app/Runner | grep ' _fuego_'`.
-  Stripping happens on archive/install (`DEPLOYMENT_POSTPROCESSING`), so
-  a plain `flutter build ios` output can still have the symbols while the
-  archive loses them. Mobile CI checks the non-archived binary. Only the
-  release workflows check the xcarchive, and none checks the exported
-  IPA. If the symbols are in the xcarchive but missing from the IPA,
-  suspect the export step (`ios/exportOptions.plist` sets
-  `stripSwiftSymbols` to true). That cause is unconfirmed; compare `nm` on
-  both.
-- `ios-release.yml` gates its signing, archive, symbol-check and export
-  steps on `env.IOS_P12_BASE64` / `env.APPSTORE_ISSUER_ID`. The
-  workflow-level `env:` never defines them (only `secrets.*` exist), so
-  those steps always skip. `appstore-release.yml` is the workflow that
-  actually archives.
+- Check the result with `scripts/check-ios-ffi-symbols.sh <Runner | .xcarchive | .ipa>`.
+  Stripping happens on archive/install (`DEPLOYMENT_POSTPROCESSING`), and
+  the export can strip again (`stripSwiftSymbols`), so a plain
+  `flutter build ios` output proves little. Both release workflows run
+  the script on the xcarchive and on the exported IPA.
+- `ios-release.yml` maps `IOS_P12_BASE64` and `APPSTORE_ISSUER_ID` from
+  secrets into the job `env`. Its `if: env.… != ''` gates depend on
+  that; without the mapping every signing and archive step skipped.
 - A new Rust dependency that needs a system framework (for example
   `Security` for Keychain) needs `-framework <Name>` added to the same
   `OTHER_LDFLAGS` entries, because the staticlib does not carry link

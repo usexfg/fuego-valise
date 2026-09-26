@@ -323,6 +323,41 @@ async fn handle_wallet_method(
                 "txHash": tx_hash,
             }))
         }
+        "create_subaddress" => {
+            let wallet = wallet.lock().await;
+            let (index, address) = wallet.create_subaddress()?;
+            Ok(serde_json::json!({ "index": index, "address": address }))
+        }
+        "get_subaddresses" => {
+            let wallet = wallet.lock().await;
+            let (subs, legacy) = wallet.list_subaddresses();
+            Ok(serde_json::json!({
+                "subaddresses": subs.iter().map(|(i, a, b)| serde_json::json!({
+                    "index": i, "address": a, "balance": b,
+                })).collect::<Vec<_>>(),
+                "legacy": legacy.iter().map(|(i, b)| serde_json::json!({
+                    "index": i, "balance": b,
+                })).collect::<Vec<_>>(),
+            }))
+        }
+        "register_legacy_subaddresses" => {
+            let indices: Vec<u32> = params.get("indices")
+                .and_then(|v| v.as_array())
+                .ok_or("missing indices")?
+                .iter()
+                .map(|v| v.as_u64().filter(|n| *n >= 1 && *n < u32::MAX as u64).map(|n| n as u32)
+                    .ok_or("indices must be integers in 1..u32::MAX"))
+                .collect::<Result<_, _>>()?;
+            let wallet = wallet.lock().await;
+            let rescan = wallet.register_legacy_subaddresses(&indices);
+            Ok(serde_json::json!({ "rescan": rescan }))
+        }
+        "sweep_legacy_subaddresses" => {
+            let wallet = wallet.lock().await;
+            let tx = wallet.sweep_legacy_subaddresses().await
+                .map_err(|e| format!("sweep failed: {}", e))?;
+            Ok(serde_json::json!({ "txHash": tx }))
+        }
         "register_alias" => {
             let alias = params.get("alias")
                 .and_then(|a| a.as_str())
