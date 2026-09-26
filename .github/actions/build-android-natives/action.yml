@@ -1,0 +1,66 @@
+name: Build Android natives
+description: >-
+  Cross-compiles libfuego_ffi.so and fuego_walletd for every shipped Android ABI
+  with 16 KB page alignment and copies them into android/app/src/main/jniLibs.
+  Needs the fuego-suite submodule checked out (fuego-ffi compiles CryptoNight from it).
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+
+    - name: Set up NDK
+      id: ndk
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r25b
+
+    - name: Install cargo-ndk
+      shell: bash
+      run: cargo install cargo-ndk --locked
+
+    - name: Build fuego-ffi and fuego_walletd
+      shell: bash
+      env:
+        ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        # Android 15+ devices with 16 KB pages refuse 4 KB-aligned ELF segments. cargo-ndk
+        # adds this for 64-bit ABIs on NDK <= r27; set it for every ABI so the check below holds.
+        RUSTFLAGS: -C link-arg=-Wl,-z,max-page-size=16384
+      run: |
+        set -euo pipefail
+        cd rust-fuego-wallet
+        abis="-t arm64-v8a -t armeabi-v7a -t x86_64 -t x86"
+        cargo ndk $abis --platform 25 -- build --release -p fuego-ffi
+        cargo ndk $abis --platform 25 -- build --release -p rust_fuego_wallet --bin fuego_walletd
+
+    - name: Copy into jniLibs and verify
+      shell: bash
+      env:
+        READELF: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+      run: |
+        set -euo pipefail
+        declare -A triple=(
+          [arm64-v8a]=aarch64-linux-android
+          [armeabi-v7a]=armv7-linux-androideabi
+          [x86_64]=x86_64-linux-android
+          [x86]=i686-linux-android
+        )
+        for abi in "${!triple[@]}"; do
+          src="rust-fuego-wallet/target/${triple[$abi]}/release"
+          dst="android/app/src/main/jniLibs/$abi"
+          mkdir -p "$dst"
+          install -m 644 "$src/libfuego_ffi.so" "$dst/libfuego_ffi.so"
+          # fuego_walletd is an executable shipped as lib*.so so Android extracts it
+          # with execute permission; it is started via Process.start(), never dlopen()'d.
+          install -m 755 "$src/fuego_walletd" "$dst/libfuego_walletd.so"
+          for f in "$dst/libfuego_ffi.so" "$dst/libfuego_walletd.so"; do
+            bad=$("$READELF" -lW "$f" | awk '$1=="LOAD" && $NF!="0x4000" {print $NF}')
+            if [ -n "$bad" ]; then echo "$f: LOAD segments not 16 KB aligned ($bad)"; exit 1; fi
+          done
+          "$READELF" -sW --dyn-syms "$dst/libfuego_ffi.so" | grep -q ' fuego_mine_share$' \
+            || { echo "$dst/libfuego_ffi.so: fuego_mine_share not exported"; exit 1; }
+        done

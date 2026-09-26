@@ -126,7 +126,7 @@ jobs:
 
       - name: Verify FFI symbols survived archive stripping
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: syms=$(nm -gU "build/ios/archive/fuego_wallet.xcarchive/Products/Applications/Runner.app/Runner"); for s in mine_share vault_from_seed make_address; do grep -q " _fuego_$s$" <<<"$syms" || { echo "missing _fuego_$s"; exit 1; }; done
+        run: ./scripts/check-ios-ffi-symbols.sh build/ios/archive/fuego_wallet.xcarchive
 
       - name: Export IPA
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -139,6 +139,11 @@ jobs:
             -archivePath build/ios/archive/fuego_wallet.xcarchive \
             -exportOptionsPlist "$EXPORT_OPTIONS_PATH" \
             -exportPath build/ios/output
+
+      # The export (e.g. stripSwiftSymbols in the export options) can strip what the archive kept.
+      - name: Verify FFI symbols survived IPA export
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: ./scripts/check-ios-ffi-symbols.sh build/ios/output/*.ipa
 
       - name: Upload IPA to TestFlight
         if: ${{ github.event.inputs.dry_run != 'true' }}

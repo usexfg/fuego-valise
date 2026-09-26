@@ -171,6 +171,49 @@ jobs:
         with:
           files: Fuego-Wallet-Linux-x64.tar.gz
 
+  # CryptoNight compiles a different implementation per target; Android uses the
+  # portable / ARM-without-crypto paths. Each must reproduce mainnet PoW.
+  ffi-cryptonight-paths:
+    name: FFI / CryptoNight on portable, aarch64, armv7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64 -L /usr/aarch64-linux-gnu
+      CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER: qemu-arm -L /usr/arm-linux-gnueabihf
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install cross compilers and qemu
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf libc6-dev-arm64-cross libc6-dev-armhf-cross qemu-user
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf
+
+      - name: Portable path (no AES-NI)
+        env:
+          CFLAGS: -DNO_AES
+          CARGO_TARGET_DIR: target-noaes
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi
+
+      # GCC's default aarch64 target has no crypto extension: the path Android arm64 compiles.
+      - name: aarch64 without crypto extension (qemu)
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-unknown-linux-gnu
+
+      - name: armv7 (qemu)
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target armv7-unknown-linux-gnueabihf
+
   fuegod-wire-check:
     name: SDK / fuegod wire format
     # Toolchain matches where this was verified: Ubuntu 24.04, Boost 1.83.

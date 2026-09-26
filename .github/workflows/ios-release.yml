@@ -21,6 +21,10 @@ jobs:
   ios-build:
     name: Build iOS App
     runs-on: macos-latest
+    # `if:` conditions below read env; secrets are not visible there unless mapped.
+    env:
+      IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+      APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
 
     steps:
       - name: Checkout code
@@ -148,7 +152,7 @@ jobs:
 
       - name: Verify FFI symbols survived archive stripping
         if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        run: syms=$(nm -gU "ios/build/Runner.xcarchive/Products/Applications/Runner.app/Runner"); for s in mine_share vault_from_seed make_address; do grep -q " _fuego_$s$" <<<"$syms" || { echo "missing _fuego_$s"; exit 1; }; done
+        run: ./scripts/check-ios-ffi-symbols.sh ios/build/Runner.xcarchive
 
       - name: Export IPA
         if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
@@ -182,6 +186,10 @@ jobs:
             -exportOptionsPlist exportOptions.plist
 
           echo "✅ IPA exported"
+
+      - name: Verify FFI symbols survived IPA export
+        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
+        run: ./scripts/check-ios-ffi-symbols.sh ios/build/ipa/*.ipa
 
       - name: Generate store metadata
         run: |
