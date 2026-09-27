@@ -9,7 +9,7 @@ use crate::transaction_builder::{
 use crate::types::{Address, Balance};
 use crate::vault::WalletVault;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 /// A spendable key output owned by this wallet, with everything needed to
@@ -82,11 +82,99 @@ pub struct ScannerStateSnapshot {
     pub commitments: Vec<CommitmentEntry>,
     pub spent_images: Vec<[u8; 32]>,
     pub history: Vec<HistoryEntry>,
+    /// Which address received each owned key output, by key image.
+    pub owners: Vec<([u8; 32], OutputOwner)>,
+}
+
+/// Which of the wallet's addresses an output was sent to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OutputOwner {
+    Primary,
+    /// Suite-scheme sub-address (major 0, minor n), n >= 1.
+    Subaddress(u32),
+    /// Pre-suite-scheme "sub-address" n: an independent keypair (vault keys n
+    /// and n + 1) that only a separate scan finds. Funds here are swept to
+    /// the primary address.
+    LegacySubaddress(u32),
+}
+
+/// Sub-addresses scanned beyond the highest one used or created, so outputs
+/// to recently handed-out addresses are found even after a seed restore.
+pub const SUBADDRESS_LOOKAHEAD: u32 = 50;
+
+/// Spend keys the scanner recognises after underiving an output key with the
+/// master view derivation, and the legacy accounts that need their own.
+struct ScanKeys {
+    view_secret: [u8; 32],
+    spend_public: [u8; 32],
+    spend_secret: [u8; 32],
+    by_spend_key: HashMap<[u8; 32], (OutputOwner, [u8; 32])>,
+    subaddress_top: u32,
+    legacy: Vec<LegacyAccount>,
+}
+
+struct LegacyAccount {
+    index: u32,
+    view_secret: [u8; 32],
+    spend_public: [u8; 32],
+    spend_secret: [u8; 32],
+}
+
+impl ScanKeys {
+    fn new(keys: &WalletKeys) -> Self {
+        let mut by_spend_key = HashMap::new();
+        by_spend_key.insert(keys.spend_public, (OutputOwner::Primary, keys.spend_secret));
+        let mut table = Self {
+            view_secret: keys.view_secret,
+            spend_public: keys.spend_public,
+            spend_secret: keys.spend_secret,
+            by_spend_key,
+            subaddress_top: 0,
+            legacy: Vec::new(),
+        };
+        table.extend_subaddresses(SUBADDRESS_LOOKAHEAD);
+        table
+    }
+
+    fn extend_subaddresses(&mut self, top: u32) {
+        while self.subaddress_top < top {
+            let minor = self.subaddress_top + 1;
+            if let Some(k) = fuego_crypto::derive_subaddress_keys(
+                &self.view_secret,
+                &self.spend_public,
+                Some(&self.spend_secret),
+                0,
+                minor,
+            ) {
+                self.by_spend_key.insert(
+                    k.spend_public,
+                    (OutputOwner::Subaddress(minor), k.spend_secret.unwrap()),
+                );
+            }
+            self.subaddress_top = minor;
+        }
+    }
+}
+
+impl Drop for ScanKeys {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.view_secret.zeroize();
+        self.spend_secret.zeroize();
+        for (_, (_, secret)) in self.by_spend_key.iter_mut() {
+            secret.zeroize();
+        }
+        for acct in self.legacy.iter_mut() {
+            acct.view_secret.zeroize();
+            acct.spend_secret.zeroize();
+        }
+    }
 }
 
 pub struct UtxoScanner {
     vault: WalletVault,
     state: Arc<RwLock<ScannerState>>,
+    scan_keys: RwLock<ScanKeys>,
 }
 
 struct ScannerState {
@@ -96,6 +184,7 @@ struct ScannerState {
     spent_images: HashSet<[u8; 32]>,
     history: Vec<HistoryEntry>,
     balance: Balance,
+    owners: HashMap<[u8; 32], OutputOwner>,
 }
 
 /// The wallet's core key material: index 0 = spend, index 1 = view
@@ -109,6 +198,7 @@ pub struct WalletKeys {
 
 impl UtxoScanner {
     pub fn new(vault: WalletVault) -> Self {
+        let keys = primary_keys(&vault);
         Self {
             vault,
             state: Arc::new(RwLock::new(ScannerState {
@@ -118,7 +208,9 @@ impl UtxoScanner {
                 spent_images: HashSet::new(),
                 history: Vec::new(),
                 balance: Balance::default(),
+                owners: HashMap::new(),
             })),
+            scan_keys: RwLock::new(ScanKeys::new(&keys)),
         }
     }
 
@@ -132,14 +224,80 @@ impl UtxoScanner {
 
     /// Primary wallet keys: keypair(0) = spend, keypair(1) = view.
     pub fn wallet_keys(&self) -> WalletKeys {
-        let spend = self.vault.derive_keypair(0);
-        let view = self.vault.derive_keypair(1);
-        WalletKeys {
-            spend_secret: spend.secret,
-            spend_public: spend.public,
-            view_secret: view.secret,
-            view_public: view.public,
+        primary_keys(&self.vault)
+    }
+
+    /// Public keys (spend D, view A) of suite-scheme sub-address `minor` (>= 1),
+    /// and make sure the scanner looks at least SUBADDRESS_LOOKAHEAD past it.
+    pub fn subaddress(&self, minor: u32) -> Option<([u8; 32], [u8; 32])> {
+        let keys = self.wallet_keys();
+        let sub = fuego_crypto::derive_subaddress_keys(
+            &keys.view_secret,
+            &keys.spend_public,
+            None,
+            0,
+            minor,
+        )?;
+        self.scan_keys
+            .write()
+            .unwrap()
+            .extend_subaddresses(minor.saturating_add(SUBADDRESS_LOOKAHEAD));
+        Some((sub.spend_public, sub.view_public))
+    }
+
+    /// Scan for pre-suite-scheme sub-addresses `indices` (vault keypairs n and
+    /// n + 1). Returns true when the set grew, i.e. a rescan is needed to find
+    /// outputs already on chain.
+    pub fn set_legacy_subaddresses(&self, indices: &[u32]) -> bool {
+        let mut table = self.scan_keys.write().unwrap();
+        let mut grew = false;
+        for &index in indices {
+            if index == 0 || index == u32::MAX || table.legacy.iter().any(|a| a.index == index) {
+                continue;
+            }
+            let spend = self.vault.derive_keypair(index);
+            let view = self.vault.derive_keypair(index + 1);
+            table.legacy.push(LegacyAccount {
+                index,
+                view_secret: view.secret,
+                spend_public: spend.public,
+                spend_secret: spend.secret,
+            });
+            grew = true;
         }
+        grew
+    }
+
+    pub fn legacy_subaddresses(&self) -> Vec<u32> {
+        self.scan_keys.read().unwrap().legacy.iter().map(|a| a.index).collect()
+    }
+
+    /// Unspent, unreserved key outputs grouped by the address that received them.
+    pub fn balance_by_owner(&self) -> HashMap<OutputOwner, u64> {
+        let state = self.state.read().unwrap();
+        let mut out = HashMap::new();
+        for u in &state.utxos {
+            if state.spent_images.contains(&u.key_image) {
+                continue;
+            }
+            let owner = state.owners.get(&u.key_image).copied().unwrap_or(OutputOwner::Primary);
+            *out.entry(owner).or_insert(0) += u.amount;
+        }
+        out
+    }
+
+    /// Owned outputs received on legacy sub-addresses (to sweep).
+    pub fn legacy_utxos(&self) -> Vec<UtxoEntry> {
+        let state = self.state.read().unwrap();
+        state
+            .utxos
+            .iter()
+            .filter(|u| {
+                matches!(state.owners.get(&u.key_image), Some(OutputOwner::LegacySubaddress(_)))
+                    && !state.spent_images.contains(&u.key_image)
+            })
+            .cloned()
+            .collect()
     }
 
     pub fn height(&self) -> u64 {
@@ -205,7 +363,7 @@ impl UtxoScanner {
         prefix: &TransactionPrefix,
         block_height: u64,
     ) -> Result<(u64, u64)> {
-        let keys = self.wallet_keys();
+        let view_secret = self.scan_keys.read().unwrap().view_secret;
         let mut state = self.state.write().unwrap();
 
         let mut received = 0u64;
@@ -260,38 +418,59 @@ impl UtxoScanner {
         };
         let derivation = match fuego_crypto::generate_key_derivation(
             &fuego_crypto::PublicKey(r),
-            &keys.view_secret,
+            &view_secret,
         ) {
             Some(d) => d,
             None => return Ok((received, spent)),
         };
 
+        let table = self.scan_keys.read().unwrap();
+        // Legacy accounts have their own view keys, hence their own derivations.
+        let legacy_derivations: Vec<Option<[u8; 32]>> = table
+            .legacy
+            .iter()
+            .map(|a| fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r), &a.view_secret))
+            .collect();
+        let mut highest_subaddress = 0u32;
+
         for (i, output) in prefix.outputs.iter().enumerate() {
             match &output.target {
                 OutputTarget::Key(output_key) => {
-                    let expected = match fuego_crypto::derive_public_key(
+                    let mut hit: Option<(OutputOwner, [u8; 32])> = None;
+                    // One master derivation serves the primary address and every
+                    // sub-address: P - Hs(aR, i)G is the recipient's spend key.
+                    if let Some(base) = fuego_crypto::underive_public_key(
                         &derivation,
                         i as u64,
-                        &keys.spend_public,
+                        &fuego_crypto::PublicKey(*output_key),
                     ) {
-                        Some(p) => p,
-                        None => continue,
-                    };
-                    if expected.0 != *output_key {
-                        continue;
+                        if let Some((owner, spend_secret)) = table.by_spend_key.get(&base.0) {
+                            hit = fuego_crypto::derive_secret_key(&derivation, i as u64, spend_secret)
+                                .map(|x| (*owner, x));
+                        }
                     }
-                    let secret = match fuego_crypto::derive_secret_key(
-                        &derivation,
-                        i as u64,
-                        &keys.spend_secret,
-                    ) {
-                        Some(s) => s,
-                        None => continue,
-                    };
+                    if hit.is_none() {
+                        for (acct, d) in table.legacy.iter().zip(&legacy_derivations) {
+                            let Some(d) = d else { continue };
+                            let matches = fuego_crypto::derive_public_key(d, i as u64, &acct.spend_public)
+                                .map(|p| p.0 == *output_key)
+                                .unwrap_or(false);
+                            if matches {
+                                hit = fuego_crypto::derive_secret_key(d, i as u64, &acct.spend_secret)
+                                    .map(|x| (OutputOwner::LegacySubaddress(acct.index), x));
+                                break;
+                            }
+                        }
+                    }
+                    let Some((owner, secret)) = hit else { continue };
+                    if let OutputOwner::Subaddress(minor) = owner {
+                        highest_subaddress = highest_subaddress.max(minor);
+                    }
                     let key_image = fuego_crypto::generate_key_image(
                         &fuego_crypto::PublicKey(*output_key),
                         &secret,
                     );
+                    state.owners.insert(key_image.0, owner);
                     state.utxos.push(UtxoEntry {
                         amount: output.amount,
                         output_key: *output_key,
@@ -325,6 +504,14 @@ impl UtxoScanner {
                     received += output.amount;
                 }
             }
+        }
+
+        drop(table);
+        if highest_subaddress > 0 {
+            self.scan_keys
+                .write()
+                .unwrap()
+                .extend_subaddresses(highest_subaddress.saturating_add(SUBADDRESS_LOOKAHEAD));
         }
 
         if received > 0 || spent > 0 {
@@ -386,6 +573,7 @@ impl UtxoScanner {
             commitments: state.commitments.clone(),
             spent_images: state.spent_images.iter().copied().collect(),
             history: state.history.clone(),
+            owners: state.owners.iter().map(|(k, o)| (*k, *o)).collect(),
         }
     }
 
@@ -396,7 +584,22 @@ impl UtxoScanner {
         state.commitments = snapshot.commitments.clone();
         state.spent_images = snapshot.spent_images.iter().copied().collect();
         state.history = snapshot.history.clone();
+        state.owners = snapshot.owners.iter().copied().collect();
         state.balance.confirmed = state.utxos.iter().map(|u| u.amount).sum();
+        let highest = state
+            .owners
+            .values()
+            .filter_map(|o| match o {
+                OutputOwner::Subaddress(n) => Some(*n),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        drop(state);
+        self.scan_keys
+            .write()
+            .unwrap()
+            .extend_subaddresses(highest.saturating_add(SUBADDRESS_LOOKAHEAD));
     }
 
     /// Phase 1 of sending: select inputs for `amount + fee` using the bucket
@@ -544,6 +747,17 @@ impl UtxoScanner {
     }
 }
 
+fn primary_keys(vault: &WalletVault) -> WalletKeys {
+    let spend = vault.derive_keypair(0);
+    let view = vault.derive_keypair(1);
+    WalletKeys {
+        spend_secret: spend.secret,
+        spend_public: spend.public,
+        view_secret: view.secret,
+        view_public: view.public,
+    }
+}
+
 impl Default for UtxoScanner {
     fn default() -> Self {
         Self::new(WalletVault::default())
@@ -561,3 +775,97 @@ fn prefix_inputs_amount_delta(prefix: &TransactionPrefix) -> u64 {
 // Keep the import used for clarity in the builder call sites.
 #[allow(unused)]
 fn _commitment_spend_type_ref(_c: &CommitmentSpendInput) {}
+
+#[cfg(test)]
+mod subaddress_tests {
+    use super::*;
+    use crate::serialization::TxOutput;
+
+    fn scanner() -> UtxoScanner {
+        UtxoScanner::new(WalletVault::from_seed([0x5au8; 32]))
+    }
+
+    /// A one-output tx paying (spend, view) the way any CryptoNote sender does:
+    /// R = rG, P = Hs(rC, 0)G + D.
+    fn pay(spend: &[u8; 32], view: &[u8; 32], r_seed: u8, amount: u64) -> TransactionPrefix {
+        let r = fuego_crypto::Keypair::from_secret([r_seed; 32]);
+        let d = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(*view), &r.secret).unwrap();
+        let p = fuego_crypto::derive_public_key(&d, 0, spend).unwrap();
+        let mut extra = vec![0x01];
+        extra.extend_from_slice(&r.public);
+        TransactionPrefix {
+            version: 1,
+            unlock_time: 0,
+            inputs: Vec::new(),
+            outputs: vec![TxOutput { amount, target: OutputTarget::Key(p.0) }],
+            extra,
+        }
+    }
+
+    fn assert_spendable(s: &UtxoScanner) {
+        for u in s.utxos() {
+            assert_eq!(fuego_crypto::ring::secret_key_to_public_key(&u.secret_key), u.output_key);
+        }
+    }
+
+    #[test]
+    fn finds_primary_and_subaddress_outputs() {
+        let s = scanner();
+        let keys = s.wallet_keys();
+        let (d3, a3) = s.subaddress(3).unwrap();
+        assert_eq!(a3, keys.view_public, "suite scheme: view key is the master one");
+
+        s.scan_tx_prefix(&[1; 32], &pay(&keys.spend_public, &keys.view_public, 7, 100), 10).unwrap();
+        s.scan_tx_prefix(&[2; 32], &pay(&d3, &a3, 8, 250), 11).unwrap();
+
+        let by = s.balance_by_owner();
+        assert_eq!(by.get(&OutputOwner::Primary), Some(&100));
+        assert_eq!(by.get(&OutputOwner::Subaddress(3)), Some(&250));
+        assert_eq!(s.balance().confirmed, 350);
+        assert_spendable(&s);
+    }
+
+    #[test]
+    fn lookahead_follows_the_highest_used_subaddress() {
+        let s = scanner();
+        let keys = s.wallet_keys();
+        let far = |n| {
+            fuego_crypto::derive_subaddress_keys(&keys.view_secret, &keys.spend_public, None, 0, n)
+                .unwrap()
+                .spend_public
+        };
+        // Beyond the initial window: not found.
+        s.scan_tx_prefix(&[1; 32], &pay(&far(80), &keys.view_public, 1, 5), 1).unwrap();
+        assert_eq!(s.balance().confirmed, 0);
+        // A hit inside the window slides it forward...
+        s.scan_tx_prefix(&[2; 32], &pay(&far(SUBADDRESS_LOOKAHEAD), &keys.view_public, 2, 7), 2).unwrap();
+        // ...so the next payment to 80 is found.
+        s.scan_tx_prefix(&[3; 32], &pay(&far(80), &keys.view_public, 3, 9), 3).unwrap();
+        assert_eq!(s.balance_by_owner().get(&OutputOwner::Subaddress(80)), Some(&9));
+
+        // Restoring a snapshot re-extends the window from the owners it holds.
+        let restored = scanner();
+        restored.restore(&s.snapshot());
+        restored.scan_tx_prefix(&[4; 32], &pay(&far(120), &keys.view_public, 4, 11), 4).unwrap();
+        assert_eq!(restored.balance_by_owner().get(&OutputOwner::Subaddress(120)), Some(&11));
+    }
+
+    #[test]
+    fn legacy_subaddress_outputs_need_registration() {
+        let s = scanner();
+        // Old scheme: sub-address n = (vault key n, vault key n + 1).
+        let spend = s.vault().derive_keypair(1).public;
+        let view = s.vault().derive_keypair(2).public;
+        let tx = pay(&spend, &view, 9, 42);
+
+        s.scan_tx_prefix(&[1; 32], &tx, 1).unwrap();
+        assert_eq!(s.balance().confirmed, 0, "invisible to the primary scan");
+
+        assert!(s.set_legacy_subaddresses(&[1]));
+        assert!(!s.set_legacy_subaddresses(&[1]), "no growth, no rescan");
+        s.scan_tx_prefix(&[1; 32], &tx, 1).unwrap();
+        assert_eq!(s.balance_by_owner().get(&OutputOwner::LegacySubaddress(1)), Some(&42));
+        assert_eq!(s.legacy_utxos().len(), 1);
+        assert_spendable(&s);
+    }
+}

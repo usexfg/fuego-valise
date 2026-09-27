@@ -71,6 +71,13 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // libfuego_walletd.so is a spawned executable; it must be extracted to disk to be runnable.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {

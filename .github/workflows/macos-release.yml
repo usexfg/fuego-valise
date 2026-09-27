@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+          submodules: recursive
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -53,24 +54,12 @@ jobs:
           echo "Bundle ID: ${MACOS_BUNDLE_ID}"
           echo "Team ID: ${APPLE_TEAM_ID}"
 
-      - name: Build fuego walletd for macOS
-        run: |
-          echo "=== Building fuego walletd ==="
-          git clone -b HEAT https://github.com/usexfg/fuego-suite.git fuego-source
-          cd fuego-source
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
 
-          brew install cmake pkg-config boost openssl zeromq jsoncpp
-
-          sed -i .bak "s/#include <json\/json.h>/#include <jsoncpp\/json.h>/g" src/CryptoNoteCore/ProofStructures.h
-
-          mkdir build && cd build
-          cmake .. -DBUILD_TESTS=OFF -DCMAKE_CXX_FLAGS="-I /usr/include"
-          make -j$(sysctl -n hw.ncpu) PaymentGateService
-
-          mkdir -p ../../assets/bin
-          cp src/walletd/walletd ../../assets/bin/fuego-walletd-macos
-          chmod +x ../../assets/bin/fuego-walletd-macos
-          echo "✅ walletd built"
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
 
       - name: Install dependencies
         run: flutter pub get
@@ -82,8 +71,14 @@ jobs:
       - name: Analyze code
         run: flutter analyze --no-fatal-infos
 
+      - name: Check signing secrets
+        id: signing
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+        run: echo "available=$([ -n "$CERT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Setup macOS code signing
-        if: inputs.dry_run != true && env.APPLE_CERTIFICATE != ''
+        if: inputs.dry_run != true && steps.signing.outputs.available == 'true'
         run: |
           echo "=== Setting up code signing ==="
 
@@ -126,11 +121,24 @@ jobs:
 
           echo "✅ macOS app built"
 
+      - name: Bundle backends into app
+        uses: ./.github/actions/bundle-desktop-backends
+        with:
+          app: build/macos/Build/Products/Release/fuego_wallet.app
+
+      - name: Sign app
+        run: |
+          IDENTITY="-"
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' 'NR==1 {print $2}')"
+          fi
+          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app "${IDENTITY:--}"
+
       - name: Verify macOS app
         run: |
           echo "=== Verifying macOS app ==="
 
-          APP_PATH="build/macos/Build/Products/Release/fuego-wallet.app"
+          APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
 
           if [ ! -d "$APP_PATH" ]; then
             echo "ERROR: App bundle not found at $APP_PATH"
@@ -164,7 +172,7 @@ jobs:
         run: |
           echo "=== Creating DMG ==="
 
-          APP_PATH="build/macos/Build/Products/Release/fuego-wallet.app"
+          APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
           DMG_PATH="build/macos/Build/Products/Release/Fuego-Wallet.dmg"
 
           # Create temporary directory for DMG contents
@@ -269,7 +277,7 @@ jobs:
         with:
           name: macos-build
           path: |
-            build/macos/Build/Products/Release/fuego-wallet.app
+            build/macos/Build/Products/Release/fuego_wallet.app
             build/macos/Build/Products/Release/Fuego-Wallet.dmg
             app-store-metadata/
             submission-checklist.md

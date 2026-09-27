@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # PR per suite master move; CI (FFI vectors, daemon builds, wire check) gates the merge.
+  - package-ecosystem: "gitsubmodule"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "deps(fuego-suite)"

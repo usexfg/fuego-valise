@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
 import '../../providers/wallet_provider.dart';
+import '../../services/fuego_vault_service.dart';
 import '../../services/security_service.dart';
 import '../../utils/theme.dart';
 import '../../widgets/pin_input_widget.dart';
@@ -272,8 +273,14 @@ class _PinEntryScreenState extends State<PinEntryScreen>
 
   Future<void> _resetWallet() async {
     try {
+      // Wipe the actual vault files first — clearWalletData() only clears
+      // SecurityService's PIN/seed entries. Without this, the encrypted
+      // vault stays on disk with no PIN to unlock it and no route back to
+      // PinEntryScreen (hasPIN becomes false), stranding the user.
+      final vault = context.read<FuegoVaultService>();
+      await vault.wipe();
       await _securityService.clearWalletData();
-      
+
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const MainScreen()),

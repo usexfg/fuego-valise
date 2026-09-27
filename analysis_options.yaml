@@ -9,6 +9,7 @@ analyzer:
   exclude:
     - sdk/**
     - src/**
+    - fuego-suite/**
     - "**/*.g.dart"
     - "**/*.freezed.dart"
   errors:

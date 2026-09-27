@@ -2,7 +2,7 @@
 
 # Bundle macOS daemon dependencies into the app.
 #
-# The xfgo C++ daemons (fuegod, unified, xfg-swapd) link against homebrew
+# The fuego-suite C++ daemons (fuegod, unified, xfg-swapd) link against homebrew
 # dylibs at absolute paths (/opt/homebrew/opt/...). End users do not have
 # those paths — without this step every C++ daemon dies with "Library not
 # loaded" on a clean machine.

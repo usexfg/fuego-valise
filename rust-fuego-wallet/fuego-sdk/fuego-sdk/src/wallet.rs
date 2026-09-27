@@ -1,6 +1,7 @@
 use crate::error::{Result, SdkError};
 use crate::scanner::{
-    CommitmentEntry, HistoryEntry, ScannerStateSnapshot, UtxoEntry, UtxoScanner, WalletKeys,
+    CommitmentEntry, HistoryEntry, OutputOwner, ScannerStateSnapshot, UtxoEntry, UtxoScanner,
+    WalletKeys,
 };
 use crate::serialization::TransactionPrefix;
 use crate::transaction_builder::{BuiltTransaction, DecoyEntry};
@@ -157,6 +158,40 @@ impl Wallet {
 
     pub fn utxos(&self) -> Vec<UtxoEntry> {
         self.scanner.utxos()
+    }
+
+    /// Public (spend, view) keys of suite-scheme sub-address `minor` (>= 1).
+    pub fn subaddress(&self, minor: u32) -> Option<([u8; 32], [u8; 32])> {
+        self.scanner.subaddress(minor)
+    }
+
+    /// Add pre-suite-scheme sub-address indices to scan; true if the set grew.
+    pub fn set_legacy_subaddresses(&self, indices: &[u32]) -> bool {
+        self.scanner.set_legacy_subaddresses(indices)
+    }
+
+    pub fn legacy_subaddresses(&self) -> Vec<u32> {
+        self.scanner.legacy_subaddresses()
+    }
+
+    pub fn balance_by_owner(&self) -> std::collections::HashMap<OutputOwner, u64> {
+        self.scanner.balance_by_owner()
+    }
+
+    pub fn legacy_utxos(&self) -> Vec<UtxoEntry> {
+        self.scanner.legacy_utxos()
+    }
+
+    /// Forget everything scanned so the next sync starts from genesis.
+    pub fn reset_scan_state(&self) {
+        self.scanner.restore(&ScannerStateSnapshot {
+            height: 0,
+            utxos: Vec::new(),
+            commitments: Vec::new(),
+            spent_images: Vec::new(),
+            history: Vec::new(),
+            owners: Vec::new(),
+        });
     }
 
     pub fn set_height(&self, height: u64) {

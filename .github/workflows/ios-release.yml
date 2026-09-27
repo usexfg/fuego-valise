@@ -21,12 +21,17 @@ jobs:
   ios-build:
     name: Build iOS App
     runs-on: macos-latest
+    # `if:` conditions below read env; secrets are not visible there unless mapped.
+    env:
+      IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+      APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+          submodules: true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -55,24 +60,14 @@ jobs:
 
           echo "Bundle ID: ${IOS_BUNDLE_ID}"
 
-      - name: Build fuego walletd for iOS
-        run: |
-          echo "=== Building fuego walletd ==="
-          git clone -b HEAT https://github.com/usexfg/fuego-suite.git fuego-source
-          cd fuego-source
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios
 
-          brew install cmake pkg-config boost openssl zeromq jsoncpp
-
-          sed -i .bak "s/#include <json\/json.h>/#include <jsoncpp\/json.h>/g" src/CryptoNoteCore/ProofStructures.h
-
-          mkdir build && cd build
-          cmake .. -DBUILD_TESTS=OFF -DCMAKE_CXX_FLAGS="-I /usr/include"
-          make -j$(sysctl -n hw.ncpu) PaymentGateService
-
-          mkdir -p ../../assets/bin
-          cp src/walletd/walletd ../../assets/bin/fuego-walletd-ios
-          chmod +x ../../assets/bin/fuego-walletd-ios
-          echo "✅ walletd built"
+      - name: Build fuego-ffi staticlib (force-loaded into Runner)
+        run: cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios
 
       - name: Install dependencies
         run: flutter pub get
@@ -155,6 +150,10 @@ jobs:
 
           echo "✅ Archive created"
 
+      - name: Verify FFI symbols survived archive stripping
+        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
+        run: ./scripts/check-ios-ffi-symbols.sh ios/build/Runner.xcarchive
+
       - name: Export IPA
         if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
         run: |
@@ -187,6 +186,10 @@ jobs:
             -exportOptionsPlist exportOptions.plist
 
           echo "✅ IPA exported"
+
+      - name: Verify FFI symbols survived IPA export
+        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
+        run: ./scripts/check-ios-ffi-symbols.sh ios/build/ipa/*.ipa
 
       - name: Generate store metadata
         run: |

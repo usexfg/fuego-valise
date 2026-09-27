@@ -1,0 +1,59 @@
+--- a/src/crypto/slow-hash.c
++++ b/src/crypto/slow-hash.c
+@@ -87,12 +87,14 @@
+     xor64(tweak1_2, NONCE_POINTER); \
+   } while(0)
+ 
++static inline uint64_t cn_load_u64_unaligned(const uint8_t *p) { uint64_t v; memcpy(&v, p, sizeof(v)); return v; }
++
+ #define VARIANT1_INIT64() \
+   if (variant == 1) \
+   { \
+     VARIANT1_CHECK(); \
+   } \
+-  const uint64_t tweak1_2 = (variant == 1) ? (state.hs.w[24] ^ (*((const uint64_t*)NONCE_POINTER))) : 0
++  const uint64_t tweak1_2 = (variant == 1) ? (state.hs.w[24] ^ cn_load_u64_unaligned(NONCE_POINTER)) : 0
+ 
+ #define VARIANT2_INIT64() \
+   uint64_t division_result = 0; \
+@@ -142,26 +144,27 @@
+ #define VARIANT2_PORTABLE_SHUFFLE_ADD(base_ptr, offset) \
+   do if (variant >= 2) \
+   { \
+-    uint64_t* chunk1 = (light ? U64((base_ptr) + ((offset) ^ 0x30)) : U64((base_ptr) + ((offset) ^ 0x10))); \
+-    uint64_t* chunk2 = U64((base_ptr) + ((offset) ^ 0x20)); \
+-    uint64_t* chunk3 = (light ? U64((base_ptr) + ((offset) ^ 0x10)) : U64((base_ptr) + ((offset) ^ 0x30))); \
+-    \
+-    const uint64_t chunk1_old[2] = { chunk1[0], chunk1[1] }; \
++    uint64_t* p10 = U64((base_ptr) + ((offset) ^ 0x10)); \
++    uint64_t* p20 = U64((base_ptr) + ((offset) ^ 0x20)); \
++    uint64_t* p30 = U64((base_ptr) + ((offset) ^ 0x30)); \
++    const uint64_t* src1 = light ? p30 : p10; \
++    const uint64_t* src3 = light ? p10 : p30; \
++    const uint64_t chunk1[2] = { src1[0], src1[1] }; \
++    const uint64_t chunk2[2] = { p20[0], p20[1] }; \
++    const uint64_t chunk3[2] = { src3[0], src3[1] }; \
+     \
+     uint64_t b1[2]; \
+     memcpy(b1, b + 16, 16); \
+-    chunk1[0] = chunk3[0] + b1[0]; \
+-    chunk1[1] = chunk3[1] + b1[1]; \
+-    \
+     uint64_t a0[2]; \
+     memcpy(a0, a, 16); \
+-    chunk3[0] = chunk2[0] + a0[0]; \
+-    chunk3[1] = chunk2[1] + a0[1]; \
+-    \
+     uint64_t b0[2]; \
+     memcpy(b0, b, 16); \
+-    chunk2[0] = chunk1_old[0] + b0[0]; \
+-    chunk2[1] = chunk1_old[1] + b0[1]; \
++    p10[0] = chunk3[0] + b1[0]; \
++    p10[1] = chunk3[1] + b1[1]; \
++    p20[0] = chunk1[0] + b0[0]; \
++    p20[1] = chunk1[1] + b0[1]; \
++    p30[0] = chunk2[0] + a0[0]; \
++    p30[1] = chunk2[1] + a0[1]; \
+   } while (0)
+ 
+ #define VARIANT2_INTEGER_MATH_DIVISION_STEP(b, ptr) \

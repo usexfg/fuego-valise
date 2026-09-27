@@ -2,7 +2,7 @@ app-id: com.fuego.fuego_wallet
 runtime: org.gnome.Platform
 runtime-version: '46'
 sdk: org.gnome.Sdk
-command: fuego_wallet
+command: fuego-valise
 finish-args:
   - --share=network
   - --share=ipc
@@ -25,8 +25,15 @@ modules:
     build-options:
       env:
         FLUTTER_ROOT: /usr
+    # Keeps the executable beside lib/, data/ and the daemons; bin/fuego-valise is the launch name.
     build-commands:
-      - cp -r build/linux/x64/release/bundle/* $FLATPAK_DEST/
+      - mkdir -p $FLATPAK_DEST/fuego-valise $FLATPAK_DEST/bin
+      - cp -a build/linux/x64/release/bundle/. $FLATPAK_DEST/fuego-valise/
+      - ln -s ../fuego-valise/fuegowallet $FLATPAK_DEST/bin/fuego-valise
     sources:
       - type: dir
         path: ../
+        skip:
+          - .git
+          - fuego-suite
+          - rust-fuego-wallet/target

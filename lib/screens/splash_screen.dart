@@ -111,12 +111,20 @@ class _SplashScreenState extends State<SplashScreen>
       bool hasWallet = false;
       bool hasPIN = false;
       bool isLocked = false;
+      bool checkFailed = false;
       try {
         hasWallet = await walletProvider.hasWalletData();
         hasPIN = await securityService.hasPIN();
         isLocked = await securityService.isLockedOut();
       } catch (e) {
-        debugPrint('Secure storage check failed — requiring setup/unlock: $e');
+        // Fail closed: a thrown check (e.g. transient Android Keystore /
+        // iOS Keychain error right after reboot, before first unlock) must
+        // never be read as "no PIN exists" — that would route straight to
+        // MainScreen and expose live balance/address/history with zero
+        // authentication. A genuinely new user with no wallet still has an
+        // escape hatch via "Forgot PIN" → Reset Wallet on PinEntryScreen.
+        checkFailed = true;
+        debugPrint('Secure storage check failed — failing closed to PinEntryScreen');
       }
 
       await Future.delayed(const Duration(milliseconds: 800));
@@ -137,7 +145,7 @@ class _SplashScreenState extends State<SplashScreen>
         _navigateToScreen(const PinEntryScreen());
         return;
       }
-      if (hasWallet && hasPIN) {
+      if (checkFailed || (hasWallet && hasPIN)) {
         _navigateToScreen(const PinEntryScreen());
         return;
       }
@@ -151,7 +159,8 @@ class _SplashScreenState extends State<SplashScreen>
 
       await Future.delayed(const Duration(milliseconds: 1500));
       if (mounted) {
-        _navigateToScreen(const MainScreen());
+        // Fail closed here too — see rationale above.
+        _navigateToScreen(const PinEntryScreen());
       }
     }
   }

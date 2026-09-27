@@ -29,7 +29,7 @@ payment_gate.log
 *.so
 *.dll
 *.a
-native/crypto/target/
+macos/Runner/libfuego_ffi.dylib
 
 # Build outputs / scratch
 src/Release/
@@ -40,3 +40,6 @@ xfgo/
 
 # Unbundled font drops (not wired in pubspec)
 assets/fonts/Noto_Serif_Display/
+
+# Claude Code agent worktrees
+.claude/worktrees/
