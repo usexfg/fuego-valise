@@ -48,7 +48,9 @@ a C source or a system library that changes how the library links.
   use `.github/actions/build-android-natives`. It builds `libfuego_ffi.so`
   and `fuego_walletd` for four ABIs with
   `-Wl,-z,max-page-size=16384`, then fails if any `LOAD` segment is not
-  `0x4000`-aligned or `fuego_mine_share` is not exported. Android 15+
+  `0x4000`-aligned or `fuego_mine_share` is not exported. The export check
+  reads `--dyn-syms` in full; `grep -q` under `pipefail` fails on
+  readelf's SIGPIPE even when the symbol is there. Android 15+
   devices with 16 KB pages refuse 4 KB-aligned libraries.
 - CryptoNight on Android takes the portable path (no ARM crypto
   extension in the NDK default). See `cryptonight.md`.
@@ -83,6 +85,9 @@ a C source or a system library that changes how the library links.
   Needs Rust with `aarch64-apple-ios`, `aarch64-apple-ios-sim` and
   `x86_64-apple-ios` installed. "cargo not found" means Rust is missing.
 - Check the result with `scripts/check-ios-ffi-symbols.sh <Runner | .xcarchive | .ipa>`.
+  Debug builds link the app code into `Runner.debug.dylib` (Xcode
+  `ENABLE_DEBUG_DYLIB`) and leave `Runner` as a stub; the script includes
+  that dylib when it sits next to the binary.
   Stripping happens on archive/install (`DEPLOYMENT_POSTPROCESSING`), and
   the export can strip again (`stripSwiftSymbols`), so a plain
   `flutter build ios` output proves little. Both release workflows run

@@ -38,11 +38,14 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        # suite's CMake adds -march=native to Crypto when CI/GITHUB_* is set at configure
+        # time; shipped daemons would then die with SIGILL on CPUs older than the runner.
+        portable_cmake() { env -u CI -u GITHUB_ACTIONS -u GITHUB_REF -u GITHUB_RUN_ID cmake "$@"; }
         if [ "$RUNNER_OS" = "macOS" ]; then
-          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          portable_cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
         else
-          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          portable_cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
         fi
         # fuegod (local mode) and xfg-swapd (cross-chain swaps) are required.
         cmake --build fuego-suite/build --target Daemon SwapDaemon

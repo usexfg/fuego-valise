@@ -67,6 +67,7 @@ runs:
             bad=$("$READELF" -lW "$f" | awk '$1=="LOAD" && $NF!="0x4000" {print $NF}')
             if [ -n "$bad" ]; then echo "$f: LOAD segments not 16 KB aligned ($bad)"; exit 1; fi
           done
-          "$READELF" -sW --dyn-syms "$dst/libfuego_ffi.so" | grep -q ' fuego_mine_share$' \
+          # Not `grep -q`: it exits on the first match, readelf takes SIGPIPE, and pipefail fails the step.
+          "$READELF" -W --dyn-syms "$dst/libfuego_ffi.so" | grep ' fuego_mine_share$' >/dev/null \
             || { echo "$dst/libfuego_ffi.so: fuego_mine_share not exported"; exit 1; }
         done

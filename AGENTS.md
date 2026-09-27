@@ -118,6 +118,7 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 - `fuego-suite/` is a git submodule of `usexfg/fuego-suite`, tracking `master`, pinned to one commit. Clone with `--recurse-submodules`. Locally it replaces the old gitignored `xfgo/` checkout.
 - `fuego-ffi/build.rs` compiles CryptoNight (`slow-hash.c` etc.) directly from `fuego-suite/src/crypto`. There is no vendored copy. `cargo test -p fuego-ffi` checks it against canonical CN v0/v2 vectors.
 - Desktop CI builds `fuegod`/`xfg-swapd`/`unified` from the pinned submodule (`submodules: recursive`), not from a fresh clone of suite master.
+- suite's `src/CMakeLists.txt` adds `-march=native` to Crypto when `CI`/`GITHUB_*` is set at configure time. Every suite build in CI configures with `env -u CI -u GITHUB_ACTIONS -u GITHUB_REF -u GITHUB_RUN_ID`; otherwise released daemons SIGILL on CPUs older than the runner.
 - Dependabot (`gitsubmodule` ecosystem) opens a PR whenever suite master moves. Merging that PR is how the pin moves.
 - The Rust SDK is a Rust reimplementation of suite's C++ wire formats, not shared source. The submodule does not keep it in sync; only the fuegod wire-format CI job catches drift.
 - Wire-format check (CI job `fuegod-wire-check`): builds `fuegod` from the pin, runs it isolated with `--testnet` (ungates RPC on an unsynced node), and round-trips `fuego-sdk/tests/fuegod_wire.rs`. Locally: start fuegod the same way, then `FUEGOD_RPC_URL=http://127.0.0.1:28180 cargo test -p fuego-sdk --test fuegod_wire -- --ignored`.

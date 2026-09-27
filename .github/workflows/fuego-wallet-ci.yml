@@ -286,12 +286,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: fuego-suite/build
-          key: fuegod-${{ runner.os }}-24.04-${{ steps.suite.outputs.sha }}
+          key: fuegod-${{ runner.os }}-24.04-portable-${{ steps.suite.outputs.sha }}
 
       - name: Build fuegod from the pinned submodule
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          # Unset CI vars at configure: suite adds -march=native under CI, and a cached
+          # build restored on a runner with a different CPU then dies with SIGILL.
+          env -u CI -u GITHUB_ACTIONS -u GITHUB_REF -u GITHUB_RUN_ID \
+            cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build fuego-suite/build --target Daemon -j"$(nproc)"
 
       - name: Set up Rust

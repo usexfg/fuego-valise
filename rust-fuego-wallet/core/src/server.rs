@@ -650,7 +650,7 @@ async fn handle_wallet_method(
             // chain atomics (price * COIN) like spot_price scaling.
             let price_atomic = params.get("price")
                 .and_then(|v| v.as_str())
-                .and_then(|s| (s.parse::<f64>().ok().map(|p| (p * 10_000_000f64).round() as u64)))
+                .and_then(|s| s.parse::<f64>().ok().map(|p| (p * 10_000_000f64).round() as u64))
                 .or_else(|| params.get("price").and_then(|v| v.as_u64()))
                 .ok_or("missing price")?;
             let expiration = params.get("ttlBlocks")

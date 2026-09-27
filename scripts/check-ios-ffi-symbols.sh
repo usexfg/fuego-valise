@@ -21,6 +21,12 @@ case "$target" in
 esac
 
 syms=$(nm -gU "$bin")
+# Debug builds (Xcode ENABLE_DEBUG_DYLIB) link the app code into Runner.debug.dylib and
+# leave Runner as a stub; DynamicLibrary.process() resolves across every loaded image.
+debug_dylib="$(dirname "$bin")/Runner.debug.dylib"
+if [ -f "$debug_dylib" ]; then
+  syms+=$'\n'$(nm -gU "$debug_dylib")
+fi
 missing=0
 for s in fuego_string_free fuego_bytes_free fuego_vault_from_seed fuego_vault_get_address \
          fuego_make_address fuego_mine_share fuego_cn_slow_hash; do

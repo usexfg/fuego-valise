@@ -15,6 +15,9 @@
 | 75 | Linux launcher symlink pointed at "Fuego Valise" (display name); the binary is `fuegowallet` (`BINARY_NAME`). Bundle step reads it from CMakeLists and checks the link resolves; flatpak fixed too (review #6) | claude-opus-5-5 | 2026-09-26 | ✅ done |
 | 76 | `unified` is required: the desktop build fails without it, and bundling requires all four backends (review #1) | claude-opus-5-5 | 2026-09-26 | ✅ done |
 | 77 | Main CI Analyze passed `--fatal-warnings` but infos were still fatal by default (red on master too); added `--no-fatal-infos` as the step's comment intends | claude-opus-5-5 | 2026-09-26 | ✅ done |
+| 78 | Suite's CMake adds `-march=native` to Crypto whenever `CI`/`GITHUB_*` is set at configure; release `fuegod`/`xfg-swapd` could SIGILL on user CPUs older than the runner, and the cached wire-check build did SIGILL on another runner. Desktop builds and the wire check now configure with those vars unset; cache key bumped | claude-opus-5-5 | 2026-09-27 | ✅ done |
+| 79 | Android export check used `readelf -s --dyn-syms \| grep -q` under pipefail: grep exits on the match, readelf takes SIGPIPE (141), the step failed with the symbol present. Now `--dyn-syms` only, full read | claude-opus-5-5 | 2026-09-27 | ✅ done |
+| 80 | iOS symbol check failed on the debug simulator build: Xcode `ENABLE_DEBUG_DYLIB` puts app code in `Runner.debug.dylib`. The script now includes it when present | claude-opus-5-5 | 2026-09-27 | ✅ done |
 
 ### Sign-off
 
