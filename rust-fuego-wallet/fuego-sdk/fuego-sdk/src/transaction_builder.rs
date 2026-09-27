@@ -25,12 +25,9 @@ use fuego_crypto::ref10::{ge_p3_tobytes, ge_scalarmult_base, GeP3};
 use rand::RngCore;
 use std::collections::BTreeMap;
 
-/// Flat fee for block major version >= 10 (CryptoNoteConfig.h MINIMUM_FEE_8KH).
-pub const MINIMUM_FEE: u64 = 8000;
-/// Outputs below this are dust (CryptoNoteConfig.h DEFAULT_DUST_THRESHOLD).
-pub const DEFAULT_DUST_THRESHOLD: u64 = 1000;
-/// CryptoNoteConfig.h MAX_TX_MIXIN_SIZE.
-pub const MAX_MIXIN: usize = 32;
+pub const MINIMUM_FEE: u64 = crate::suite::MINIMUM_FEE;
+pub const DEFAULT_DUST_THRESHOLD: u64 = crate::suite::DEFAULT_DUST_THRESHOLD;
+pub const MAX_MIXIN: usize = crate::suite::MAX_TX_MIXIN_SIZE as usize;
 
 /// A spendable output owned by this wallet.
 #[derive(Debug, Clone)]

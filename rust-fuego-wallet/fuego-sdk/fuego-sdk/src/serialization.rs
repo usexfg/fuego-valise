@@ -67,32 +67,30 @@ pub const TX_INPUT_TAG_KEY: u8 = 0x02;
 pub const TX_INPUT_TAG_COMMITMENT_SPEND: u8 = 0x04;
 pub const TX_OUTPUT_TAG_KEY: u8 = 0x02;
 pub const TX_OUTPUT_TAG_COMMITMENT: u8 = 0x04;
-pub const TX_EXTRA_TAG_PADDING: u8 = 0x00;
-pub const TX_EXTRA_TAG_PUBKEY: u8 = 0x01;
-pub const TX_EXTRA_TAG_NONCE: u8 = 0x02;
-pub const TX_EXTRA_HEAT_MINT_AUTH: u8 = 0xF5;
-pub const TX_EXTRA_AMM_SWAP_AUTH: u8 = 0xF6;
-pub const TX_EXTRA_AMM_LP_ADD_AUTH: u8 = 0xF7;
-pub const TX_EXTRA_AMM_LP_REM_AUTH: u8 = 0xF8;
-pub const TX_EXTRA_HEAT_SEND_AUTH: u8 = 0xF9;
-pub const TX_EXTRA_LIMIT_DEPOSIT: u8 = 0xFB;
-pub const TX_EXTRA_TREASURY_FUND: u8 = 0xFF;
+use crate::suite::tx_extra;
+
+pub const TX_EXTRA_TAG_PADDING: u8 = tx_extra::TX_EXTRA_TAG_PADDING;
+pub const TX_EXTRA_TAG_PUBKEY: u8 = tx_extra::TX_EXTRA_TAG_PUBKEY;
+pub const TX_EXTRA_TAG_NONCE: u8 = tx_extra::TX_EXTRA_NONCE;
+pub const TX_EXTRA_NONCE_PAYMENT_ID: u8 = tx_extra::TX_EXTRA_NONCE_PAYMENT_ID;
+pub const TX_EXTRA_HEAT_MINT_AUTH: u8 = tx_extra::TX_EXTRA_HEAT_MINT_AUTH;
+pub const TX_EXTRA_AMM_SWAP_AUTH: u8 = tx_extra::TX_EXTRA_AMM_SWAP_AUTH;
+pub const TX_EXTRA_AMM_LP_ADD_AUTH: u8 = tx_extra::TX_EXTRA_AMM_LP_ADD_AUTH;
+pub const TX_EXTRA_AMM_LP_REM_AUTH: u8 = tx_extra::TX_EXTRA_AMM_LP_REM_AUTH;
+pub const TX_EXTRA_HEAT_SEND_AUTH: u8 = tx_extra::TX_EXTRA_HEAT_SEND_AUTH;
+pub const TX_EXTRA_LIMIT_DEPOSIT: u8 = tx_extra::TX_EXTRA_LIMIT_DEPOSIT;
+pub const TX_EXTRA_TREASURY_FUND: u8 = tx_extra::TX_EXTRA_TREASURY_FUND;
+pub const TX_EXTRA_CD_BONUS_CLAIM: u8 = tx_extra::TX_EXTRA_CD_BONUS_CLAIM;
+pub const TX_EXTRA_ALIAS: u8 = tx_extra::TX_EXTRA_ALIAS;
 
 pub const TX_VERSION_1: u8 = 1;
 pub const TX_VERSION_2: u8 = 2;
 
-/// HEAT_TERM (CryptoNoteConfig.h): outputs with this term are HEAT.
-pub const HEAT_TERM: u32 = 0xFFFF_FFFF;
-
-/// DEPOSIT_TERM_LP (CryptoNoteConfig.h): LP share marker term for Hearth
-/// liquidity positions.
-pub const DEPOSIT_TERM_LP: u32 = 0xFFFF_FFFD;
-
-/// DEPOSIT_TERM_POOL_XFG (CryptoNoteConfig.h): 'POLX' — pool receives XFG.
-pub const DEPOSIT_TERM_POOL_XFG: u32 = 0x504F_4C58;
-
-/// DEPOSIT_TERM_POOL_HEAT (CryptoNoteConfig.h): 'POLH' — pool receives HEAT.
-pub const DEPOSIT_TERM_POOL_HEAT: u32 = 0x504F_4C48;
+pub const HEAT_TERM: u32 = crate::suite::HEAT_TERM;
+pub const DEPOSIT_TERM_LP: u32 = crate::suite::DEPOSIT_TERM_LP;
+pub const DEPOSIT_TERM_POOL_XFG: u32 = crate::suite::DEPOSIT_TERM_POOL_XFG;
+pub const DEPOSIT_TERM_POOL_HEAT: u32 = crate::suite::DEPOSIT_TERM_POOL_HEAT;
+pub const DEPOSIT_TERM_SWAP_RECEIVE_XFG: u32 = crate::suite::DEPOSIT_TERM_SWAP_RECEIVE_XFG;
 
 /// MembershipProof size: FUEGO_MEMBERSHIP_N(4) * 2 scalars * 32 bytes.
 pub const AMOUNT_PROOF_LEN: usize = 256;
@@ -572,6 +570,97 @@ pub fn add_limit_deposit_extra(
     write_varint(expiration as u64, extra);
     extra.extend_from_slice(order_id);
     extra.extend_from_slice(address_hash);
+}
+
+/// addExtraNonceToTransactionExtra with a payment id: 0x02 || 33 || 0x00 || id.
+pub fn add_payment_id_nonce(extra: &mut Vec<u8>, payment_id: &[u8; 32]) {
+    extra.push(TX_EXTRA_TAG_NONCE);
+    extra.push(33);
+    extra.push(TX_EXTRA_NONCE_PAYMENT_ID);
+    extra.extend_from_slice(payment_id);
+}
+
+/// Payment id from a 0x02 nonce, walking the leading pubkey/padding/nonce
+/// fields the way parseTransactionExtra does. Stops at unknown tags.
+pub fn parse_extra_payment_id(extra: &[u8]) -> Option<[u8; 32]> {
+    let mut pos = 0usize;
+    while pos < extra.len() {
+        let tag = extra[pos];
+        pos += 1;
+        match tag {
+            TX_EXTRA_TAG_PADDING => {}
+            TX_EXTRA_TAG_PUBKEY => pos += 32,
+            TX_EXTRA_TAG_NONCE => {
+                let len = *extra.get(pos)? as usize;
+                pos += 1;
+                let nonce = extra.get(pos..pos + len)?;
+                if len == 33 && nonce[0] == TX_EXTRA_NONCE_PAYMENT_ID {
+                    let mut id = [0u8; 32];
+                    id.copy_from_slice(&nonce[1..]);
+                    return Some(id);
+                }
+                pos += len;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// TransactionExtra.cpp addCdBonusClaimToExtra: 0xD6 || inputIndex u8 ||
+/// claimedBonus u64 LE. Declares the Bonus-Vault-backed part of an input's
+/// claimedInterest (v11+).
+pub fn add_cd_bonus_claim_extra(extra: &mut Vec<u8>, input_index: u8, claimed_bonus: u64) {
+    extra.push(TX_EXTRA_CD_BONUS_CLAIM);
+    extra.push(input_index);
+    extra.extend_from_slice(&claimed_bonus.to_le_bytes());
+}
+
+/// TransactionExtraAliasRegistration fields (TransactionExtra.h).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasRegistration {
+    pub alias: String,
+    pub alias_hash: [u8; 32],
+    pub address_hash: [u8; 32],
+    pub owner_address: String,
+    pub alias_type: u8,
+    pub network_id: u32,
+}
+
+/// TransactionExtra.cpp addAliasToExtra: 0xEA || varint(size) || body, where
+/// body is the BinaryOutputStreamSerializer form: varint(version=1),
+/// string(alias), aliasHash[32], addressHash[32], string(ownerAddress),
+/// varint(aliasType), varint(networkId).
+pub fn add_alias_registration_extra(extra: &mut Vec<u8>, reg: &AliasRegistration) {
+    let mut body = Vec::with_capacity(96 + reg.alias.len() + reg.owner_address.len());
+    write_varint(1, &mut body);
+    write_varint(reg.alias.len() as u64, &mut body);
+    body.extend_from_slice(reg.alias.as_bytes());
+    body.extend_from_slice(&reg.alias_hash);
+    body.extend_from_slice(&reg.address_hash);
+    write_varint(reg.owner_address.len() as u64, &mut body);
+    body.extend_from_slice(reg.owner_address.as_bytes());
+    write_varint(reg.alias_type as u64, &mut body);
+    write_varint(reg.network_id as u64, &mut body);
+    extra.push(TX_EXTRA_ALIAS);
+    write_varint(body.len() as u64, extra);
+    extra.extend_from_slice(&body);
+}
+
+/// Block timestamp from a serialized block (CryptoNoteSerialization.cpp):
+/// v1 headers carry it directly; v2+ carry it in the parent block that
+/// follows prev_id.
+pub fn parse_block_timestamp(block: &[u8]) -> Result<u64, SerializationError> {
+    let mut pos = 0usize;
+    let major = read_varint(block, &mut pos)?;
+    let _minor = read_varint(block, &mut pos)?;
+    if major == 1 {
+        return read_varint(block, &mut pos);
+    }
+    read_bytes(block, &mut pos, 32)?;
+    let _parent_major = read_varint(block, &mut pos)?;
+    let _parent_minor = read_varint(block, &mut pos)?;
+    read_varint(block, &mut pos)
 }
 
 // ---------------------------------------------------------------- daemon RPC

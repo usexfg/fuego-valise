@@ -89,13 +89,13 @@ class FuegoRPCService {
 
       int localHeight = 0;
       try {
-        // getStatus → proxy remaps to walletd's "get_height"
+        // walletd getStatus: blockCount = blocks scanned (a count, like getinfo height).
         final status = await _makeRPCCall('getStatus', {});
-        localHeight = status['height'] as int? ?? 0;
+        localHeight = status['blockCount'] as int? ?? 0;
       } catch (_) {}
 
-      final available = response['available_balance'] ?? response['availableBalance'] ?? response['balance'] ?? 0;
-      final locked = response['locked_amount'] ?? response['lockedAmount'] ?? 0;
+      final available = response['availableBalance'] ?? 0;
+      final locked = response['lockedAmount'] ?? 0;
 
       final effectiveLocal = localHeight > 0 ? localHeight : bchainHeight;
 
@@ -119,9 +119,10 @@ class FuegoRPCService {
 
   Future<String> getAddress() async {
     try {
-      // getAddresses → proxy remaps to walletd's "get_address"
+      // walletd getAddresses: {addresses: [...]}
       final response = await _makeRPCCall('getAddresses', {});
-      return response['address'] as String? ?? '';
+      final addresses = response['addresses'] as List? ?? const [];
+      return addresses.isNotEmpty ? addresses.first as String : '';
     } catch (e) {
       throw FuegoRPCException('Failed to get address: $e');
     }
@@ -132,8 +133,10 @@ class FuegoRPCService {
     int firstBlockIndex = 0,
   }) async {
     try {
-      // getTransactions → proxy remaps to walletd's "get_transfers"
-      final response = await _makeRPCCall('getTransactions', {});
+      final response = await _makeRPCCall('getTransactions', {
+        'firstBlockIndex': firstBlockIndex,
+        'blockCount': blockCount,
+      });
 
       // walletd response: result.items[] → each item.transactions[]
       final items = response['items'] as List? ?? [];
@@ -163,8 +166,6 @@ class FuegoRPCService {
 
   Future<String> sendTransaction(SendTransactionRequest request) async {
     try {
-      // sendTransaction → proxy remaps to walletd's "transfer"
-      // Proxy also converts anonymity → mixin, adds unlock_time
       final response = await _makeRPCCall('sendTransaction', {
         'transfers': [{
           'amount': request.amount,
@@ -175,7 +176,7 @@ class FuegoRPCService {
         'paymentId': request.paymentId.isNotEmpty ? request.paymentId : null,
       });
 
-      return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
+      return response['transactionHash'] as String? ?? '';
     } catch (e) {
       throw FuegoRPCException('Failed to send transaction: $e');
     }
@@ -189,7 +190,7 @@ class FuegoRPCService {
 
       final address = await getAddress();
 
-      final response = await _makeRPCCall('create_integrated', {
+      final response = await _makeRPCCall('createIntegrated', {
         'address': address,
         'payment_id': paymentId,
       });
@@ -211,7 +212,7 @@ class FuegoRPCService {
       final response = await _makeRPCCall('register_alias', {
         'alias': alias,
       });
-      return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
+      return response['transactionHash'] as String? ?? '';
     } catch (e) {
       throw FuegoRPCException('Failed to register alias: $e');
     }
@@ -260,17 +261,13 @@ class FuegoRPCService {
 
   // ── ΗΞΔŦ Methods ──
 
-  Future<Map<String, dynamic>> heatMint({
-    required int xfgBurned,
-    required int heatMinted,
-    int fee = 0,
-    int mixin = 4,
-  }) async {
+  /// Burn [xfgBurned] atomic XFG for HEAT. The wallet prices the mint at the
+  /// Hearth TWAP consensus validates against; the response carries
+  /// transactionHash, heatMinted and price.
+  Future<Map<String, dynamic>> heatMint({required int xfgBurned}) async {
     try {
-      final response = await _makeRPCCall('heat_mint', {
+      final response = await _makeRPCCall('mint_heat', {
         'xfg_burned': xfgBurned,
-        'heat_minted': heatMinted,
-        'mixin': mixin,
       });
       return response;
     } catch (e) {
@@ -281,16 +278,13 @@ class FuegoRPCService {
   Future<String> sendHeat({
     required String address,
     required int amount,
-    int fee = 0,
-    int mixin = 4,
   }) async {
     try {
       final response = await _makeRPCCall('send_heat', {
         'address': address,
         'amount': amount,
-        'mixin': mixin,
       });
-      return response['tx_hash'] as String? ?? '';
+      return response['transactionHash'] as String? ?? '';
     } catch (e) {
       throw FuegoRPCException('Failed to send ΗΞΔŦ: $e');
     }

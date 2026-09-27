@@ -1,64 +1,145 @@
-name: Suite Sync Check
+name: Suite Sync
+
+# Keeps the Rust SDK (rust-fuego-wallet) and Dart models in step with
+# fuego-suite. See tool/check_suite_sync.py.
+#
+# - push / pull_request: verify against the suite commit pinned in
+#   tool/suite_contract.lock.json (deterministic; suite changes never break PRs).
+# - schedule / repository_dispatch (sent by fuego-suite on relevant pushes) /
+#   manual: regenerate from the latest suite, run the checks and the Rust tests,
+#   and open or update the `bot/suite-sync` pull request with the report.
 
 on:
-  schedule:
-    # Daily at 06:00 UTC
-    - cron: '0 6 * * *'
   push:
+    branches: [master]
     paths:
-      - 'lib/core/daemon_client.dart'
-      - 'lib/services/fuego_rpc_service.dart'
+      - 'rust-fuego-wallet/**'
       - 'lib/models/heat_amm.dart'
       - 'tool/check_suite_sync.py'
+      - 'tool/suite_contract.lock.json'
+      - '.github/workflows/suite-sync-check.yml'
   pull_request:
     paths:
-      - 'lib/core/daemon_client.dart'
-      - 'lib/services/fuego_rpc_service.dart'
+      - 'rust-fuego-wallet/**'
       - 'lib/models/heat_amm.dart'
       - 'tool/check_suite_sync.py'
+      - 'tool/suite_contract.lock.json'
+      - '.github/workflows/suite-sync-check.yml'
+  schedule:
+    - cron: '17 6 * * *'
+  repository_dispatch:
+    types: [suite-updated]
   workflow_dispatch:
     inputs:
       suite_ref:
-        description: 'fuego-suite branch/tag/commit to check against'
+        description: 'fuego-suite branch, tag or commit to sync against'
         required: false
         default: 'master'
 
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: suite-sync-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  suite-sync:
-    name: Check RPC drift vs fuego-suite
-    runs-on: ubuntu-latest
-
+  verify:
+    name: Verify against pinned suite
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
-      - name: Checkout fuego-valise
-        uses: actions/checkout@v4
-        with:
-          path: fuego-valise
+      - uses: actions/checkout@v4
 
-      - name: Checkout fuego-suite
-        uses: actions/checkout@v4
+      - name: Read pinned suite commit
+        id: pin
+        run: |
+          echo "commit=$(python3 -c 'import json; print(json.load(open("tool/suite_contract.lock.json"))["suite_commit"])')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
         with:
           repository: usexfg/fuego-suite
-          ref: ${{ github.event.inputs.suite_ref || 'master' }}
-          path: fuego-suite
-          # Public repo — no token needed. Add one if the repo goes private:
-          # token: ${{ secrets.SUITE_READ_TOKEN }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: .suite
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Contract check
+        run: python3 tool/check_suite_sync.py check --suite .suite
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust tests
+        working-directory: rust-fuego-wallet
+        run: cargo test --workspace --locked
+
+  sync:
+    name: Sync with latest suite
+    if: github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
         with:
-          python-version: '3.11'
+          repository: usexfg/fuego-suite
+          ref: ${{ github.event.client_payload.sha || github.event.inputs.suite_ref || 'master' }}
+          path: .suite
 
-      - name: Run drift check
+      - name: Regenerate contract and suite.rs
+        run: python3 tool/check_suite_sync.py sync --suite .suite --report sync-report.md
+
+      - name: Contract check
+        id: check
+        continue-on-error: true
+        run: python3 tool/check_suite_sync.py check --suite .suite --report check-report.md
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust tests
+        id: tests
+        continue-on-error: true
+        working-directory: rust-fuego-wallet
+        run: cargo test --workspace --locked 2>&1 | tee ../cargo-test.log; exit "${PIPESTATUS[0]}"
+
+      - name: Compose pull request body
         run: |
-          python3 fuego-valise/tool/check_suite_sync.py \
-            --suite fuego-suite \
-            --valise fuego-valise
+          {
+            echo "Automated sync with fuego-suite \`$(git -C .suite rev-parse HEAD)\`."
+            echo
+            echo "- Contract check: **${{ steps.check.outcome }}**"
+            echo "- Rust tests: **${{ steps.tests.outcome }}**"
+            echo
+            echo "Generated files are committed here; any SDK or Dart code the report"
+            echo "flags must be fixed by hand before merging."
+            echo
+            cat sync-report.md
+            echo
+            cat check-report.md
+            if [ "${{ steps.tests.outcome }}" != "success" ]; then
+              echo; echo '<details><summary>cargo test (tail)</summary>'; echo; echo '```'
+              tail -n 80 cargo-test.log; echo '```'; echo '</details>'
+            fi
+          } > pr-body.md
 
-      - name: Upload drift report on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Open or update pull request
+        uses: peter-evans/create-pull-request@v7
         with:
-          name: suite-sync-drift-report
-          path: |
-            fuego-suite/src/Rpc/CoreRpcServerCommandsDefinitions.h
-            fuego-suite/src/PaymentGate/PaymentServiceJsonRpcMessages.h
+          token: ${{ secrets.SUITE_SYNC_TOKEN || github.token }}
+          branch: bot/suite-sync
+          base: master
+          add-paths: |
+            tool/suite_contract.lock.json
+            rust-fuego-wallet/fuego-sdk/fuego-sdk/src/suite.rs
+          commit-message: 'chore(sdk): sync suite contract with fuego-suite'
+          title: 'Sync SDK with fuego-suite'
+          body-path: pr-body.md
+          labels: suite-sync
+          delete-branch: true
+
+      - name: Fail when the SDK no longer matches the suite
+        if: steps.check.outcome != 'success' || steps.tests.outcome != 'success'
+        run: |
+          echo "::error::Suite drift needs a code change; see the bot/suite-sync pull request."
+          exit 1

@@ -1,15 +1,19 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use fuego_sdk::suite::rpc::{self, Transport};
+use fuego_sdk::suite::walletd;
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::wallet_service::WalletService;
+use crate::wallet_service::{SendOptions, WalletService};
 
 pub struct AppState {
     pub wallet: Arc<Mutex<WalletService>>,
@@ -18,15 +22,15 @@ pub struct AppState {
 
 #[derive(Serialize)]
 struct JsonRpcSuccess {
-    jsonrpc: String,
-    id: u64,
-    result: serde_json::Value,
+    jsonrpc: &'static str,
+    id: Value,
+    result: Value,
 }
 
 #[derive(Serialize)]
 struct JsonRpcError {
-    jsonrpc: String,
-    id: u64,
+    jsonrpc: &'static str,
+    id: Value,
     error: RpcErrorDetail,
 }
 
@@ -36,679 +40,599 @@ struct RpcErrorDetail {
     message: String,
 }
 
-fn is_fuegod_method(method: &str) -> bool {
-    matches!(method,
-        "getinfo" | "getheight" | "getblockcount" | "on_getblockhash" | "getblock" |
-        "getlastblockheader" | "getblockheaderbyhash" | "getblockheaderbyheight" |
-        "peers" | "feeaddress" | "getethereal" | "paymentid" |
-        "gettransactions" | "sendrawtransaction" |
-        "getrandom_outs_json" | "get_outputs_heights" |
-        "check_tx_proof" | "check_reserve_proof" |
-        "start_mining" | "stop_mining" |
-        "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
-        "heat_metrics" | "amm_quote" | "amm_pool_info" |
-        "get_orderbook_state" | "get_orderbook_info" | "get_orderbook_estimates" |
-        "get_fuego_price" | "getswapoffers" | "getswapprice" | "getswaptrades" |
-        "submitswap" | "cancelswap" | "requestswap" |
-        "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
-        "initiate" | "accept" | "processswap" | "refundswap" |
-        "getdeposits" | "get_block_range" | "get_maturing_deposits" |
-        "rollover_deposit" | "get_fee_pool_info" | "get_epoch_history" |
-        "get_treasury_info" | "get_alias" | "get_alias_by_address" | "get_all_aliases" |
-        "mint_heat" |
-        "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit"
-    )
-}
+/// fuegod routes the proxy never forwards (node control / fee admin).
+const FUEGOD_DENY: &[&str] = &["stop_daemon", "addswapfee", "submitblock"];
 
 fn is_wallet_method(method: &str) -> bool {
-    matches!(method,
-        "getBalance" | "getAddresses" | "getAddress" | "getTransactions" |
-        "sendTransaction" | "getStatus" | "register_alias" | "create_cd" | "claim_cd" |
-        "create_integrated" | "list_cds" | "cd::list" | "cd::create" | "cd::claim" |
-        "mint_heat" | "swap" | "add_liq" | "remove_liq" | "place_limit_order"
+    matches!(
+        method,
+        "getBalance" | "getbalance" | "getAddresses" | "getAddress" | "get_address" | "getHealth"
+            | "getStatus" | "get_height" | "getTransactions" | "get_transfers" | "sendTransaction"
+            | "transfer" | "register_alias" | "createIntegrated" | "create_integrated" | "list_cds"
+            | "cd::list" | "cd::create" | "create_cd" | "cd::claim" | "claim_cd" | "create_afk_lock"
+            | "send_heat" | "get_tx_proof" | "getTxProof" | "mint_heat" | "swap" | "add_liq"
+            | "remove_liq" | "place_limit_order" | "heat_cd"
     )
 }
 
 fn sanitize_error(msg: &str) -> String {
-    if msg.contains("127.0.0.1") || msg.contains("localhost")
-        || msg.contains("/Users/") || msg.contains("/home/")
-        || msg.contains("http://") || msg.contains("https://") {
+    if msg.contains("127.0.0.1")
+        || msg.contains("localhost")
+        || msg.contains("/Users/")
+        || msg.contains("/home/")
+        || msg.contains("http://")
+        || msg.contains("https://")
+    {
         return "internal error".to_string();
     }
-    let sanitized = msg
-        .trim_start_matches("HTTP: ")
+    msg.trim_start_matches("HTTP: ")
         .trim_start_matches("JSON: ")
         .trim_start_matches("RPC: ")
-        .to_string();
-    sanitized
+        .to_string()
 }
 
-async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("");
-    let params = body.get("params").cloned().unwrap_or(serde_json::json!({}));
+fn to_value<T: Serialize>(v: &T) -> Result<Value, String> {
+    serde_json::to_value(v).map_err(|e| e.to_string())
+}
 
-    let resp = match method {
-        "getinfo" => {
-            client.get(format!("{}/getinfo", fuegod_url)).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getheight" => {
-            client.post(format!("{}/getheight", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getblockcount" => {
-            client.post(format!("{}/getblockcount", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "on_getblockhash" => {
-            client.post(format!("{}/on_getblockhash", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getblock" => {
-            client.post(format!("{}/getblock", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getlastblockheader" => {
-            client.post(format!("{}/getlastblockheader", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getblockheaderbyhash" => {
-            client.post(format!("{}/getblockheaderbyhash", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getblockheaderbyheight" => {
-            client.post(format!("{}/getblockheaderbyheight", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "peers" => {
-            client.post(format!("{}/peers", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "feeaddress" => {
-            client.post(format!("{}/feeaddress", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getethereal" => {
-            client.post(format!("{}/getethereal", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "paymentid" => {
-            client.post(format!("{}/paymentid", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "gettransactions" => {
-            client.post(format!("{}/gettransactions", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "sendrawtransaction" => {
-            client.post(format!("{}/sendrawtransaction", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getrandom_outs_json" => {
-            client.post(format!("{}/getrandom_outs_json", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "get_outputs_heights" => {
-            client.post(format!("{}/get_outputs_heights", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "check_tx_proof" => {
-            client.post(format!("{}/check_tx_proof", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "check_reserve_proof" => {
-            client.post(format!("{}/check_reserve_proof", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "start_mining" => {
-            client.post(format!("{}/start_mining", fuegod_url))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "stop_mining" => {
-            client.post(format!("{}/stop_mining", fuegod_url))
-                .json(&serde_json::json!({})).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
-        "getswapoffers" | "getswapprice" | "getswaptrades" |
-        "submitswap" | "cancelswap" | "requestswap" |
-        "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
-        "initiate" | "accept" | "processswap" | "refundswap" |
-        "getdeposits" | "get_block_range" | "get_maturing_deposits" |
-        "rollover_deposit" | "get_fee_pool_info" | "get_epoch_history" |
-        "get_treasury_info" | "get_alias" | "get_alias_by_address" | "get_all_aliases" |
-        "heat_metrics" | "amm_quote" | "amm_pool_info" |
-        "get_orderbook_info" | "get_orderbook_estimates" |
-        "get_fuego_price" |
-        "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit" => {
-            client.post(format!("{}/{}", fuegod_url, method))
-                .json(&params).send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        // fuegod exposes the orderbook at /getorderbook (pair + depth);
-        // the walletd method name is get_orderbook_state.
-        "get_orderbook_state" => {
-            let pair = params.get("pair").and_then(|v| v.as_u64()).unwrap_or(0);
-            let depth = params.get("depth").and_then(|v| v.as_u64()).unwrap_or(20);
-            client.post(format!("{}/getorderbook", fuegod_url))
-                .json(&serde_json::json!({ "pair": pair, "depth": depth }))
-                .send().await
-                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
-        }
-        _ => {
-            return Err(format!("unknown fuegod method: {}", method));
-        }
-    };
+/// u64 from a JSON number or decimal string.
+fn param_u64(params: &Value, key: &str) -> Option<u64> {
+    let v = params.get(key)?;
+    v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+}
 
-    let text = resp.text().await
+async fn read_json(resp: reqwest::Response) -> Result<Value, String> {
+    let text = resp
+        .text()
+        .await
         .map_err(|e| sanitize_error(&format!("fuego daemon response: {}", e)))?;
-    let val: serde_json::Value = serde_json::from_str(&text)
-        .unwrap_or_else(|_| serde_json::json!({"status": text.trim()}));
-    Ok(val)
+    Ok(serde_json::from_str(&text).unwrap_or_else(|_| json!({ "status": text.trim() })))
+}
+
+/// Forward a method to fuegod using the transport fuegod registers for it
+/// (generated from RpcServer.cpp): `/json_rpc` methods go through the
+/// JSON-RPC dispatcher, HTTP JSON endpoints get the params as their body.
+async fn proxy_to_fuegod(fuegod_url: &str, method: &str, params: Value) -> Result<Value, String> {
+    if FUEGOD_DENY.contains(&method) {
+        return Err(format!("{method} is not available through the wallet proxy"));
+    }
+    let client = reqwest::Client::new();
+    let net = |e: reqwest::Error| sanitize_error(&format!("fuego daemon: {}", e));
+
+    if rpc::is_json_rpc_method(method) {
+        let body = json!({ "jsonrpc": "2.0", "id": "0", "method": method, "params": params });
+        let resp = read_json(client.post(format!("{fuegod_url}/json_rpc")).json(&body).send().await.map_err(net)?).await?;
+        if let Some(err) = resp.get("error").filter(|e| !e.is_null()) {
+            return Err(err.get("message").and_then(Value::as_str).unwrap_or("fuegod error").to_string());
+        }
+        return Ok(resp.get("result").cloned().unwrap_or(Value::Null));
+    }
+
+    // Wallet-facing alias: fuegod serves the orderbook at /getorderbook.
+    let path = match method {
+        "get_orderbook_state" => "/getorderbook".to_string(),
+        other => format!("/{other}"),
+    };
+    let body = if params.is_null() { json!({}) } else { params };
+    match rpc::http_route(&path) {
+        Some(Transport::Json) | Some(Transport::JsonSwapAuth) => {
+            read_json(client.post(format!("{fuegod_url}{path}")).json(&body).send().await.map_err(net)?).await
+        }
+        Some(Transport::Binary) | Some(Transport::JsonRpc) => {
+            Err(format!("{path} is not a JSON endpoint"))
+        }
+        None => Err(format!("fuegod has no method {method}")),
+    }
+}
+
+fn walletd_transactions(
+    history: &[fuego_sdk::scanner::HistoryEntry],
+    height: u64,
+    params: &Value,
+) -> Result<walletd::GetTransactionsResponse, String> {
+    let first = param_u64(params, "firstBlockIndex").unwrap_or(0);
+    let count = param_u64(params, "blockCount").unwrap_or(u64::MAX);
+    let payment_filter = params.get("paymentId").and_then(Value::as_str).filter(|s| !s.is_empty());
+    let mut blocks: BTreeMap<u64, Vec<walletd::TransactionRpcInfo>> = BTreeMap::new();
+    for tx in history {
+        if tx.block_height < first || tx.block_height - first >= count {
+            continue;
+        }
+        let payment_id = tx.payment_id.map(hex::encode).unwrap_or_default();
+        if payment_filter.is_some_and(|p| !p.eq_ignore_ascii_case(&payment_id)) {
+            continue;
+        }
+        blocks.entry(tx.block_height).or_default().push(walletd::TransactionRpcInfo {
+            state: 0,
+            transaction_hash: hex::encode(tx.tx_hash),
+            block_index: u32::try_from(tx.block_height).map_err(|_| "block index overflow")?,
+            confirmations: height.saturating_sub(tx.block_height).saturating_add(1).min(u32::MAX as u64) as u32,
+            timestamp: tx.timestamp,
+            is_base: false,
+            unlock_time: tx.unlock_time,
+            amount: tx.signed_amount(),
+            fee: tx.fee,
+            transfers: Vec::new(),
+            extra: String::new(),
+            first_deposit_id: u64::MAX,
+            deposit_count: 0,
+            payment_id,
+        });
+    }
+    Ok(walletd::GetTransactionsResponse {
+        items: blocks
+            .into_values()
+            .map(|transactions| walletd::TransactionsInBlockRpcInfo { block_hash: String::new(), transactions })
+            .collect(),
+    })
 }
 
 async fn handle_wallet_method(
     wallet: &Mutex<WalletService>,
-    _fuegod_url: &str,
+    fuegod_url: &str,
     method: &str,
-    params: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
+    params: &Value,
+) -> Result<Value, String> {
     match method {
         "getBalance" | "getbalance" => {
-            let wallet = wallet.lock().await;
-            let balance = wallet.balance_full().await;
-            Ok(serde_json::json!({
-                "availableBalance": balance.confirmed,
-                "lockedAmount": balance.pending + balance.immature,
-                "blockCount": wallet.height().await,
-            }))
+            let b = wallet.lock().await.balance_breakdown();
+            to_value(&walletd::GetBalanceResponse {
+                available_balance: b.unlocked_xfg,
+                locked_amount: b.locked_xfg,
+                locked_deposit_balance: b.locked_deposits,
+                unlocked_deposit_balance: b.unlocked_deposits,
+                locked_heat_balance: b.locked_heat,
+                unlocked_heat_balance: b.unlocked_heat,
+            })
         }
-        "getAddress" | "getAddresses" | "get_address" => {
+        "getAddresses" => {
             let wallet = wallet.lock().await;
-            Ok(serde_json::json!({
-                "address": wallet.address().await,
-            }))
+            to_value(&walletd::GetAddressesResponse { addresses: vec![wallet.address().await] })
+        }
+        "getAddress" | "get_address" => {
+            let wallet = wallet.lock().await;
+            Ok(json!({ "address": wallet.address().await }))
         }
         "getHealth" => {
             let wallet = wallet.lock().await;
             let status = wallet.sync_status();
-            Ok(serde_json::json!({
-                "wallet": {
-                    "ok": true,
-                    "height": wallet.height().await,
-                    "syncing": status.is_syncing,
-                },
-                "swap": {
-                    "ok": crate::swapd::swapd_healthy(crate::swapd::SWAPD_RPC_PORT).await,
-                },
+            Ok(json!({
+                "wallet": { "ok": true, "height": status.current_height, "syncing": status.is_syncing },
+                "swap": { "ok": crate::swapd::swapd_healthy(crate::swapd::SWAPD_RPC_PORT).await },
             }))
         }
         "getStatus" | "get_height" => {
-            let wallet = wallet.lock().await;
-            let status = wallet.sync_status();
-            Ok(serde_json::json!({
-                "height": wallet.height().await,
-                "target_height": status.target_height,
-                "is_syncing": status.is_syncing,
-            }))
+            let (status, txs, cds) = {
+                let wallet = wallet.lock().await;
+                (wallet.sync_status(), wallet.get_transactions(usize::MAX).await.len(), wallet.cds().len())
+            };
+            let peers = proxy_to_fuegod(fuegod_url, "getinfo", Value::Null).await.ok();
+            let peer_count = peers
+                .map(|i| {
+                    i.get("incoming_connections_count").and_then(Value::as_u64).unwrap_or(0)
+                        + i.get("outgoing_connections_count").and_then(Value::as_u64).unwrap_or(0)
+                })
+                .unwrap_or(0);
+            to_value(&walletd::GetStatusResponse {
+                block_count: (status.current_height + 1).min(u32::MAX as u64) as u32,
+                known_block_count: status.target_height.min(u32::MAX as u64) as u32,
+                last_block_hash: String::new(),
+                peer_count: peer_count.min(u32::MAX as u64) as u32,
+                deposit_count: cds as u32,
+                transaction_count: txs as u32,
+                address_count: 1,
+            })
         }
         "getTransactions" | "get_transfers" => {
             let wallet = wallet.lock().await;
-            let txs = wallet.get_transactions(100).await;
-            let items: Vec<serde_json::Value> = txs.iter().map(|tx| {
-                serde_json::json!({
-                    "transactionHash": hex::encode(tx.tx_hash),
-                    "fee": tx.fee,
-                    "blockIndex": tx.block_height,
-                    "amount": match tx.direction {
-                        fuego_sdk::scanner::HistoryDirection::Incoming => tx.amount as i64,
-                        fuego_sdk::scanner::HistoryDirection::Outgoing => -(tx.amount as i64),
-                    },
-                    "transfers": [],
-                })
-            }).collect();
-            Ok(serde_json::json!({ "items": items, "transactions": txs.len() }))
+            let height = wallet.height().await;
+            let history = wallet.get_transactions(usize::MAX).await;
+            to_value(&walletd_transactions(&history, height, params)?)
         }
         "sendTransaction" | "transfer" => {
-            let destinations = params.get("destinations")
-                .and_then(|d| d.as_array())
-                .ok_or("missing destinations")?;
-            let mut dests: Vec<(String, u64)> = Vec::with_capacity(destinations.len());
-            for dest in destinations {
-                let address = dest.get("address")
-                    .and_then(|a| a.as_str())
-                    .ok_or("missing address")?
-                    .to_string();
-                let amount = dest.get("amount")
-                    .and_then(|a| a.as_u64())
-                    .ok_or("missing amount")?;
+            // walletd names the list `transfers`; the simplewallet `transfer`
+            // method names it `destinations`.
+            let list = params
+                .get("transfers")
+                .or_else(|| params.get("destinations"))
+                .and_then(Value::as_array)
+                .ok_or("missing transfers")?;
+            let mut dests: Vec<(String, u64)> = Vec::with_capacity(list.len());
+            for dest in list {
+                let address = dest.get("address").and_then(Value::as_str).ok_or("missing address")?.to_string();
+                let amount = param_u64(dest, "amount").ok_or("missing amount")?;
                 dests.push((address, amount));
             }
-            if dests.is_empty() {
-                return Err("empty destinations".into());
-            }
-            let fee = params.get("fee")
-                .and_then(|f| f.as_u64())
-                .unwrap_or(0);
-            let anonymity = params.get("anonymity")
-                .and_then(|a| a.as_u64())
-                .unwrap_or(0) as u32;
-
+            let fee = param_u64(params, "fee").unwrap_or(fuego_sdk::suite::MINIMUM_FEE);
+            let anonymity = param_u64(params, "anonymity")
+                .or_else(|| param_u64(params, "mixin"))
+                .unwrap_or(0)
+                .min(u32::MAX as u64) as u32;
+            let opts = SendOptions {
+                payment_id: params
+                    .get("paymentId")
+                    .or_else(|| params.get("payment_id"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+                extra_hex: params.get("extra").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string),
+                unlock_time: param_u64(params, "unlockTime").unwrap_or(0),
+            };
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.send_transaction(&dests, fee, anonymity).await
+            let tx_hash = wallet
+                .send_transaction(&dests, fee, anonymity, opts)
+                .await
                 .map_err(|e| format!("send failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            to_value(&walletd::SendTransactionResponse { transaction_hash: tx_hash, transaction_secret_key: String::new() })
         }
         "register_alias" => {
-            let alias = params.get("alias")
-                .and_then(|a| a.as_str())
-                .ok_or("missing alias")?;
-            let fee = params.get("fee")
-                .and_then(|f| f.as_u64())
-                .unwrap_or(100_000);
+            let alias = params.get("alias").and_then(Value::as_str).ok_or("missing alias")?;
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.register_alias(alias, fee).await
-                .map_err(|e| format!("alias registration failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": hex::encode(tx_hash),
-                "txHash": hex::encode(tx_hash),
-            }))
+            let tx_hash = wallet.register_alias(alias).await.map_err(|e| format!("alias registration failed: {}", e))?;
+            Ok(json!({ "transactionHash": tx_hash }))
         }
-        "create_integrated" => {
-            let wallet = wallet.lock().await;
-            let addr = wallet.address().await;
-            Ok(serde_json::json!({
-                "integratedAddress": addr,
-            }))
+        "createIntegrated" | "create_integrated" => {
+            let payment_id = params.get("payment_id").and_then(Value::as_str).ok_or("missing payment_id")?;
+            let address = params.get("address").and_then(Value::as_str);
+            let integrated = wallet.lock().await.create_integrated(address, payment_id)?;
+            to_value(&walletd::CreateIntegratedResponse { integrated_address: integrated })
         }
         "list_cds" | "cd::list" => {
-            let wallet = wallet.lock().await;
-            let cds = wallet.list_cds().await;
-            Ok(serde_json::json!({
-                "cds": cds,
-            }))
+            // Estimates run after the wallet lock is released.
+            let (owner, height, entries) = {
+                let wallet = wallet.lock().await;
+                let height = wallet.height().await;
+                let entries: Vec<_> = wallet
+                    .cds()
+                    .into_iter()
+                    .map(|v| {
+                        let est = wallet.cd_interest_estimate_inputs(&v);
+                        (v, est)
+                    })
+                    .collect();
+                (wallet.address().await, height, entries)
+            };
+            let mut cds = Vec::with_capacity(entries.len());
+            for (v, est) in entries {
+                let accrued = match est {
+                    Some((daemon, amount, created, term)) => daemon
+                        .estimate_cd_yield(amount, created, term)
+                        .await
+                        .map(|e| e.claimable_interest)
+                        .unwrap_or(0),
+                    None => 0,
+                };
+                cds.push(json!({
+                    "cd_id": v.cd_id,
+                    "owner": owner,
+                    "coin": "HEAT",
+                    "amount": v.amount.to_string(),
+                    "maturity_height": v.maturity_height,
+                    "deposit_height": v.deposit_height,
+                    "accrued_interest": accrued.to_string(),
+                    "total_value": (v.amount + accrued).to_string(),
+                    "blocks_to_maturity": v.maturity_height.saturating_sub(height),
+                    "matured": v.matured,
+                }));
+            }
+            Ok(json!({ "cds": cds }))
         }
         "cd::create" | "create_cd" => {
-            let amount = params.get("amount")
-                .and_then(|a| a.as_u64())
-                .or_else(|| params.get("amount").and_then(|a| a.as_str()).and_then(|s| s.parse().ok()))
-                .ok_or("missing amount")?;
-            let duration_blocks = params.get("duration_blocks")
-                .and_then(|d| d.as_u64())
-                .ok_or("missing duration_blocks")?;
+            let amount = param_u64(params, "amount").ok_or("missing amount")?;
+            let duration = param_u64(params, "duration_blocks").ok_or("missing duration_blocks")?;
+            let term = u32::try_from(duration).map_err(|_| "duration_blocks out of range")?;
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.create_cd(amount, duration_blocks as u32).await
-                .map_err(|e| format!("create_cd failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
+            let (tx_hash, cd_id, maturity) =
+                wallet.create_cd(amount, term).await.map_err(|e| format!("create_cd failed: {}", e))?;
+            Ok(json!({
+                "cd_id": cd_id,
+                "tx_hash": tx_hash,
+                "coin": "HEAT",
+                "amount": amount.to_string(),
+                "maturity_at": maturity.to_string(),
             }))
         }
         "cd::claim" | "claim_cd" => {
+            let only = params.get("cd_id").and_then(Value::as_str).filter(|s| !s.is_empty());
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.claim_cd().await
-                .map_err(|e| format!("claim_cd failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
+            let claim = wallet.claim_cd(only).await.map_err(|e| format!("claim_cd failed: {}", e))?;
+            Ok(json!({
+                "cd_id": claim.cd_ids.join(","),
+                "tx_hash": claim.tx_hash,
+                "coin": "HEAT",
+                "principal": claim.principal.to_string(),
+                "interest": claim.interest.to_string(),
+                "total": (claim.principal + claim.interest).to_string(),
             }))
         }
         "create_afk_lock" => {
-            let amount = params.get("amount")
-                .and_then(|a| a.as_u64())
-                .ok_or("missing amount")?;
-            let timeout_hours = params.get("timeout_hours")
-                .and_then(|t| t.as_u64())
-                .ok_or("missing timeout_hours")?;
-            let pair = params.get("pair")
-                .and_then(|p| p.as_u64())
-                .unwrap_or(0);
+            let amount = param_u64(params, "amount").ok_or("missing amount")?;
+            let hours = param_u64(params, "timeout_hours").ok_or("missing timeout_hours")?;
+            let pair = param_u64(params, "pair").unwrap_or(0);
             let wallet = wallet.lock().await;
-            let (lock_id, adaptor_point, pre_sig, hash_lock) =
-                wallet.create_afk_lock(amount, timeout_hours as u32, pair as u8).await
-                    .map_err(|e| format!("create_afk_lock failed: {}", e))?;
-            Ok(serde_json::json!({
-                "lockId": lock_id,
-                "adaptorPoint": adaptor_point,
-                "preSig": pre_sig,
-                "hashLock": hash_lock,
-            }))
+            let (lock_id, adaptor_point, pre_sig, hash_lock) = wallet
+                .create_afk_lock(amount, hours.min(u32::MAX as u64) as u32, pair.min(u8::MAX as u64) as u8)
+                .await
+                .map_err(|e| format!("create_afk_lock failed: {}", e))?;
+            Ok(json!({ "lockId": lock_id, "adaptorPoint": adaptor_point, "preSig": pre_sig, "hashLock": hash_lock }))
         }
         "send_heat" => {
-            let address = params.get("address")
-                .and_then(|a| a.as_str())
-                .ok_or("missing address")?;
-            let amount = params.get("amount")
-                .and_then(|a| a.as_u64())
-                .ok_or("missing amount")?;
+            let address = params.get("address").and_then(Value::as_str).ok_or("missing address")?;
+            let amount = param_u64(params, "amount").ok_or("missing amount")?;
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.send_heat(address, amount).await
-                .map_err(|e| format!("send_heat failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            let tx_hash = wallet.send_heat(address, amount).await.map_err(|e| format!("send_heat failed: {}", e))?;
+            Ok(json!({ "transactionHash": tx_hash }))
         }
         "get_tx_proof" | "getTxProof" => {
-            let tx_hash = params.get("tx_hash")
-                .and_then(|t| t.as_str())
-                .or_else(|| params.get("txid").and_then(|t| t.as_str()))
+            let tx_hash = params
+                .get("tx_hash")
+                .or_else(|| params.get("txid"))
+                .and_then(Value::as_str)
                 .ok_or("missing tx_hash")?;
-            let address = params.get("address")
-                .and_then(|a| a.as_str())
-                .ok_or("missing address")?;
+            let address = params.get("address").and_then(Value::as_str).ok_or("missing address")?;
             let wallet = wallet.lock().await;
-            let proof = wallet.get_tx_proof(tx_hash, address).await
-                .map_err(|e| format!("get_tx_proof failed: {}", e))?;
-            Ok(serde_json::json!({ "signature": proof }))
+            let proof = wallet.get_tx_proof(tx_hash, address).await.map_err(|e| format!("get_tx_proof failed: {}", e))?;
+            Ok(json!({ "signature": proof }))
         }
         "mint_heat" => {
-            let xfg_burned = params.get("xfg_burned")
-                .and_then(|a| a.as_u64())
-                .or_else(|| params.get("amount").and_then(|a| a.as_u64()))
+            let xfg_burned = param_u64(params, "xfg_burned")
+                .or_else(|| param_u64(params, "amount"))
                 .ok_or("missing xfg_burned")?;
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.mint_heat(xfg_burned).await
-                .map_err(|e| format!("mint_heat failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            let (tx_hash, heat_minted, price) =
+                wallet.mint_heat(xfg_burned).await.map_err(|e| format!("mint_heat failed: {}", e))?;
+            Ok(json!({ "transactionHash": tx_hash, "xfgBurned": xfg_burned, "heatMinted": heat_minted, "price": price }))
         }
         "swap" => {
-            let direction_raw = params.get("direction")
-                .and_then(|d| d.as_str())
-                .unwrap_or("");
-            let direction = match direction_raw {
+            let direction = match params.get("direction").and_then(Value::as_str).unwrap_or("") {
                 "heat_to_xfg" | "1" => 1u8,
                 _ => 0u8,
             };
-            let input_amount = params.get("input_amount")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("input_amount").and_then(|v| v.as_u64()))
-                .ok_or("missing input_amount")?;
-            let min_output = params.get("min_output")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("min_output").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
+            let input_amount = param_u64(params, "input_amount").ok_or("missing input_amount")?;
+            let min_output = param_u64(params, "min_output").unwrap_or(0);
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.amm_swap(direction, input_amount, min_output).await
+            let tx_hash = wallet
+                .amm_swap(direction, input_amount, min_output)
+                .await
                 .map_err(|e| format!("swap failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            Ok(json!({ "transactionHash": tx_hash }))
         }
         "add_liq" => {
-            let xfg_amount = params.get("xfg_amount")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("xfg_amount").and_then(|v| v.as_u64()))
-                .ok_or("missing xfg_amount")?;
-            let heat_amount = params.get("heat_amount")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("heat_amount").and_then(|v| v.as_u64()))
-                .ok_or("missing heat_amount")?;
+            let xfg = param_u64(params, "xfg_amount").ok_or("missing xfg_amount")?;
+            let heat = param_u64(params, "heat_amount").ok_or("missing heat_amount")?;
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.lp_add(xfg_amount, heat_amount).await
-                .map_err(|e| format!("add_liq failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            let tx_hash = wallet.lp_add(xfg, heat).await.map_err(|e| format!("add_liq failed: {}", e))?;
+            Ok(json!({ "transactionHash": tx_hash }))
         }
         "remove_liq" => {
-            let shares = params.get("shares")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("shares").and_then(|v| v.as_u64()))
-                .ok_or("missing shares")?;
-            let min_xfg = params.get("min_xfg")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("min_xfg").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
-            let min_heat = params.get("min_heat")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("min_heat").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
+            let shares = param_u64(params, "shares").ok_or("missing shares")?;
+            let min_xfg = param_u64(params, "min_xfg").unwrap_or(0);
+            let min_heat = param_u64(params, "min_heat").unwrap_or(0);
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.lp_remove(shares, min_xfg, min_heat).await
+            let tx_hash = wallet
+                .lp_remove(shares, min_xfg, min_heat)
+                .await
                 .map_err(|e| format!("remove_liq failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            Ok(json!({ "transactionHash": tx_hash }))
         }
         "place_limit_order" => {
-            let side_raw = params.get("side").and_then(|s| s.as_str()).unwrap_or("sell");
-            let side = match side_raw {
+            let side = match params.get("side").and_then(Value::as_str).unwrap_or("sell") {
                 "buy" | "0" => 0u8,
                 _ => 1u8,
             };
-            let amount = params.get("amount")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<u64>().ok())
-                .or_else(|| params.get("amount").and_then(|v| v.as_u64()))
-                .ok_or("missing amount")?;
-            // price arrives as a human HEAT-per-XFG decimal; convert to
-            // chain atomics (price * COIN) like spot_price scaling.
-            let price_atomic = params.get("price")
-                .and_then(|v| v.as_str())
-                .and_then(|s| (s.parse::<f64>().ok().map(|p| (p * 10_000_000f64).round() as u64)))
-                .or_else(|| params.get("price").and_then(|v| v.as_u64()))
+            let amount = param_u64(params, "amount").ok_or("missing amount")?;
+            // Human HEAT-per-XFG decimal -> canonical price (HEAT atomics per
+            // XFG atomic × COIN), the scale OrderbookMatcher/limit deposits use.
+            let price_atomic = params
+                .get("price")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<f64>().ok())
+                .filter(|p| p.is_finite() && *p > 0.0)
+                .map(|p| (p * fuego_sdk::suite::COIN as f64).round() as u64)
+                .or_else(|| params.get("price").and_then(Value::as_u64))
                 .ok_or("missing price")?;
-            let expiration = params.get("ttlBlocks")
-                .and_then(|v| v.as_u64())
-                .or_else(|| params.get("expiration").and_then(|v| v.as_u64()))
-                .unwrap_or(8640) as u32;
+            let expiration = param_u64(params, "ttlBlocks")
+                .or_else(|| param_u64(params, "expiration"))
+                .unwrap_or(8640)
+                .min(u32::MAX as u64) as u32;
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.place_limit_order(side, amount, price_atomic, expiration).await
+            let tx_hash = wallet
+                .place_limit_order(side, amount, price_atomic, expiration)
+                .await
                 .map_err(|e| format!("place_limit_order failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            Ok(json!({ "transactionHash": tx_hash }))
         }
         "heat_cd" => {
-            let amount = params.get("amount")
-                .and_then(|a| a.as_u64())
-                .ok_or("missing amount")?;
-            let epochs = params.get("epochs")
-                .and_then(|e| e.as_u64())
-                .ok_or("missing epochs")?;
-            let banking_fee = params.get("banking_fee")
-                .and_then(|f| f.as_u64())
-                .unwrap_or(0);
+            let amount = param_u64(params, "amount").ok_or("missing amount")?;
+            let epochs = param_u64(params, "epochs").ok_or("missing epochs")?;
+            let banking_fee = param_u64(params, "banking_fee").unwrap_or(0);
             let wallet = wallet.lock().await;
-            let tx_hash = wallet.heat_cd(amount, epochs as u32, banking_fee).await
+            let tx_hash = wallet
+                .heat_cd(amount, epochs.min(u32::MAX as u64) as u32, banking_fee)
+                .await
                 .map_err(|e| format!("heat_cd failed: {}", e))?;
-            Ok(serde_json::json!({
-                "transactionHash": tx_hash,
-                "txHash": tx_hash,
-            }))
+            Ok(json!({ "transactionHash": tx_hash }))
         }
         _ => Err(format!("unknown wallet method: {}", method)),
     }
 }
 
 fn is_authorized_host(headers: &axum::http::HeaderMap) -> bool {
-    if let Some(host_val) = headers.get(axum::http::header::HOST) {
-        if let Ok(host_str) = host_val.to_str() {
-            let host_clean = host_str.split(':').next().unwrap_or("").to_lowercase();
-            if host_clean == "localhost" || host_clean == "127.0.0.1" || host_clean == "[::1]" || host_clean.is_empty() {
-                return true;
-            }
+    match headers.get(axum::http::header::HOST).map(|h| h.to_str()) {
+        Some(Ok(host)) => {
+            let host = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host).to_lowercase();
+            matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]" | "")
         }
-        false
-    } else {
-        true
+        Some(Err(_)) => false,
+        None => true,
     }
 }
 
 async fn json_rpc_handler(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<Value>,
 ) -> impl IntoResponse {
-    let id = body.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-    let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("");
+    let id = body.get("id").cloned().unwrap_or(Value::Null);
+    let method = body.get("method").and_then(Value::as_str).unwrap_or("");
 
     if !is_authorized_host(&headers) {
         let error = JsonRpcError {
-            jsonrpc: "2.0".into(), id,
+            jsonrpc: "2.0",
+            id,
             error: RpcErrorDetail { code: -32500, message: "forbidden host".into() },
         };
         return (StatusCode::FORBIDDEN, Json(serde_json::to_value(error).unwrap())).into_response();
     }
 
-    let result: Result<serde_json::Value, String> = if is_wallet_method(method) {
-        let params = body.get("params").cloned().unwrap_or(serde_json::Value::Null);
+    let params = body.get("params").cloned().unwrap_or(Value::Null);
+    let result = if is_wallet_method(method) {
         handle_wallet_method(&state.wallet, &state.fuegod_url, method, &params).await
-    } else if is_fuegod_method(method) {
-        proxy_to_fuegod(&state.fuegod_url, &body).await
     } else {
-        Err(format!("unknown method: {}", method))
+        proxy_to_fuegod(&state.fuegod_url, method, params).await
     };
 
     match result {
-        Ok(val) => {
-            let success = JsonRpcSuccess { jsonrpc: "2.0".into(), id, result: val };
-            (StatusCode::OK, Json(serde_json::to_value(success).unwrap())).into_response()
+        Ok(result) => {
+            let ok = JsonRpcSuccess { jsonrpc: "2.0", id, result };
+            (StatusCode::OK, Json(serde_json::to_value(ok).unwrap())).into_response()
         }
-        Err(msg) => {
-            let error = JsonRpcError {
-                jsonrpc: "2.0".into(), id,
-                error: RpcErrorDetail { code: -32000, message: msg },
-            };
-            (StatusCode::OK, Json(serde_json::to_value(error).unwrap())).into_response()
+        Err(message) => {
+            let err = JsonRpcError { jsonrpc: "2.0", id, error: RpcErrorDetail { code: -32000, message } };
+            (StatusCode::OK, Json(serde_json::to_value(err).unwrap())).into_response()
         }
     }
 }
 
-// ── REST proxy: forward requests to fuegod ──
+// ── REST passthrough to fuegod JSON endpoints ──
+
+/// Query parameters become the JSON body fuegod's jsonMethod handlers read
+/// (they ignore the query string). Numeric strings are sent as numbers.
+fn query_to_body(query: &HashMap<String, String>) -> Value {
+    let mut body = serde_json::Map::new();
+    for (k, v) in query {
+        let value = v
+            .parse::<u64>()
+            .map(Value::from)
+            .or_else(|_| v.parse::<i64>().map(Value::from))
+            .unwrap_or_else(|_| match v.as_str() {
+                "true" => Value::Bool(true),
+                "false" => Value::Bool(false),
+                _ => Value::String(v.clone()),
+            });
+        body.insert(k.clone(), value);
+    }
+    Value::Object(body)
+}
+
+async fn forward_rest(state: &AppState, path: &str, body: Value) -> axum::response::Response {
+    let method = path.trim_start_matches('/');
+    let result = if method == "getinfo" {
+        reqwest::Client::new()
+            .get(format!("{}/getinfo", state.fuegod_url))
+            .send()
+            .await
+            .map_err(|e| sanitize_error(&e.to_string()))
+    } else {
+        reqwest::Client::new()
+            .post(format!("{}{}", state.fuegod_url, path))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| sanitize_error(&e.to_string()))
+    };
+    match result {
+        Ok(r) => {
+            let status = StatusCode::from_u16(r.status().as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            match read_json(r).await {
+                Ok(v) => (status, Json(v)).into_response(),
+                Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": e }))).into_response(),
+            }
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": e }))).into_response(),
+    }
+}
 
 async fn fuegod_get(
     State(state): State<Arc<AppState>>,
-    req: axum::http::Request<axum::body::Body>,
+    headers: axum::http::HeaderMap,
+    uri: axum::http::Uri,
+    Query(query): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    if !is_authorized_host(req.headers()) {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response();
+    if !is_authorized_host(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "error": "forbidden host" }))).into_response();
     }
-    let fuegod_path = req.uri().path();
-    let fuegod_query = req.uri().query().unwrap_or("");
-    let client = reqwest::Client::new();
-    let url = if fuegod_query.is_empty() {
-        format!("{}{}", state.fuegod_url, fuegod_path)
-    } else {
-        format!("{}{}?{}", state.fuegod_url, fuegod_path, fuegod_query)
-    };
-    
-    match client.get(&url).send().await {
-        Ok(r) => {
-            let status = StatusCode::from_u16(r.status().as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            match r.text().await {
-                Ok(text) => {
-                    let val: serde_json::Value = serde_json::from_str(&text)
-                        .unwrap_or_else(|_| serde_json::json!({"raw": text}));
-                    (status, Json(val)).into_response()
-                }
-                Err(_) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "failed to read response"}))).into_response()
-            }
-        }
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": sanitize_error(&e.to_string())}))).into_response()
-    }
+    forward_rest(&state, uri.path(), query_to_body(&query)).await
 }
 
 async fn fuegod_post(
     State(state): State<Arc<AppState>>,
-    req: axum::http::Request<axum::body::Body>,
+    headers: axum::http::HeaderMap,
+    uri: axum::http::Uri,
+    body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    if !is_authorized_host(req.headers()) {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response();
+    if !is_authorized_host(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "error": "forbidden host" }))).into_response();
     }
-    let fuegod_path = req.uri().path().to_string();
-    let (parts, body) = req.into_parts();
-    let _ = parts;
-    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
-    let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap_or(serde_json::json!({}));
-    let client = reqwest::Client::new();
-    let url = format!("{}{}", state.fuegod_url, fuegod_path);
-    
-    match client.post(&url).json(&body).send().await {
-        Ok(r) => {
-            let status = StatusCode::from_u16(r.status().as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            match r.text().await {
-                Ok(text) => {
-                    let val: serde_json::Value = serde_json::from_str(&text)
-                        .unwrap_or_else(|_| serde_json::json!({"raw": text}));
-                    (status, Json(val)).into_response()
-                }
-                Err(_) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "failed to read response"}))).into_response()
-            }
-        }
-        Err(e) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": sanitize_error(&e.to_string())}))).into_response()
+    let body: Value = serde_json::from_slice(&body).unwrap_or_else(|_| json!({}));
+    forward_rest(&state, uri.path(), body).await
+}
+
+// ── HTLC helpers served locally (fuegod has no such endpoints) ──
+
+async fn htlc_hash_lock(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if !is_authorized_host(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "error": "forbidden host" }))).into_response();
+    }
+    let (preimage, hash) = fuego_sdk::Wallet::create_htlc_hash_lock();
+    Json(json!({ "preimage": hex::encode(preimage), "hash": hash })).into_response()
+}
+
+async fn htlc_build_script(headers: axum::http::HeaderMap, Json(body): Json<Value>) -> impl IntoResponse {
+    if !is_authorized_host(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "error": "forbidden host" }))).into_response();
+    }
+    let s = |k: &str| body.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let result = fuego_sdk::Wallet::build_htlc_script(
+        &s("hash_lock"),
+        &s("recipient_pubkey"),
+        &s("sender_pubkey"),
+        param_u64(&body, "timelock").unwrap_or(0),
+    );
+    match result {
+        Ok(script) => Json(json!({ "ok": true, "script": hex::encode(script) })).into_response(),
+        Err(e) => Json(json!({ "ok": false, "script": "", "error": e.to_string() })).into_response(),
     }
 }
 
-// ── Status endpoint (wallet state) ──
+// ── Status endpoints ──
 
-async fn status_handler(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let wallet = state.wallet.lock().await;
-    let balance = wallet.balance_full().await;
+    let b = wallet.balance_breakdown();
     let status = wallet.sync_status();
-    Json(serde_json::json!({
+    Json(json!({
         "address": wallet.address().await,
-        "balance": balance.confirmed,
-        "pending": balance.pending,
-        "immature": balance.immature,
-        "height": wallet.height().await,
+        "balance": b.unlocked_xfg,
+        "pending": b.locked_xfg,
+        "immature": 0,
+        "height": status.current_height,
         "target_height": status.target_height,
         "is_syncing": status.is_syncing,
     }))
 }
 
 async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let client = reqwest::Client::new();
-    let fuegod_ok = client.get(format!("{}/getinfo", state.fuegod_url))
-        .send().await
+    let fuegod_ok = reqwest::Client::new()
+        .get(format!("{}/getinfo", state.fuegod_url))
+        .send()
+        .await
         .map(|r| r.status().is_success())
         .unwrap_or(false);
 
     let wallet = state.wallet.lock().await;
     let status = wallet.sync_status();
-
-    Json(serde_json::json!({
+    Json(json!({
         "status": if fuegod_ok { "ok" } else { "degraded" },
         "fuego": fuegod_ok,
         "daemon": fuegod_ok,
@@ -719,46 +643,27 @@ async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "height": status.current_height,
             "syncing": status.is_syncing,
         },
-        "scanned_height": wallet.height().await,
+        "scanned_height": status.current_height,
     }))
 }
 
-#[derive(Deserialize)]
-struct ScanBalanceRequest {
-    view_secret: String,
-    spend_public: String,
-    #[serde(default)]
-    start_height: u64,
-    #[serde(default = "default_batch_size")]
-    batch_size: u64,
-}
-
-fn default_batch_size() -> u64 { 100 }
-
-async fn scan_balance_handler(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn scan_balance_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let wallet = state.wallet.lock().await;
-    let balance = wallet.balance_full().await;
+    let b = wallet.balance_breakdown();
     let status = wallet.sync_status();
-    Json(serde_json::json!({
-        "balance": balance.confirmed,
-        "pending": balance.pending,
-        "immature": balance.immature,
+    Json(json!({
+        "balance": b.unlocked_xfg + b.locked_xfg,
+        "unlocked_balance": b.unlocked_xfg,
+        "pending": b.locked_xfg,
+        "immature": 0,
         "height": status.current_height,
+        "scanned_height": status.current_height,
         "address": wallet.address().await,
     }))
 }
 
-pub async fn run_server(
-    wallet: Arc<Mutex<WalletService>>,
-    fuegod_url: &str,
-    bind_addr: &str,
-) -> Result<(), String> {
-    let state = Arc::new(AppState {
-        wallet,
-        fuegod_url: fuegod_url.to_string(),
-    });
+pub async fn run_server(wallet: Arc<Mutex<WalletService>>, fuegod_url: &str, bind_addr: &str) -> Result<(), String> {
+    let state = Arc::new(AppState { wallet, fuegod_url: fuegod_url.to_string() });
 
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin([
@@ -774,45 +679,93 @@ pub async fn run_server(
         .route("/health", get(health_check))
         .route("/status", get(status_handler))
         .route("/scan_balance", post(scan_balance_handler))
-        // HEARTH AMM REST proxy
+        .route("/htlc_create_hash_lock", post(htlc_hash_lock))
+        .route("/htlc_build_script", post(htlc_build_script))
+        // Hearth AMM
         .route("/amm_pool_info", get(fuegod_get))
         .route("/amm_quote", get(fuegod_get))
         .route("/heat_metrics", get(fuegod_get))
         .route("/get_fuego_price", get(fuegod_get))
-        // Orderbook REST proxy
-        .route("/get_orderbook_state", get(fuegod_get))
+        .route("/get_limit_orders", get(fuegod_get))
+        // Orderbook
         .route("/getorderbook", get(fuegod_get))
-        .route("/get_orderbook_info", get(fuegod_get))
-        .route("/get_orderbook_estimates", get(fuegod_get))
-        // DEX/swap REST proxy (GET)
+        // DEX / swap (GET)
         .route("/getswapoffers", get(fuegod_get))
         .route("/getswapprice", get(fuegod_get))
         .route("/getswaptrades", get(fuegod_get))
         .route("/getswaprequests", get(fuegod_get))
-        // DEX/swap REST proxy (POST)
+        .route("/getactiveswaps", get(fuegod_get))
+        .route("/getswapstatus", get(fuegod_get))
+        .route("/listswaps", get(fuegod_get))
+        .route("/getinfo", get(fuegod_get))
+        // DEX / swap (POST)
         .route("/submitswap", post(fuegod_post))
         .route("/cancelswap", post(fuegod_post))
         .route("/requestswap", post(fuegod_post))
         .route("/getactiveswaps", post(fuegod_post))
         .route("/getswapstatus", post(fuegod_post))
-        .route("/verify_payment", post(fuegod_post))
-        .route("/htlc_create_hash_lock", post(fuegod_post))
-        .route("/htlc_build_script", post(fuegod_post))
-        // Extra robustness GET endpoints
-        .route("/getactiveswaps", get(fuegod_get))
-        .route("/getswapstatus", get(fuegod_get))
-        .route("/getinfo", get(fuegod_get))
         .route("/getinfo", post(fuegod_post))
         .layer(cors)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(bind_addr).await
-        .map_err(|e| format!("bind {}: {}", bind_addr, e))?;
-
+    let listener = tokio::net::TcpListener::bind(bind_addr).await.map_err(|e| format!("bind {}: {}", bind_addr, e))?;
     log::info!("fuego-wallet listening on {}", bind_addr);
-
-    axum::serve(listener, app).await
-        .map_err(|e| format!("server: {}", e))?;
-
+    axum::serve(listener, app).await.map_err(|e| format!("server: {}", e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fuego_sdk::scanner::{HistoryDirection, HistoryEntry};
+
+    #[test]
+    fn query_parameters_become_typed_json_body() {
+        let mut q = HashMap::new();
+        q.insert("input_amount".to_string(), "5000000".to_string());
+        q.insert("direction".to_string(), "1".to_string());
+        q.insert("active_only".to_string(), "true".to_string());
+        let body = query_to_body(&q);
+        assert_eq!(body["input_amount"], json!(5000000u64));
+        assert_eq!(body["direction"], json!(1u64));
+        assert_eq!(body["active_only"], json!(true));
+    }
+
+    #[test]
+    fn get_transactions_groups_by_block_in_walletd_shape() {
+        let entry = |h: u64, dir, amount| HistoryEntry {
+            tx_hash: [h as u8; 32],
+            block_height: h,
+            timestamp: 1_700_000_000 + h,
+            direction: dir,
+            amount,
+            fee: 8000,
+            heat_delta: 0,
+            unlock_time: 0,
+            payment_id: None,
+        };
+        let history = vec![
+            entry(10, HistoryDirection::Incoming, 500),
+            entry(10, HistoryDirection::Outgoing, 208),
+            entry(12, HistoryDirection::Incoming, 7),
+        ];
+        let resp = walletd_transactions(&history, 12, &json!({})).unwrap();
+        let v = serde_json::to_value(&resp).unwrap();
+        assert_eq!(v["items"].as_array().unwrap().len(), 2);
+        let first = &v["items"][0]["transactions"];
+        assert_eq!(first.as_array().unwrap().len(), 2);
+        assert_eq!(first[1]["amount"], json!(-208));
+        assert_eq!(first[0]["confirmations"], json!(3));
+        assert!(first[0].get("transactionHash").is_some());
+        let filtered = walletd_transactions(&history, 12, &json!({ "firstBlockIndex": 11 })).unwrap();
+        assert_eq!(filtered.items.len(), 1);
+    }
+
+    #[test]
+    fn json_rpc_only_methods_are_not_forwarded_as_http_paths() {
+        assert!(rpc::is_json_rpc_method("getblockcount"));
+        assert!(rpc::http_route("/getblockcount").is_none());
+        assert_eq!(rpc::http_route("/amm_pool_info"), Some(Transport::Json));
+        assert!(!rpc::is_json_rpc_method("amm_pool_info"));
+    }
 }

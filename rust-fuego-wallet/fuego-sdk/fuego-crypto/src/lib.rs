@@ -121,11 +121,20 @@ pub fn cn_base58_decode(encoded: &str) -> Option<Vec<u8>> {
     Some(result)
 }
 
+/// Base58.cpp decode_block: rejects values that overflow 64 bits or do not
+/// fit in `size` bytes instead of wrapping.
 fn decode_block(encoded: &str, size: usize) -> Option<Vec<u8>> {
-    let mut num: u64 = 0;
-    for c in encoded.chars() {
-        let digit = ALPHABET.iter().position(|&b| b == c as u8)?;
-        num = num * ALPHABET_SIZE as u64 + digit as u64;
+    let mut acc: u128 = 0;
+    for c in encoded.bytes() {
+        let digit = ALPHABET.iter().position(|&b| b == c)?;
+        acc = acc * ALPHABET_SIZE as u128 + digit as u128;
+        if acc > u64::MAX as u128 {
+            return None;
+        }
+    }
+    let mut num = acc as u64;
+    if size < FULL_BLOCK_SIZE && (1u64 << (8 * size)) <= num {
+        return None;
     }
     let mut block = vec![0u8; size];
     for i in (0..size).rev() {
@@ -243,72 +252,95 @@ pub fn make_address_with_prefix(spend_pub: &[u8; 32], view_pub: &[u8; 32], prefi
     Address(cn_base58_encode(&buf))
 }
 
-/// Parse a Fuego address (optionally prefixed with "fire" or "TEST") into
-/// (spend pubkey, view pubkey). Validates base58, checksum and prefix tag.
-pub fn parse_address(address: &str) -> Option<([u8; 32], [u8; 32])> {
-    let stripped = address
-        .strip_prefix("fire")
-        .or_else(|| address.strip_prefix("TEST"))
-        .unwrap_or(address);
-    let decoded = cn_base58_decode(stripped)?;
-    if decoded.len() < 72 {
+/// Base58::encode_addr: base58(varint(prefix) || payload || keccak4).
+pub fn encode_addr(prefix: u64, payload: &[u8]) -> String {
+    let mut buf = varint_encode(prefix);
+    buf.extend_from_slice(payload);
+    let hash = Keccak256::digest(&buf);
+    buf.extend_from_slice(&hash[..ADDR_CHECKSUM_SIZE]);
+    cn_base58_encode(&buf)
+}
+
+/// Base58::decode_addr: returns (prefix, payload) after checksum validation.
+pub fn decode_addr(address: &str) -> Option<(u64, Vec<u8>)> {
+    let decoded = cn_base58_decode(address)?;
+    if decoded.len() <= ADDR_CHECKSUM_SIZE {
         return None;
     }
-    let payload = &decoded[..decoded.len() - ADDR_CHECKSUM_SIZE];
-    let checksum = &decoded[decoded.len() - ADDR_CHECKSUM_SIZE..];
-    let hash = Keccak256::digest(payload);
-    if &hash[..ADDR_CHECKSUM_SIZE] != checksum {
+    let (payload, checksum) = decoded.split_at(decoded.len() - ADDR_CHECKSUM_SIZE);
+    if &Keccak256::digest(payload)[..ADDR_CHECKSUM_SIZE] != checksum {
         return None;
     }
-    let (prefix, prefix_len) = varint_decode(payload);
+    let (prefix, prefix_len) = varint_decode(payload)?;
+    Some((prefix, payload[prefix_len..].to_vec()))
+}
+
+/// A decoded Fuego address. `payment_id` is set for integrated addresses
+/// (walletd createIntegratedAddress: payload = 64 hex chars || spend || view).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAddress {
+    pub prefix: u64,
+    pub spend: [u8; 32],
+    pub view: [u8; 32],
+    pub payment_id: Option<[u8; 32]>,
+}
+
+pub fn parse_address_full(address: &str) -> Option<ParsedAddress> {
+    let (prefix, payload) = decode_addr(address)?;
     if prefix != ADDRESS_BASE58_PREFIX && prefix != TESTNET_ADDRESS_BASE58_PREFIX {
         return None;
     }
-    let rest = &payload[prefix_len..];
-    if rest.len() != 64 {
-        return None;
-    }
+    let (payment_id, keys) = match payload.len() {
+        64 => (None, &payload[..]),
+        128 => {
+            let pid_hex = std::str::from_utf8(&payload[..64]).ok()?;
+            let mut pid = [0u8; 32];
+            hex::decode_to_slice(pid_hex, &mut pid).ok()?;
+            (Some(pid), &payload[64..])
+        }
+        _ => return None,
+    };
     let mut spend = [0u8; 32];
     let mut view = [0u8; 32];
-    spend.copy_from_slice(&rest[..32]);
-    view.copy_from_slice(&rest[32..]);
-    Some((spend, view))
+    spend.copy_from_slice(&keys[..32]);
+    view.copy_from_slice(&keys[32..]);
+    Some(ParsedAddress { prefix, spend, view, payment_id })
+}
+
+/// Parse a standard or integrated Fuego address into (spend, view) keys.
+pub fn parse_address(address: &str) -> Option<([u8; 32], [u8; 32])> {
+    parse_address_full(address).map(|p| (p.spend, p.view))
+}
+
+/// walletd createIntegratedAddress: encode_addr(prefix, hex(payment_id) || spend || view).
+pub fn make_integrated_address(
+    prefix: u64,
+    payment_id: &[u8; 32],
+    spend_pub: &[u8; 32],
+    view_pub: &[u8; 32],
+) -> Address {
+    let mut payload = hex::encode(payment_id).into_bytes();
+    payload.extend_from_slice(spend_pub);
+    payload.extend_from_slice(view_pub);
+    Address(encode_addr(prefix, &payload))
 }
 
 /// Validate a Fuego address string.
 /// Returns true if the address is a valid CryptoNote Base58 encoded address
 /// with the correct prefix and checksum.
 pub fn is_valid_address(address: &str) -> bool {
-    let decoded = match cn_base58_decode(address) {
-        Some(d) => d,
-        None => return false,
-    };
-    if decoded.len() < 71 {
-        return false;
-    }
-    let payload = &decoded[..decoded.len() - ADDR_CHECKSUM_SIZE];
-    let checksum = &decoded[decoded.len() - ADDR_CHECKSUM_SIZE..];
-    let hash = Keccak256::digest(payload);
-    if &hash[..ADDR_CHECKSUM_SIZE] != checksum {
-        return false;
-    }
-    let (prefix, _) = varint_decode(&decoded);
-    prefix == ADDRESS_BASE58_PREFIX || prefix == TESTNET_ADDRESS_BASE58_PREFIX
+    parse_address_full(address).is_some()
 }
 
-fn varint_decode(data: &[u8]) -> (u64, usize) {
+fn varint_decode(data: &[u8]) -> Option<(u64, usize)> {
     let mut result: u64 = 0;
-    let mut shift = 0;
-    let mut i = 0;
-    for &byte in data {
-        result |= ((byte & 0x7F) as u64) << shift;
-        i += 1;
+    for (i, &byte) in data.iter().enumerate().take(10) {
+        result |= ((byte & 0x7F) as u64) << (7 * i);
         if byte & 0x80 == 0 {
-            break;
+            return Some((result, i + 1));
         }
-        shift += 7;
     }
-    (result, i)
+    None
 }
 
 // ── Internal helpers ────────────────────────────────────────────────
@@ -381,6 +413,45 @@ mod tests {
         eprintln!("Starts with 'fire': {}", addr.0.starts_with("fire"));
         assert!(!addr.0.is_empty());
         assert!(addr.0.len() > 80);
+    }
+
+    /// fuego-suite CryptoNoteConfig.h FUEGO_DEV_FUND_ADDRESS.
+    const DEV_FUND: &str = "fireVHx639SLMhzmBoJ8drTXbVyv2eRG6A8aMLc1taTiRNwk8pnwXpBDUSjH1dT5fg7yVVZrKkvm31CmigAMdVDg7sgxJmAUNp";
+
+    #[test]
+    fn parse_address_round_trips() {
+        let spend = Keypair::generate();
+        let view = Keypair::generate();
+        let addr = make_address(&spend.public, &view.public);
+        assert_eq!(parse_address(&addr.0), Some((spend.public, view.public)));
+        assert!(is_valid_address(&addr.0));
+    }
+
+    #[test]
+    fn parse_address_accepts_real_mainnet_address() {
+        let parsed = parse_address_full(DEV_FUND).expect("suite dev fund address must parse");
+        assert_eq!(parsed.prefix, ADDRESS_BASE58_PREFIX);
+        assert!(parsed.payment_id.is_none());
+        assert_eq!(make_address(&parsed.spend, &parsed.view).0, DEV_FUND);
+    }
+
+    #[test]
+    fn integrated_address_round_trips() {
+        let (spend, view) = parse_address(DEV_FUND).unwrap();
+        let pid = [0xABu8; 32];
+        let integrated = make_integrated_address(ADDRESS_BASE58_PREFIX, &pid, &spend, &view);
+        let parsed = parse_address_full(&integrated.0).unwrap();
+        assert_eq!((parsed.spend, parsed.view, parsed.payment_id), (spend, view, Some(pid)));
+    }
+
+    #[test]
+    fn malformed_addresses_are_rejected_without_panicking() {
+        assert!(parse_address("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz").is_none());
+        assert!(parse_address(&DEV_FUND[4..]).is_none());
+        let mut flipped = DEV_FUND.to_string();
+        flipped.replace_range(20..21, "2");
+        assert!(parse_address(&flipped).is_none());
+        assert!(parse_address("").is_none());
     }
 
     #[test]

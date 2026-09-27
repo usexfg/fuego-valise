@@ -39,6 +39,7 @@ pub mod node;
 pub mod scanner;
 pub mod serialization;
 pub mod store;
+pub mod suite;
 pub mod traits;
 pub mod transaction_builder;
 pub mod types;

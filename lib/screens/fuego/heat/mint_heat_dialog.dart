@@ -139,16 +139,11 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
     try {
       final rpc = context.read<FuegoRPCService>();
       final xfgAtomicAmt = (xfg * xfgAtomic).round();
-      // heat_minted = xfg_burned (1:1 at launch, server validates ratio)
-      final result = await rpc.heatMint(
-        xfgBurned: xfgAtomicAmt,
-        heatMinted: xfgAtomicAmt,
-        fee: 0,
-        mixin: 4,
-      );
+      final result = await rpc.heatMint(xfgBurned: xfgAtomicAmt);
+      final heatMinted = (result['heatMinted'] as num?)?.toInt() ?? 0;
       setState(() {
-        _txHash = result['tx_hash'] as String?;
-        _heatReceived = (xfgAtomicAmt / xfgAtomic).toStringAsFixed(7);
+        _txHash = result['transactionHash'] as String?;
+        _heatReceived = (heatMinted / xfgAtomic).toStringAsFixed(7);
         _submitting = false;
       });
     } catch (e) {

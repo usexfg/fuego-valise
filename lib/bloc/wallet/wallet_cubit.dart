@@ -462,8 +462,6 @@ class WalletCubit extends Cubit<WalletState> {
     final txHash = await _rpcService!.sendHeat(
       address: address,
       amount: (amount * atomicPerCoin).round(),
-      fee: (fee * atomicPerCoin).round(),
-      mixin: mixin,
     );
     if (txHash.isEmpty) {
       throw StateError('Empty transaction hash');
@@ -494,13 +492,7 @@ class WalletCubit extends Cubit<WalletState> {
     if (_rpcService == null) {
       throw StateError('Wallet RPC service not available');
     }
-    // heat_minted = xfg_burned (1:1 at launch, server validates ratio)
-    final result = await _rpcService!.heatMint(
-      xfgBurned: totalAtomic,
-      heatMinted: totalAtomic,
-      fee: 0,
-      mixin: 4,
-    );
+    final result = await _rpcService!.heatMint(xfgBurned: totalAtomic);
     unawaited(refreshWallet());
     return result;
   }

@@ -1,6 +1,7 @@
 use crate::error::{Result, SdkError};
 use crate::scanner::{
-    CommitmentEntry, HistoryEntry, ScannerStateSnapshot, UtxoEntry, UtxoScanner, WalletKeys,
+    BalanceBreakdown, CommitmentEntry, HistoryEntry, ScannerStateSnapshot, UtxoEntry, UtxoScanner,
+    WalletKeys,
 };
 use crate::serialization::TransactionPrefix;
 use crate::transaction_builder::{BuiltTransaction, DecoyEntry};
@@ -80,6 +81,25 @@ impl Wallet {
         block_height: u64,
     ) -> Result<(u64, u64)> {
         self.scanner.scan_tx_prefix(tx_hash, prefix, block_height)
+    }
+
+    pub fn scan_tx_prefix_at(
+        &self,
+        tx_hash: &[u8; 32],
+        prefix: &TransactionPrefix,
+        block_height: u64,
+        block_timestamp: u64,
+    ) -> Result<(u64, u64)> {
+        self.scanner
+            .scan_tx_prefix_at(tx_hash, prefix, block_height, block_timestamp)
+    }
+
+    pub fn balance_breakdown(&self) -> BalanceBreakdown {
+        self.scanner.balance_breakdown()
+    }
+
+    pub fn spendable_heat_outputs(&self) -> Vec<CommitmentEntry> {
+        self.scanner.spendable_heat_outputs()
     }
 
     pub fn attach_global_indices(&self, tx_hash: &[u8; 32], indices: &[u64]) {
@@ -190,84 +210,79 @@ impl Wallet {
         (preimage, hash_hex)
     }
 
-    /// Build an HTLC redeem script for Bitcoin-family chains.
+    /// HTLC redeem script for Bitcoin-family chains, byte-identical to the
+    /// suite's LtcHtlcScript::createHashTimeLockScript:
     ///
-    /// Script: OP_SHA256 <32-byte hash> OP_EQUALVERIFY
-    ///         <33-byte recipient pubkey> OP_CHECKSIG
-    ///         OP_IFDUP OP_NOTIF
-    ///           <4-byte timelock (LE)> OP_CHECKLOCKTIMEVERIFY OP_DROP
-    ///           <33-byte sender pubkey> OP_CHECKSIG
-    ///         OP_ENDIF
+    /// OP_IF OP_SHA256 <hash:32> OP_EQUALVERIFY <recipient:33> OP_CHECKSIG
+    /// OP_ELSE <timelock:scriptnum> OP_CHECKLOCKTIMEVERIFY OP_DROP
+    ///         <sender:33> OP_CHECKSIG
+    /// OP_ENDIF
     pub fn build_htlc_script(
         hash_lock: &str,
         recipient_pubkey: &str,
         sender_pubkey: &str,
         timelock: u64,
     ) -> Result<Vec<u8>> {
-        // Validate inputs
-        let hash_bytes = hex::decode(hash_lock)
-            .map_err(|e| SdkError::Serialization(format!("Invalid hash_lock hex: {e}")))?;
-        if hash_bytes.len() != 32 {
-            return Err(SdkError::Serialization(format!(
-                "hash_lock must be 32 bytes, got {}", hash_bytes.len()
-            )));
+        fn decode(name: &str, value: &str, len: usize) -> Result<Vec<u8>> {
+            let bytes = hex::decode(value)
+                .map_err(|e| SdkError::Serialization(format!("Invalid {name} hex: {e}")))?;
+            if bytes.len() != len {
+                return Err(SdkError::Serialization(format!(
+                    "{name} must be {len} bytes, got {}",
+                    bytes.len()
+                )));
+            }
+            Ok(bytes)
+        }
+        let hash = decode("hash_lock", hash_lock, 32)?;
+        let recipient = decode("recipient_pubkey", recipient_pubkey, 33)?;
+        let sender = decode("sender_pubkey", sender_pubkey, 33)?;
+        let timelock = u32::try_from(timelock).map_err(|_| {
+            SdkError::Serialization(format!("timelock must fit in 32 bits, got {timelock}"))
+        })?;
+
+        const OP_IF: u8 = 0x63;
+        const OP_ELSE: u8 = 0x67;
+        const OP_ENDIF: u8 = 0x68;
+        const OP_DROP: u8 = 0x75;
+        const OP_EQUALVERIFY: u8 = 0x88;
+        const OP_SHA256: u8 = 0xa8;
+        const OP_CHECKSIG: u8 = 0xac;
+        const OP_CHECKLOCKTIMEVERIFY: u8 = 0xb1;
+
+        fn push(script: &mut Vec<u8>, data: &[u8]) {
+            if data.is_empty() {
+                script.push(0x00);
+            } else {
+                script.push(data.len() as u8);
+                script.extend_from_slice(data);
+            }
+        }
+        // CScriptNum: minimal little-endian, sign byte when the top bit is set.
+        let mut lock = Vec::new();
+        let mut v = timelock;
+        while v > 0 {
+            lock.push((v & 0xff) as u8);
+            v >>= 8;
+        }
+        if lock.last().is_some_and(|b| b & 0x80 != 0) {
+            lock.push(0x00);
         }
 
-        let recv_bytes = hex::decode(recipient_pubkey)
-            .map_err(|e| SdkError::Serialization(format!("Invalid recipient_pubkey hex: {e}")))?;
-        if recv_bytes.len() != 33 {
-            return Err(SdkError::Serialization(format!(
-                "recipient_pubkey must be 33 bytes (compressed), got {}", recv_bytes.len()
-            )));
-        }
-
-        let send_bytes = hex::decode(sender_pubkey)
-            .map_err(|e| SdkError::Serialization(format!("Invalid sender_pubkey hex: {e}")))?;
-        if send_bytes.len() != 33 {
-            return Err(SdkError::Serialization(format!(
-                "sender_pubkey must be 33 bytes (compressed), got {}", send_bytes.len()
-            )));
-        }
-
-        if timelock > u32::MAX as u64 {
-            return Err(SdkError::Serialization(format!(
-                "timelock must fit in 4 bytes, got {timelock}"
-            )));
-        }
-
-        let mut script = Vec::new();
-
-        // OP_SHA256 <hash_lock:32 bytes> OP_EQUALVERIFY
-        script.push(0xa8); // OP_SHA256
-        script.push(0x20); // push 32 bytes
-        script.extend_from_slice(&hash_bytes);
-        script.push(0x87); // OP_EQUALVERIFY
-
-        // <recipient_pubkey:33 bytes> OP_CHECKSIG
-        script.push(0x21); // push 33 bytes
-        script.extend_from_slice(&recv_bytes);
-        script.push(0xac); // OP_CHECKSIG
-
-        // OP_IFDUP OP_NOTIF <timelock:4 bytes LE> OP_CHECKLOCKTIMEVERIFY OP_DROP
-        //     <sender_pubkey:33 bytes> OP_CHECKSIG
-        // OP_ENDIF
-        script.push(0x75); // OP_IFDUP
-        script.push(0x63); // OP_NOTIF
-
-        // Timelock as 4-byte little-endian
-        let tl_bytes = (timelock as u32).to_le_bytes();
-        script.push(0x04); // push 4 bytes
-        script.extend_from_slice(&tl_bytes);
-        script.push(0xb1); // OP_CHECKLOCKTIMEVERIFY
-        script.push(0x75); // OP_DROP
-
-        // <sender_pubkey:33 bytes> OP_CHECKSIG
-        script.push(0x21); // push 33 bytes
-        script.extend_from_slice(&send_bytes);
-        script.push(0xac); // OP_CHECKSIG
-
-        script.push(0x68); // OP_ENDIF
-
+        let mut script = Vec::with_capacity(114);
+        script.push(OP_IF);
+        script.push(OP_SHA256);
+        push(&mut script, &hash);
+        script.push(OP_EQUALVERIFY);
+        push(&mut script, &recipient);
+        script.push(OP_CHECKSIG);
+        script.push(OP_ELSE);
+        push(&mut script, &lock);
+        script.push(OP_CHECKLOCKTIMEVERIFY);
+        script.push(OP_DROP);
+        push(&mut script, &sender);
+        script.push(OP_CHECKSIG);
+        script.push(OP_ENDIF);
         Ok(script)
     }
 

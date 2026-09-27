@@ -1,7 +1,10 @@
 use crate::error::{Result, SdkError};
 use crate::serialization::{
-    parse_extra_pubkey, CommitmentSpendInput, OutputTarget, TransactionPrefix, TxInput, HEAT_TERM,
+    parse_extra_payment_id, parse_extra_pubkey, CommitmentSpendInput, OutputTarget,
+    TransactionPrefix, TxInput, DEPOSIT_TERM_LP, DEPOSIT_TERM_POOL_HEAT, DEPOSIT_TERM_POOL_XFG,
+    DEPOSIT_TERM_SWAP_RECEIVE_XFG, HEAT_TERM,
 };
+use crate::suite;
 use crate::transaction_builder::{
     build_transaction as build_signed_transaction, compute_change, select_inputs,
     BuildDestination, BuiltTransaction, DecoyEntry, SpendableOutput, DEFAULT_DUST_THRESHOLD,
@@ -29,6 +32,8 @@ pub struct UtxoEntry {
     /// Position of this output within its funding transaction.
     pub output_position: u32,
     pub block_height: u64,
+    /// Funding transaction's unlock_time (block index or unix time).
+    pub unlock_time: u64,
 }
 
 impl From<&UtxoEntry> for SpendableOutput {
@@ -58,6 +63,23 @@ pub struct CommitmentEntry {
     /// Lock term in blocks. HEAT_TERM = HEAT (spendable); finite term = CD.
     pub term: u32,
     pub block_height: u64,
+    pub unlock_time: u64,
+}
+
+impl CommitmentEntry {
+    /// Finite-term CD (not HEAT, LP share, pool reserve or swap receipt).
+    pub fn is_finite_cd(&self) -> bool {
+        self.term > 0
+            && !matches!(
+                self.term,
+                HEAT_TERM
+                    | DEPOSIT_TERM_LP
+                    | DEPOSIT_TERM_POOL_XFG
+                    | DEPOSIT_TERM_POOL_HEAT
+                    | DEPOSIT_TERM_SWAP_RECEIVE_XFG
+                    | suite::DIGM_TERM
+            )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,13 +88,68 @@ pub enum HistoryDirection {
     Outgoing,
 }
 
+/// One confirmed transaction touching this wallet (walletd TransactionRpcInfo).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub tx_hash: [u8; 32],
     pub block_height: u64,
+    pub timestamp: u64,
+    /// Sign of the XFG delta (HEAT delta when no XFG moved).
     pub direction: HistoryDirection,
+    /// |XFG received - XFG spent| in atomic units, fee included for sends.
     pub amount: u64,
+    /// Transaction fee; 0 when this wallet spent nothing.
     pub fee: u64,
+    /// HEAT received - HEAT spent.
+    pub heat_delta: i64,
+    pub unlock_time: u64,
+    pub payment_id: Option<[u8; 32]>,
+}
+
+impl HistoryEntry {
+    /// Signed XFG delta (walletd `amount`).
+    pub fn signed_amount(&self) -> i64 {
+        match self.direction {
+            HistoryDirection::Incoming => self.amount as i64,
+            HistoryDirection::Outgoing => -(self.amount as i64),
+        }
+    }
+}
+
+/// walletd GetBalance semantics: "unlocked" means spendable now.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BalanceBreakdown {
+    pub unlocked_xfg: u64,
+    pub locked_xfg: u64,
+    pub unlocked_heat: u64,
+    pub locked_heat: u64,
+    pub unlocked_deposits: u64,
+    pub locked_deposits: u64,
+}
+
+/// CryptoNote is_tx_spendtime_unlocked, evaluated at chain tip `height`
+/// (last block index).
+pub fn is_unlock_time_reached(unlock_time: u64, height: u64, now_secs: u64) -> bool {
+    if unlock_time < suite::CRYPTONOTE_MAX_BLOCK_NUMBER {
+        height + suite::CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS >= unlock_time
+    } else {
+        now_secs + suite::CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS >= unlock_time
+    }
+}
+
+/// Wallet spendability: indexed, CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE deep,
+/// and past its unlock_time (WalletLegacy transactionSpendableAge policy).
+fn is_spendable(global_index: u32, block_height: u64, unlock_time: u64, height: u64, now: u64) -> bool {
+    global_index != 0
+        && height >= block_height + suite::CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE
+        && is_unlock_time_reached(unlock_time, height, now)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +172,6 @@ struct ScannerState {
     commitments: Vec<CommitmentEntry>,
     spent_images: HashSet<[u8; 32]>,
     history: Vec<HistoryEntry>,
-    balance: Balance,
 }
 
 /// The wallet's core key material: index 0 = spend, index 1 = view
@@ -117,7 +193,6 @@ impl UtxoScanner {
                 commitments: Vec::new(),
                 spent_images: HashSet::new(),
                 history: Vec::new(),
-                balance: Balance::default(),
             })),
         }
     }
@@ -131,13 +206,22 @@ impl UtxoScanner {
     }
 
     /// Primary wallet keys: keypair(0) = spend, keypair(1) = view.
+    ///
+    /// Vault secrets are raw keccak output; CryptoNote operations
+    /// (generate_key_derivation's sc_check, key images, ring signatures)
+    /// require the scalar reduced mod l. The public keys are already derived
+    /// from the reduced scalar, so reducing here changes no address.
     pub fn wallet_keys(&self) -> WalletKeys {
         let spend = self.vault.derive_keypair(0);
         let view = self.vault.derive_keypair(1);
+        let reduce = |mut s: [u8; 32]| {
+            fuego_crypto::ref10::sc_reduce32(&mut s);
+            s
+        };
         WalletKeys {
-            spend_secret: spend.secret,
+            spend_secret: reduce(spend.secret),
             spend_public: spend.public,
-            view_secret: view.secret,
+            view_secret: reduce(view.secret),
             view_public: view.public,
         }
     }
@@ -150,8 +234,50 @@ impl UtxoScanner {
         self.state.write().unwrap().height = height;
     }
 
+    /// confirmed = spendable XFG, pending = owned XFG not yet spendable.
     pub fn balance(&self) -> Balance {
-        self.state.read().unwrap().balance.clone()
+        let b = self.balance_breakdown_at(now_secs());
+        Balance {
+            confirmed: b.unlocked_xfg,
+            pending: b.locked_xfg,
+            immature: 0,
+        }
+    }
+
+    pub fn balance_breakdown(&self) -> BalanceBreakdown {
+        self.balance_breakdown_at(now_secs())
+    }
+
+    pub fn balance_breakdown_at(&self, now: u64) -> BalanceBreakdown {
+        let state = self.state.read().unwrap();
+        let h = state.height;
+        let mut b = BalanceBreakdown::default();
+        for u in state.utxos.iter().filter(|u| !state.spent_images.contains(&u.key_image)) {
+            if is_spendable(u.global_index, u.block_height, u.unlock_time, h, now) {
+                b.unlocked_xfg += u.amount;
+            } else {
+                b.locked_xfg += u.amount;
+            }
+        }
+        for c in state.commitments.iter().filter(|c| !state.spent_images.contains(&c.key_image)) {
+            if c.term == HEAT_TERM {
+                if is_spendable(c.global_index, c.block_height, c.unlock_time, h, now) {
+                    b.unlocked_heat += c.amount;
+                } else {
+                    b.locked_heat += c.amount;
+                }
+            } else if c.is_finite_cd() {
+                if c.global_index != 0 && c.block_height + c.term as u64 <= h {
+                    b.unlocked_deposits += c.amount;
+                } else {
+                    b.locked_deposits += c.amount;
+                }
+            } else if c.term == DEPOSIT_TERM_SWAP_RECEIVE_XFG {
+                // Swap receipts are XFG with no spend path in this SDK.
+                b.locked_xfg += c.amount;
+            }
+        }
+        b
     }
 
     pub fn utxos(&self) -> Vec<UtxoEntry> {
@@ -170,6 +296,23 @@ impl UtxoScanner {
             .commitments
             .iter()
             .filter(|c| c.term == HEAT_TERM && !state.spent_images.contains(&c.key_image))
+            .cloned()
+            .collect()
+    }
+
+    /// HEAT the wallet can spend now (indexed, aged, unlocked, not reserved).
+    pub fn spendable_heat_outputs(&self) -> Vec<CommitmentEntry> {
+        let now = now_secs();
+        let state = self.state.read().unwrap();
+        let h = state.height;
+        state
+            .commitments
+            .iter()
+            .filter(|c| {
+                c.term == HEAT_TERM
+                    && !state.spent_images.contains(&c.key_image)
+                    && is_spendable(c.global_index, c.block_height, c.unlock_time, h, now)
+            })
             .cloned()
             .collect()
     }
@@ -198,150 +341,149 @@ impl UtxoScanner {
     /// our outputs, using the standard CryptoNote discovery rules:
     /// key outputs: P == Hs(a·R || i) · G + B;
     /// commitment outputs: commitKey == deriveCommitmentKeys(Hs(D || i)).commitKey
-    /// with D = a·R.
+    /// with D = a·R. Returns (received, spent) over all asset classes.
     pub fn scan_tx_prefix(
         &self,
         tx_hash: &[u8; 32],
         prefix: &TransactionPrefix,
         block_height: u64,
     ) -> Result<(u64, u64)> {
+        self.scan_tx_prefix_at(tx_hash, prefix, block_height, 0)
+    }
+
+    pub fn scan_tx_prefix_at(
+        &self,
+        tx_hash: &[u8; 32],
+        prefix: &TransactionPrefix,
+        block_height: u64,
+        block_timestamp: u64,
+    ) -> Result<(u64, u64)> {
         let keys = self.wallet_keys();
         let mut state = self.state.write().unwrap();
 
         let mut received = 0u64;
         let mut spent = 0u64;
+        let mut xfg_in = 0u64;
+        let mut xfg_out = 0u64;
+        let mut heat_in = 0u64;
+        let mut heat_out = 0u64;
 
-        // Spend detection first: any input key image matching our unspent
-        // outputs removes it.
         for input in &prefix.inputs {
             let image = match input {
                 TxInput::Key(k) => &k.key_image,
                 TxInput::CommitmentSpend(c) => &c.key_image,
             };
-            if let Some(idx) = state
-                .utxos
-                .iter()
-                .position(|u| u.key_image == *image)
-            {
+            if let Some(idx) = state.utxos.iter().position(|u| u.key_image == *image) {
                 let entry = state.utxos.remove(idx);
                 state.spent_images.insert(entry.key_image);
                 spent += entry.amount;
-                state.history.push(HistoryEntry {
-                    tx_hash: *tx_hash,
-                    block_height,
-                    direction: HistoryDirection::Outgoing,
-                    amount: entry.amount,
-                    fee: prefix_inputs_amount_delta(prefix),
-                });
+                xfg_out += entry.amount;
                 continue;
             }
-            if let Some(idx) = state
-                .commitments
-                .iter()
-                .position(|c| c.key_image == *image)
-            {
+            if let Some(idx) = state.commitments.iter().position(|c| c.key_image == *image) {
                 let entry = state.commitments.remove(idx);
                 state.spent_images.insert(entry.key_image);
                 spent += entry.amount;
-                state.history.push(HistoryEntry {
-                    tx_hash: *tx_hash,
-                    block_height,
-                    direction: HistoryDirection::Outgoing,
-                    amount: entry.amount,
-                    fee: prefix_inputs_amount_delta(prefix),
-                });
+                if entry.term == HEAT_TERM {
+                    heat_out += entry.amount;
+                }
             }
         }
 
-        // Output detection.
-        let r = match parse_extra_pubkey(&prefix.extra) {
-            Some(k) => k,
-            None => return Ok((received, spent)),
-        };
-        let derivation = match fuego_crypto::generate_key_derivation(
-            &fuego_crypto::PublicKey(r),
-            &keys.view_secret,
-        ) {
-            Some(d) => d,
-            None => return Ok((received, spent)),
-        };
-
-        for (i, output) in prefix.outputs.iter().enumerate() {
-            match &output.target {
-                OutputTarget::Key(output_key) => {
-                    let expected = match fuego_crypto::derive_public_key(
-                        &derivation,
-                        i as u64,
-                        &keys.spend_public,
-                    ) {
-                        Some(p) => p,
-                        None => continue,
-                    };
-                    if expected.0 != *output_key {
-                        continue;
+        if let Some(r) = parse_extra_pubkey(&prefix.extra) {
+            if let Some(derivation) =
+                fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r), &keys.view_secret)
+            {
+                for (i, output) in prefix.outputs.iter().enumerate() {
+                    match &output.target {
+                        OutputTarget::Key(output_key) => {
+                            let expected = match fuego_crypto::derive_public_key(
+                                &derivation,
+                                i as u64,
+                                &keys.spend_public,
+                            ) {
+                                Some(p) => p,
+                                None => continue,
+                            };
+                            if expected.0 != *output_key {
+                                continue;
+                            }
+                            let secret = match fuego_crypto::derive_secret_key(
+                                &derivation,
+                                i as u64,
+                                &keys.spend_secret,
+                            ) {
+                                Some(s) => s,
+                                None => continue,
+                            };
+                            let key_image = fuego_crypto::generate_key_image(
+                                &fuego_crypto::PublicKey(*output_key),
+                                &secret,
+                            );
+                            state.utxos.push(UtxoEntry {
+                                amount: output.amount,
+                                output_key: *output_key,
+                                secret_key: secret,
+                                key_image: key_image.0,
+                                global_index: 0,
+                                tx_hash: *tx_hash,
+                                output_position: i as u32,
+                                block_height,
+                                unlock_time: prefix.unlock_time,
+                            });
+                            received += output.amount;
+                            xfg_in += output.amount;
+                        }
+                        OutputTarget::Commitment(commit) => {
+                            let deposit_secret =
+                                fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
+                            let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
+                            if ck.commit_key != commit.commit_key {
+                                continue;
+                            }
+                            state.commitments.push(CommitmentEntry {
+                                amount: output.amount,
+                                commit_key: commit.commit_key,
+                                key_scalar: ck.key_scalar,
+                                key_image: ck.key_image,
+                                global_index: 0,
+                                tx_hash: *tx_hash,
+                                output_position: i as u32,
+                                term: commit.term,
+                                block_height,
+                                unlock_time: prefix.unlock_time,
+                            });
+                            received += output.amount;
+                            if commit.term == HEAT_TERM {
+                                heat_in += output.amount;
+                            }
+                        }
                     }
-                    let secret = match fuego_crypto::derive_secret_key(
-                        &derivation,
-                        i as u64,
-                        &keys.spend_secret,
-                    ) {
-                        Some(s) => s,
-                        None => continue,
-                    };
-                    let key_image = fuego_crypto::generate_key_image(
-                        &fuego_crypto::PublicKey(*output_key),
-                        &secret,
-                    );
-                    state.utxos.push(UtxoEntry {
-                        amount: output.amount,
-                        output_key: *output_key,
-                        secret_key: secret,
-                        key_image: key_image.0,
-                        global_index: 0,
-                        tx_hash: *tx_hash,
-                        output_position: i as u32,
-                        block_height,
-                    });
-                    received += output.amount;
-                }
-                OutputTarget::Commitment(commit) => {
-                    let deposit_secret =
-                        fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
-                    let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
-                    if ck.commit_key != commit.commit_key {
-                        continue;
-                    }
-                    state.commitments.push(CommitmentEntry {
-                        amount: output.amount,
-                        commit_key: commit.commit_key,
-                        key_scalar: ck.key_scalar,
-                        key_image: ck.key_image,
-                        global_index: 0,
-                        tx_hash: *tx_hash,
-                        output_position: i as u32,
-                        term: commit.term,
-                        block_height,
-                    });
-                    received += output.amount;
                 }
             }
         }
 
         if received > 0 || spent > 0 {
+            let xfg_delta = xfg_in as i128 - xfg_out as i128;
+            let heat_delta = heat_in as i128 - heat_out as i128;
+            let incoming = if xfg_delta != 0 { xfg_delta > 0 } else { heat_delta >= 0 };
             state.history.push(HistoryEntry {
                 tx_hash: *tx_hash,
                 block_height,
-                direction: if received > 0 {
+                timestamp: block_timestamp,
+                direction: if incoming {
                     HistoryDirection::Incoming
                 } else {
                     HistoryDirection::Outgoing
                 },
-                amount: received.max(spent),
-                fee: 0,
+                amount: xfg_delta.unsigned_abs().min(u64::MAX as u128) as u64,
+                fee: if spent > 0 { prefix_inputs_amount_delta(prefix) } else { 0 },
+                heat_delta: heat_delta.clamp(i64::MIN as i128, i64::MAX as i128) as i64,
+                unlock_time: prefix.unlock_time,
+                payment_id: parse_extra_payment_id(&prefix.extra),
             });
         }
 
-        state.balance.confirmed = state.utxos.iter().map(|u| u.amount).sum();
         Ok((received, spent))
     }
 
@@ -396,7 +538,6 @@ impl UtxoScanner {
         state.commitments = snapshot.commitments.clone();
         state.spent_images = snapshot.spent_images.iter().copied().collect();
         state.history = snapshot.history.clone();
-        state.balance.confirmed = state.utxos.iter().map(|u| u.amount).sum();
     }
 
     /// Phase 1 of sending: select inputs for `amount + fee` using the bucket
@@ -406,21 +547,27 @@ impl UtxoScanner {
         total_needed: u64,
         rng: &mut impl rand::RngCore,
     ) -> Result<Vec<UtxoEntry>> {
+        let now = now_secs();
         let state = self.state.read().unwrap();
-        if state.balance.confirmed < total_needed {
-            return Err(SdkError::InsufficientFunds {
-                need: total_needed,
-                have: state.balance.confirmed,
-            });
-        }
-        // Only outputs with a confirmed global index are spendable (index 0
-        // belongs to the genesis miner transaction and can never be ours).
+        let h = state.height;
+        // Spendable: indexed (index 0 is the genesis miner output, never
+        // ours), aged, unlocked, and not reserved by a pending send.
         let spendable: Vec<SpendableOutput> = state
             .utxos
             .iter()
-            .filter(|u| u.global_index != 0)
+            .filter(|u| {
+                !state.spent_images.contains(&u.key_image)
+                    && is_spendable(u.global_index, u.block_height, u.unlock_time, h, now)
+            })
             .map(|u| u.into())
             .collect();
+        let available: u64 = spendable.iter().map(|u| u.amount).sum();
+        if available < total_needed {
+            return Err(SdkError::InsufficientFunds {
+                need: total_needed,
+                have: available,
+            });
+        }
         let (selected, found) =
             select_inputs(&spendable, total_needed, DEFAULT_DUST_THRESHOLD, rng);
         if found < total_needed {

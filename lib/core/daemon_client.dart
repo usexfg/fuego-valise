@@ -121,10 +121,8 @@ class FuegoDaemonClient {
         'params': {},
       }, useWallet: true);
       final result = r['result'] as Map<String, dynamic>? ?? r;
-      return (result['height'] as int?) ??
-          (result['scanned_height'] as int?) ??
-          (result['current_height'] as int?) ??
-          0;
+      // walletd getStatus: blockCount = blocks scanned (a count, like getinfo height).
+      return result['blockCount'] as int? ?? 0;
     } catch (_) {
       final health = await _get('/health', useWallet: true);
       final wallet = health['wallet'] as Map<String, dynamic>?;

@@ -1,0 +1,4207 @@
+{
+  "schema": 1,
+  "suite_commit": "aac32d39c67a247dda683eeac6bb618aa77acb51",
+  "parameters": {
+    "COIN": {
+      "type": "uint64_t",
+      "value": 10000000,
+      "expr": "UINT64_C(10000000)"
+    },
+    "MINIMUM_FEE": {
+      "type": "uint64_t",
+      "value": 8000,
+      "expr": "MINIMUM_FEE_8KH"
+    },
+    "DEFAULT_DUST_THRESHOLD": {
+      "type": "uint64_t",
+      "value": 1000,
+      "expr": "UINT64_C(1000)"
+    },
+    "MIN_TX_MIXIN_SIZE_V2": {
+      "type": "uint64_t",
+      "value": 2,
+      "expr": "2"
+    },
+    "MIN_TX_MIXIN_SIZE_V10": {
+      "type": "uint64_t",
+      "value": 8,
+      "expr": "8"
+    },
+    "MAX_TX_MIXIN_SIZE": {
+      "type": "uint64_t",
+      "value": 32,
+      "expr": "32"
+    },
+    "CRYPTONOTE_MAX_BLOCK_NUMBER": {
+      "type": "uint64_t",
+      "value": 500000000,
+      "expr": "500000000"
+    },
+    "CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE": {
+      "type": "uint64_t",
+      "value": 3,
+      "expr": "3"
+    },
+    "CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW": {
+      "type": "size_t",
+      "value": 60,
+      "expr": "60"
+    },
+    "CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS": {
+      "type": "uint64_t",
+      "value": 1,
+      "expr": "1"
+    },
+    "CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS": {
+      "type": "uint64_t",
+      "value": 81,
+      "expr": "DIFFICULTY_TARGET_DRGL * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS"
+    },
+    "CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX": {
+      "type": "uint64_t",
+      "value": 1753191,
+      "expr": "1753191"
+    },
+    "CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX_TESTNET": {
+      "type": "uint64_t",
+      "value": 1075740,
+      "expr": "1075740"
+    },
+    "EPOCH_DURATION_BLOCKS": {
+      "type": "uint64_t",
+      "value": 900,
+      "expr": "900"
+    },
+    "TESTNET_EPOCH_DURATION_BLOCKS": {
+      "type": "uint64_t",
+      "value": 10,
+      "expr": "10"
+    },
+    "DEPOSIT_MIN_TERM": {
+      "type": "uint32_t",
+      "value": 5400,
+      "expr": "CD_MIN_EPOCHS * EPOCH_DURATION_BLOCKS"
+    },
+    "DEPOSIT_MAX_TERM": {
+      "type": "uint32_t",
+      "value": 64800,
+      "expr": "CD_MAX_EPOCHS * EPOCH_DURATION_BLOCKS"
+    },
+    "TESTNET_DEPOSIT_MIN_TERM": {
+      "type": "uint32_t",
+      "value": 10,
+      "expr": "TESTNET_CD_MIN_EPOCHS * TESTNET_EPOCH_DURATION_BLOCKS"
+    },
+    "TESTNET_DEPOSIT_MAX_TERM": {
+      "type": "uint32_t",
+      "value": 720,
+      "expr": "TESTNET_CD_MAX_EPOCHS * TESTNET_EPOCH_DURATION_BLOCKS"
+    },
+    "HEAT_TERM": {
+      "type": "uint32_t",
+      "value": 4294967295,
+      "expr": "((uint32_t)(-1))"
+    },
+    "DEPOSIT_TERM_LP": {
+      "type": "uint32_t",
+      "value": 4294967293,
+      "expr": "0xFFFFFFFD"
+    },
+    "DEPOSIT_TERM_POOL_XFG": {
+      "type": "uint32_t",
+      "value": 1347374168,
+      "expr": "0x504F4C58"
+    },
+    "DEPOSIT_TERM_POOL_HEAT": {
+      "type": "uint32_t",
+      "value": 1347374152,
+      "expr": "0x504F4C48"
+    },
+    "DEPOSIT_TERM_SWAP_RECEIVE_XFG": {
+      "type": "uint32_t",
+      "value": 1398231640,
+      "expr": "0x53575258"
+    },
+    "DIGM_TERM": {
+      "type": "uint32_t",
+      "value": 1145654599,
+      "expr": "0x44494D47"
+    },
+    "HEAT_MINT_MIN_HEAT": {
+      "type": "uint64_t",
+      "value": 1000000,
+      "expr": "1000000"
+    },
+    "HEAT_MINT_PREMIUM_BPS": {
+      "type": "uint64_t",
+      "value": 0,
+      "expr": "0"
+    },
+    "HEARTH_FEE_BPS": {
+      "type": "uint64_t",
+      "value": 100,
+      "expr": "100"
+    },
+    "HEARTH_FEE_DIVISOR": {
+      "type": "uint64_t",
+      "value": 10000,
+      "expr": "10000"
+    },
+    "SWAP_FEE_RATE_BPS": {
+      "type": "uint64_t",
+      "value": 100,
+      "expr": "100"
+    },
+    "SWAP_FEE_RATE_DIVISOR": {
+      "type": "uint64_t",
+      "value": 10000,
+      "expr": "10000"
+    },
+    "ALIAS_REGISTRATION_FEE": {
+      "type": "uint64_t",
+      "value": 10000000,
+      "expr": "COIN"
+    },
+    "ALIAS_REGISTRATION_FEE_MAX_RANDOM": {
+      "type": "uint64_t",
+      "value": 1000,
+      "expr": "1000"
+    },
+    "UPGRADE_HEIGHT_V10": {
+      "type": "uint32_t",
+      "value": 1003000,
+      "expr": "1003000"
+    },
+    "UPGRADE_HEIGHT_V11": {
+      "type": "uint32_t",
+      "value": 1111111,
+      "expr": "1111111"
+    },
+    "UPGRADE_HEIGHT_V12": {
+      "type": "uint32_t",
+      "value": 2666666,
+      "expr": "2666666"
+    },
+    "FUEGO_DEV_FUND_ADDRESS": {
+      "type": "string",
+      "value": "fireVHx639SLMhzmBoJ8drTXbVyv2eRG6A8aMLc1taTiRNwk8pnwXpBDUSjH1dT5fg7yVVZrKkvm31CmigAMdVDg7sgxJmAUNp",
+      "expr": "\"fireVHx639SLMhzmBoJ8drTXbVyv2eRG6A8aMLc1taTiRNwk8pnwXpBDUSjH1dT5fg7yVVZrKkvm31CmigAMdVDg7sgxJmAUNp\""
+    }
+  },
+  "testnet_upgrade_heights": {
+    "V2": 2,
+    "V3": 3,
+    "V4": 4,
+    "V5": 5,
+    "V6": 6,
+    "V7": 17,
+    "V8": 18,
+    "V9": 19,
+    "V10": 25,
+    "V11": 30,
+    "V12": 180
+  },
+  "tx_extra_tags": {
+    "TX_EXTRA_ALIAS": 234,
+    "TX_EXTRA_ALIAS_RELEASE": 236,
+    "TX_EXTRA_ALIAS_TRANSFER": 237,
+    "TX_EXTRA_AMM_ADD_LIQ": 241,
+    "TX_EXTRA_AMM_CLAIM": 244,
+    "TX_EXTRA_AMM_COMPOUND": 243,
+    "TX_EXTRA_AMM_LP_ADD_AUTH": 247,
+    "TX_EXTRA_AMM_LP_REM_AUTH": 248,
+    "TX_EXTRA_AMM_REM_LIQ": 242,
+    "TX_EXTRA_AMM_SWAP": 240,
+    "TX_EXTRA_AMM_SWAP_AUTH": 246,
+    "TX_EXTRA_BURN_RECEIPT": 24,
+    "TX_EXTRA_CD_BONUS_CLAIM": 214,
+    "TX_EXTRA_DEPOSIT_SECRET": 213,
+    "TX_EXTRA_DIGM_ALBUM": 10,
+    "TX_EXTRA_DIGM_CURATOR": 12,
+    "TX_EXTRA_DIGM_CURATOR_COIN": 28,
+    "TX_EXTRA_DIGM_LISTEN_RIGHTS": 11,
+    "TX_EXTRA_DIGM_MINT": 168,
+    "TX_EXTRA_HEAT_COMMITMENT": 8,
+    "TX_EXTRA_HEAT_MINT_AUTH": 245,
+    "TX_EXTRA_HEAT_SEND_AUTH": 249,
+    "TX_EXTRA_LEGACY_BOND": 203,
+    "TX_EXTRA_LEGACY_BOND_CLAIM": 204,
+    "TX_EXTRA_LIMIT_DEPOSIT": 251,
+    "TX_EXTRA_LIMIT_WITHDRAW": 254,
+    "TX_EXTRA_MARKET_BUY_AUTH": 252,
+    "TX_EXTRA_MARKET_SELL_AUTH": 253,
+    "TX_EXTRA_MERGE_MINING_TAG": 3,
+    "TX_EXTRA_MESSAGE_TAG": 4,
+    "TX_EXTRA_NONCE": 2,
+    "TX_EXTRA_NONCE_MAX_COUNT": 255,
+    "TX_EXTRA_NONCE_PAYMENT_ID": 0,
+    "TX_EXTRA_ORDER_CANCEL": 15,
+    "TX_EXTRA_ORDER_PLACE": 250,
+    "TX_EXTRA_PADDING_MAX_COUNT": 255,
+    "TX_EXTRA_SIMPLE_CD": 205,
+    "TX_EXTRA_TAG_PADDING": 0,
+    "TX_EXTRA_TAG_PUBKEY": 1,
+    "TX_EXTRA_TREASURY_FUND": 255,
+    "TX_EXTRA_TTL": 5,
+    "TX_EXTRA_YIELD_COMMITMENT": 7
+  },
+  "rpc": {
+    "http": {
+      "/accept": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_ACCEPT_SWAP"
+      },
+      "/addswapfee": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_ADD_SWAP_FEE"
+      },
+      "/amm_pool_info": {
+        "kind": "json",
+        "command": "COMMAND_RPC_AMM_POOL_INFO"
+      },
+      "/amm_quote": {
+        "kind": "json",
+        "command": "COMMAND_RPC_AMM_QUOTE"
+      },
+      "/cancelorder": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_CANCEL_ORDER"
+      },
+      "/cancelswap": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_CANCEL_SWAP_OFFER"
+      },
+      "/check_commitment_exists": {
+        "kind": "json",
+        "command": "COMMAND_RPC_CHECK_COMMITMENT_EXISTS"
+      },
+      "/estimate_cd_yield": {
+        "kind": "json",
+        "command": "COMMAND_RPC_ESTIMATE_CD_YIELD"
+      },
+      "/feeaddress": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_FEE_ADDRESS"
+      },
+      "/get_alias": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_ALIAS"
+      },
+      "/get_alias_by_address": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_ALIAS_BY_ADDRESS"
+      },
+      "/get_all_aliases": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_ALL_ALIASES"
+      },
+      "/get_block_range": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_BLOCK_RANGE"
+      },
+      "/get_commitment": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_COMMITMENT"
+      },
+      "/get_commitment_leaves": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_COMMITMENT_LEAVES"
+      },
+      "/get_commitment_merkle_proof": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_COMMITMENT_MERKLE_PROOF"
+      },
+      "/get_commitment_merkle_root": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_COMMITMENT_MERKLE_ROOT"
+      },
+      "/get_commitment_stats": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_COMMITMENT_STATS"
+      },
+      "/get_epoch_history": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_EPOCH_HISTORY"
+      },
+      "/get_fee_pool_info": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_FEE_POOL_INFO"
+      },
+      "/get_fuego_price": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_FUEGO_PRICE"
+      },
+      "/get_limit_orders": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_LIMIT_ORDERS"
+      },
+      "/get_maturing_deposits": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_MATURING_DEPOSITS"
+      },
+      "/get_o_indexes.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES"
+      },
+      "/get_outs_json": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_OUTPUTS_JSON"
+      },
+      "/get_pool_changes.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_GET_POOL_CHANGES"
+      },
+      "/get_pool_changes_lite.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_GET_POOL_CHANGES_LITE"
+      },
+      "/get_treasury_info": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_TREASURY_INFO"
+      },
+      "/getactiveswaps": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_ACTIVE_SWAPS"
+      },
+      "/getblocks.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_GET_BLOCKS_FAST"
+      },
+      "/getdeposits": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_DEPOSITS"
+      },
+      "/getethereal": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_ETHERNAL_FLAME"
+      },
+      "/getheight": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_HEIGHT"
+      },
+      "/getinfo": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_INFO"
+      },
+      "/getorderbook": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_ORDER_BOOK"
+      },
+      "/getrandom_commitment_outs.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS"
+      },
+      "/getrandom_outs.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS"
+      },
+      "/getrandom_outs_json": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_RANDOM_OUTPUTS_JSON"
+      },
+      "/getswapoffers": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_SWAP_OFFERS"
+      },
+      "/getswapprice": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_SWAP_PRICE"
+      },
+      "/getswaprequests": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_SWAP_REQUESTS"
+      },
+      "/getswapstatus": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_SWAP_STATUS"
+      },
+      "/getswaptrades": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_SWAP_TRADES"
+      },
+      "/gettransactions": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_TRANSACTIONS"
+      },
+      "/heat_metrics": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_HEAT_METRICS"
+      },
+      "/initiate": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_INITIATE_SWAP"
+      },
+      "/is_key_image_spent": {
+        "kind": "json",
+        "command": "COMMAND_RPC_IS_KEY_IMAGE_SPENT"
+      },
+      "/json_rpc": {
+        "kind": "json_rpc",
+        "command": null
+      },
+      "/listswaps": {
+        "kind": "json",
+        "command": "COMMAND_RPC_LIST_SWAPS"
+      },
+      "/openorders": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_OPEN_ORDERS"
+      },
+      "/paymentid": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GEN_PAYMENT_ID"
+      },
+      "/peers": {
+        "kind": "json",
+        "command": "COMMAND_RPC_GET_PEER_LIST"
+      },
+      "/placeorder": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_PLACE_ORDER"
+      },
+      "/processswap": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_PROCESS_SWAP"
+      },
+      "/queryblocks.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_QUERY_BLOCKS"
+      },
+      "/queryblockslite.bin": {
+        "kind": "binary",
+        "command": "COMMAND_RPC_QUERY_BLOCKS_LITE"
+      },
+      "/refundswap": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_REFUND_SWAP"
+      },
+      "/requestswap": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_REQUEST_SWAP"
+      },
+      "/rollover_deposit": {
+        "kind": "json",
+        "command": "COMMAND_RPC_ROLLOVER_DEPOSIT"
+      },
+      "/sendrawtransaction": {
+        "kind": "json",
+        "command": "COMMAND_RPC_SEND_RAW_TX"
+      },
+      "/start_mining": {
+        "kind": "json",
+        "command": "COMMAND_RPC_START_MINING"
+      },
+      "/stop_daemon": {
+        "kind": "json",
+        "command": "COMMAND_RPC_STOP_DAEMON"
+      },
+      "/stop_mining": {
+        "kind": "json",
+        "command": "COMMAND_RPC_STOP_MINING"
+      },
+      "/submitswap": {
+        "kind": "json_swap_auth",
+        "command": "COMMAND_RPC_SUBMIT_SWAP_OFFER"
+      }
+    },
+    "json_rpc": {
+      "check_reserve_proof": {
+        "command": "K_COMMAND_RPC_CHECK_RESERVE_PROOF"
+      },
+      "check_tx_proof": {
+        "command": "K_COMMAND_RPC_CHECK_TX_PROOF"
+      },
+      "f_block_json": {
+        "command": "F_COMMAND_RPC_GET_BLOCK_DETAILS"
+      },
+      "f_blocks_list_json": {
+        "command": "F_COMMAND_RPC_GET_BLOCKS_LIST"
+      },
+      "f_on_transactions_pool_json": {
+        "command": "F_COMMAND_RPC_GET_POOL"
+      },
+      "f_transaction_json": {
+        "command": "F_COMMAND_RPC_GET_TRANSACTION_DETAILS"
+      },
+      "getaltblockslist": {
+        "command": "COMMAND_RPC_GET_ALT_BLOCKS_LIST"
+      },
+      "getblockcount": {
+        "command": "COMMAND_RPC_GETBLOCKCOUNT"
+      },
+      "getblockheaderbyhash": {
+        "command": "COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH"
+      },
+      "getblockheaderbyheight": {
+        "command": "COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT"
+      },
+      "getblocktemplate": {
+        "command": "COMMAND_RPC_GETBLOCKTEMPLATE"
+      },
+      "getcurrencyid": {
+        "command": "COMMAND_RPC_GET_CURRENCY_ID"
+      },
+      "getlastblockheader": {
+        "command": "COMMAND_RPC_GET_LAST_BLOCK_HEADER"
+      },
+      "on_getblockhash": {
+        "command": "COMMAND_RPC_GETBLOCKHASH"
+      },
+      "submitblock": {
+        "command": "COMMAND_RPC_SUBMITBLOCK"
+      }
+    }
+  },
+  "structs": {
+    "BLOCK_HEADER_RESPONSE": [
+      {
+        "wire": "block_header",
+        "type": "block_header_response",
+        "binary": false,
+        "ref": "block_header_response"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "BlockShortInfo": [
+      {
+        "wire": "blockId",
+        "type": "Crypto::Hash",
+        "binary": false
+      },
+      {
+        "wire": "block",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "txPrefixes",
+        "type": "std::vector<TransactionPrefixInfo>",
+        "binary": false,
+        "ref": "TransactionPrefixInfo"
+      }
+    ],
+    "COMMAND_RPC_ACCEPT_SWAP.request": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ACCEPT_SWAP.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ADD_SWAP_FEE.request": [
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ADD_SWAP_FEE.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_AMM_POOL_INFO.request": [],
+    "COMMAND_RPC_AMM_POOL_INFO.response": [
+      {
+        "wire": "reserve_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "reserve_heat",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "total_lp_shares",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "spot_price",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "epoch_swap_fees",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "hearth_twap",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_AMM_QUOTE.request": [
+      {
+        "wire": "input_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "direction",
+        "type": "uint8_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_AMM_QUOTE.response": [
+      {
+        "wire": "expected_output",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "price_impact_bps",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fee",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_CANCEL_ORDER.request": [
+      {
+        "wire": "orderId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "makerPubKey",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "signature",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_CANCEL_ORDER.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_CANCEL_SWAP_OFFER.request": [
+      {
+        "wire": "offerId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "makerPubKey",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "signature",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_CANCEL_SWAP_OFFER.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_CHECK_COMMITMENT_EXISTS.request": [
+      {
+        "wire": "commitment_hash",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_CHECK_COMMITMENT_EXISTS.response": [
+      {
+        "wire": "exists",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ESTIMATE_CD_YIELD.request": [
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "creation_height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "current_height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "term",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ESTIMATE_CD_YIELD.response": [
+      {
+        "wire": "estimated_interest",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "effective_epochs",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fee_pool_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "cd_apy_vault_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "claimable_interest",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "base_interest",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "bonus_interest",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "bonus_vault_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "claimable_bonus",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "pool_info_present",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "note",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GEN_PAYMENT_ID.request": [],
+    "COMMAND_RPC_GEN_PAYMENT_ID.response": [
+      {
+        "wire": "payment_id",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GETBLOCKCOUNT.response": [
+      {
+        "wire": "count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GETBLOCKTEMPLATE.request": [
+      {
+        "wire": "reserve_size",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "wallet_address",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GETBLOCKTEMPLATE.response": [
+      {
+        "wire": "difficulty",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "reserved_offset",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "blocktemplate_blob",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ACTIVE_SWAPS.request": [],
+    "COMMAND_RPC_GET_ACTIVE_SWAPS.response": [
+      {
+        "wire": "swaps",
+        "type": "std::vector<swap_entry>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_ACTIVE_SWAPS.swap_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ACTIVE_SWAPS.swap_entry": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "state",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "role",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfg_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ctr_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "peer_endpoint",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "created_at",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "updated_at",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "is_terminal",
+        "type": "bool",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALIAS.request": [
+      {
+        "wire": "alias",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALIAS.response": [
+      {
+        "wire": "alias",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "address_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "registered_block",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "alias_type",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "found",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALIAS_BY_ADDRESS.request": [
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALIAS_BY_ADDRESS.response": [
+      {
+        "wire": "alias",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "registered_block",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "alias_type",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "found",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALL_ALIASES.alias_entry": [
+      {
+        "wire": "alias",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "registered_block",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "alias_type",
+        "type": "uint8_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALL_ALIASES.request": [],
+    "COMMAND_RPC_GET_ALL_ALIASES.response": [
+      {
+        "wire": "aliases",
+        "type": "std::vector<alias_entry>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_ALL_ALIASES.alias_entry"
+      },
+      {
+        "wire": "total",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ALT_BLOCKS_LIST.request": [],
+    "COMMAND_RPC_GET_ALT_BLOCKS_LIST.response": [
+      {
+        "wire": "alt_blocks",
+        "type": "std::vector<block_short_response>",
+        "binary": false,
+        "ref": "block_short_response"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCKS_FAST.request": [
+      {
+        "wire": "block_ids",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCKS_FAST.response": [
+      {
+        "wire": "blocks",
+        "type": "std::vector<block_complete_entry>",
+        "binary": false,
+        "ref": "block_complete_entry"
+      },
+      {
+        "wire": "start_height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "current_height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH.request": [
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "BLOCK_HEADER_RESPONSE"
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT.request": [
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "BLOCK_HEADER_RESPONSE"
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_RANGE.block_entry": [
+      {
+        "wire": "major_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "minor_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "nonce",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "previous_block_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "tx_extras",
+        "type": "std::vector<std::string>",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_RANGE.request": [
+      {
+        "wire": "start_height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "end_height",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_BLOCK_RANGE.response": [
+      {
+        "wire": "blocks",
+        "type": "std::vector<block_entry>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_BLOCK_RANGE.block_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT.request": [
+      {
+        "wire": "commitment_hash",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT.response": [
+      {
+        "wire": "found",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "commitment_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "tx_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "block_height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "term",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "type",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "target_chain_id",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "leaf_index",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "is_legacy",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT_LEAVES.request": [],
+    "COMMAND_RPC_GET_COMMITMENT_LEAVES.response": [
+      {
+        "wire": "leaves",
+        "type": "std::vector<std::string>",
+        "binary": false
+      },
+      {
+        "wire": "count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT_MERKLE_PROOF.request": [
+      {
+        "wire": "commitment_hash",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT_MERKLE_PROOF.response": [
+      {
+        "wire": "found",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "merkle_root",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "leaf_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "proof_path",
+        "type": "std::vector<std::string>",
+        "binary": false
+      },
+      {
+        "wire": "proof_indices",
+        "type": "std::vector<uint32_t>",
+        "binary": false
+      },
+      {
+        "wire": "leaf_index",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT_MERKLE_ROOT.request": [],
+    "COMMAND_RPC_GET_COMMITMENT_MERKLE_ROOT.response": [
+      {
+        "wire": "merkle_root",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "total_leaves",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "highest_block",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_COMMITMENT_STATS.request": [],
+    "COMMAND_RPC_GET_COMMITMENT_STATS.response": [
+      {
+        "wire": "total_commitments",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "heat_commitments",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "cold_commitments",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "highest_block",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "merkle_root",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_CURRENCY_ID.request": [],
+    "COMMAND_RPC_GET_CURRENCY_ID.response": [
+      {
+        "wire": "currency_id_blob",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_DEPOSITS.request": [
+      {
+        "wire": "addresses",
+        "type": "std::vector<std::string>",
+        "binary": false
+      },
+      {
+        "wire": "blockHash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "firstBlockIndex",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "blockCount",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "paymentId",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_DEPOSITS.response": [
+      {
+        "wire": "deposits",
+        "type": "std::vector<DepositRpcInfo>",
+        "binary": false,
+        "ref": "DepositRpcInfo"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_EPOCH_HISTORY.epoch_summary": [
+      {
+        "wire": "epoch_number",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "swap_fees_collected",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "total_cd_locked_at_start",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fee_rate_fixed_point",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "total_fees_distributed",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "active_efier_count",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_EPOCH_HISTORY.request": [
+      {
+        "wire": "count",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_EPOCH_HISTORY.response": [
+      {
+        "wire": "epochs",
+        "type": "std::vector<epoch_summary>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_EPOCH_HISTORY.epoch_summary"
+      },
+      {
+        "wire": "total_epochs",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ETHERNAL_FLAME.request": [],
+    "COMMAND_RPC_GET_ETHERNAL_FLAME.response": [
+      {
+        "wire": "ethereal_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "formattedAmount",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_FEE_ADDRESS.request": [],
+    "COMMAND_RPC_GET_FEE_ADDRESS.response": [
+      {
+        "wire": "fee_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_FEE_POOL_INFO.request": [],
+    "COMMAND_RPC_GET_FEE_POOL_INFO.response": [
+      {
+        "wire": "fee_pool_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "treasury_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "bonus_vault_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "rollover_vault_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "current_epoch_swap_fees",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "total_cd_locked",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "current_epoch_number",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_FUEGO_PRICE.request": [],
+    "COMMAND_RPC_GET_FUEGO_PRICE.response": [
+      {
+        "wire": "reserve_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "reserve_heat",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "spot_price",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "redemption_price_num",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "redemption_price_denom",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "xfg_heat_ratio",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "heat_peg_usd",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfg_spot_usd",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_HEAT_METRICS.request": [],
+    "COMMAND_RPC_GET_HEAT_METRICS.response": [
+      {
+        "wire": "heat_supply",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "heat_on_deposit",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "burned_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "total_burned_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "redemption_price_num",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "redemption_price_denom",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "redemption_rate_num",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "redemption_rate_denom",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "treasury_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "treasury_counter_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "swf_burned_xfg_pending_heat",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "epoch_swap_fees",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_heat_cd_fee_pool",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_heat_lp_reserve",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_heat_general",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_heat_swf",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_xfg_cd_fee_pool",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_xfg_lp_reserve",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "vault_xfg_general",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_HEIGHT.request": [],
+    "COMMAND_RPC_GET_HEIGHT.response": [
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_INFO.request": [],
+    "COMMAND_RPC_GET_INFO.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "version",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "difficulty",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "top_block_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "tx_count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "tx_pool_size",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "alt_blocks_count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "outgoing_connections_count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fee_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "block_major_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "block_minor_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "incoming_connections_count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "white_peerlist_size",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "grey_peerlist_size",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "last_known_block_index",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "full_deposit_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ethereal_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "last_block_reward",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "last_block_timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "last_block_difficulty",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "connections",
+        "type": "std::vector<std::string>",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_LAST_BLOCK_HEADER.request": [],
+    "COMMAND_RPC_GET_LAST_BLOCK_HEADER.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "BLOCK_HEADER_RESPONSE"
+      }
+    ],
+    "COMMAND_RPC_GET_LIMIT_ORDERS.LimitOrderInfo": [
+      {
+        "wire": "order_id",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "address_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "side",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "proceeds_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "proceeds_heat",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "target_price",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "expiration",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "withdrawn",
+        "type": "bool",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_LIMIT_ORDERS.request": [
+      {
+        "wire": "active_only",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "limit",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "offset",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_LIMIT_ORDERS.response": [
+      {
+        "wire": "orders",
+        "type": "std::vector<LimitOrderInfo>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_LIMIT_ORDERS.LimitOrderInfo"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_MATURING_DEPOSITS.request": [
+      {
+        "wire": "current_height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "maturing_in",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_MATURING_DEPOSITS.response": [
+      {
+        "wire": "deposits",
+        "type": "std::vector<deposit_info>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_MATURING_DEPOSITS.response.deposit_info"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_MATURING_DEPOSITS.response.deposit_info": [
+      {
+        "wire": "deposit_id",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "unlock_height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "term_blocks",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_OPEN_ORDERS.request": [
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_OPEN_ORDERS.response": [
+      {
+        "wire": "orders",
+        "type": "std::vector<OrderJson>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_OPEN_ORDERS.response.OrderJson"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_OPEN_ORDERS.response.OrderJson": [
+      {
+        "wire": "orderId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "side",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "price",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "filled",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ttlBlocks",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ORDER_BOOK.request": [
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "depth",
+        "type": "int",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ORDER_BOOK.response": [
+      {
+        "wire": "bids",
+        "type": "std::vector<OrderBookLevelJson>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_ORDER_BOOK.response.OrderBookLevelJson"
+      },
+      {
+        "wire": "asks",
+        "type": "std::vector<OrderBookLevelJson>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_ORDER_BOOK.response.OrderBookLevelJson"
+      },
+      {
+        "wire": "spread",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_ORDER_BOOK.response.OrderBookLevelJson": [
+      {
+        "wire": "price",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "orderCount",
+        "type": "int",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_OUTPUTS_JSON.out_entry": [
+      {
+        "wire": "global_index",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "out_key",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_OUTPUTS_JSON.request": [
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "indexes",
+        "type": "std::vector<uint64_t>",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_OUTPUTS_JSON.response": [
+      {
+        "wire": "outs",
+        "type": "std::vector<out_entry>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_OUTPUTS_JSON.out_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_PEER_LIST.request": [],
+    "COMMAND_RPC_GET_PEER_LIST.response": [
+      {
+        "wire": "peers",
+        "type": "std::vector<std::string>",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_POOL_CHANGES.request": [
+      {
+        "wire": "tailBlockId",
+        "type": "Crypto::Hash",
+        "binary": false
+      },
+      {
+        "wire": "knownTxsIds",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      }
+    ],
+    "COMMAND_RPC_GET_POOL_CHANGES.response": [
+      {
+        "wire": "isTailBlockActual",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "addedTxs",
+        "type": "std::vector<BinaryArray>",
+        "binary": false
+      },
+      {
+        "wire": "deletedTxsIds",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_POOL_CHANGES_LITE.request": [
+      {
+        "wire": "tailBlockId",
+        "type": "Crypto::Hash",
+        "binary": false
+      },
+      {
+        "wire": "knownTxsIds",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      }
+    ],
+    "COMMAND_RPC_GET_POOL_CHANGES_LITE.response": [
+      {
+        "wire": "isTailBlockActual",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "addedTxs",
+        "type": "std::vector<TransactionPrefixInfo>",
+        "binary": false,
+        "ref": "TransactionPrefixInfo"
+      },
+      {
+        "wire": "deletedTxsIds",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS.request": [
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "outs_count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "max_height",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS.response": [
+      {
+        "wire": "outs",
+        "type": "std::vector<COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS_out_entry>",
+        "binary": true,
+        "ref": "COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS_out_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS_out_entry": [],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS.request": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request"
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response"
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry": [],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount": [
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "outs",
+        "type": "std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry>",
+        "binary": true,
+        "ref": "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_out_entry"
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_request": [
+      {
+        "wire": "amounts",
+        "type": "std::vector<uint64_t>",
+        "binary": false
+      },
+      {
+        "wire": "outs_count",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_response": [
+      {
+        "wire": "outs",
+        "type": "std::vector<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS_outs_for_amount"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_JSON.out_entry": [
+      {
+        "wire": "global_index",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "out_key",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_JSON.request": [
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "count",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_RANDOM_OUTPUTS_JSON.response": [
+      {
+        "wire": "outs",
+        "type": "std::vector<out_entry>",
+        "binary": false,
+        "ref": "COMMAND_RPC_GET_RANDOM_OUTPUTS_JSON.out_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_OFFERS.request": [
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_OFFERS.response": [
+      {
+        "wire": "offers",
+        "type": "std::vector<swap_offer_rpc_entry>",
+        "binary": false,
+        "ref": "swap_offer_rpc_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_PRICE.request": [
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_PRICE.response": [
+      {
+        "wire": "twap",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "seedRate",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "compositeRate",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "sourceCount",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "sources",
+        "type": "std::vector<price_source_rpc_entry>",
+        "binary": false,
+        "ref": "price_source_rpc_entry"
+      },
+      {
+        "wire": "xfgUsdLow",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfgUsdHigh",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfgUsdMid",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pairImplied",
+        "type": "std::vector<pair_implied_rpc_entry>",
+        "binary": false,
+        "ref": "pair_implied_rpc_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_REQUESTS.request": [
+      {
+        "wire": "takerPubKey",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_REQUESTS.response": [
+      {
+        "wire": "requests",
+        "type": "std::vector<swap_request_result_entry>",
+        "binary": false,
+        "ref": "swap_request_result_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_STATUS.request": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_STATUS.response": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "state",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "role",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfg_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ctr_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "peer_endpoint",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "created_at",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "updated_at",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "is_terminal",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "found",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_TRADES.request": [
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "limit",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_SWAP_TRADES.response": [
+      {
+        "wire": "trades",
+        "type": "std::vector<swap_trade_rpc_entry>",
+        "binary": false,
+        "ref": "swap_trade_rpc_entry"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_TRANSACTIONS.request": [
+      {
+        "wire": "txs_hashes",
+        "type": "std::vector<std::string>",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_TRANSACTIONS.response": [
+      {
+        "wire": "txs_as_hex",
+        "type": "std::vector<std::string>",
+        "binary": false
+      },
+      {
+        "wire": "missed_tx",
+        "type": "std::vector<std::string>",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_TREASURY_INFO.request": [],
+    "COMMAND_RPC_GET_TREASURY_INFO.response": [
+      {
+        "wire": "treasury_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "treasury_counter_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "treasury_heat_reserve",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "swf_burned_xfg_pending_heat",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "bonus_vault_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fee_pool_balance",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "total_burned_xfg",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES.request": [
+      {
+        "wire": "txid",
+        "type": "Crypto::Hash",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES.response": [
+      {
+        "wire": "o_indexes",
+        "type": "std::vector<uint64_t>",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_INITIATE_SWAP.request": [
+      {
+        "wire": "pair",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfg_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ctr_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ctr_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "peer_endpoint",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "peer_pub_key",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_INITIATE_SWAP.response": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_IS_KEY_IMAGE_SPENT.request": [
+      {
+        "wire": "key_image",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_IS_KEY_IMAGE_SPENT.response": [
+      {
+        "wire": "spent",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_LIST_SWAPS.request": [],
+    "COMMAND_RPC_LIST_SWAPS.response": [
+      {
+        "wire": "swaps",
+        "type": "std::vector<swap_summary>",
+        "binary": false,
+        "ref": "COMMAND_RPC_LIST_SWAPS.response.swap_summary"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_LIST_SWAPS.response.swap_summary": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "state",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "role",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfg_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "created_at",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "updated_at",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "is_terminal",
+        "type": "bool",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_PLACE_ORDER.request": [
+      {
+        "wire": "side",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "price",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ttlBlocks",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "orderId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "makerPubKey",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "signature",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "nonce",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_PLACE_ORDER.response": [
+      {
+        "wire": "orderId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "filled",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "statusMsg",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_PROCESS_SWAP.request": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_PROCESS_SWAP.response": [
+      {
+        "wire": "advanced",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "new_state",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_QUERY_BLOCKS.request": [
+      {
+        "wire": "block_ids",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_QUERY_BLOCKS.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "start_height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "current_height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "full_offset",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "items",
+        "type": "std::vector<BlockFullInfo>",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_QUERY_BLOCKS_LITE.request": [
+      {
+        "wire": "block_ids",
+        "type": "std::vector<Crypto::Hash>",
+        "binary": true
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_QUERY_BLOCKS_LITE.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "startHeight",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "currentHeight",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fullOffset",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "items",
+        "type": "std::vector<BlockShortInfo>",
+        "binary": false,
+        "ref": "BlockShortInfo"
+      }
+    ],
+    "COMMAND_RPC_REFUND_SWAP.request": [
+      {
+        "wire": "swap_id",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_REFUND_SWAP.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_REQUEST_SWAP.request": [
+      {
+        "wire": "offerId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "takerPubKey",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "proofOfFunds",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_REQUEST_SWAP.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "offerId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "xfgAmount",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ROLLOVER_DEPOSIT.request": [
+      {
+        "wire": "deposit_id",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "new_term",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_ROLLOVER_DEPOSIT.response": [
+      {
+        "wire": "tx_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "new_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "claimed_interest",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_SEND_RAW_TX.request": [
+      {
+        "wire": "tx_as_hex",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_SEND_RAW_TX.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_START_MINING.request": [
+      {
+        "wire": "miner_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "threads_count",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_START_MINING.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_STOP_DAEMON.request": [],
+    "COMMAND_RPC_STOP_DAEMON.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "STATUS_STRUCT"
+      }
+    ],
+    "COMMAND_RPC_STOP_MINING.request": [],
+    "COMMAND_RPC_STOP_MINING.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "STATUS_STRUCT"
+      }
+    ],
+    "COMMAND_RPC_SUBMITBLOCK.response": [
+      {
+        "wire": "*",
+        "type": "alias",
+        "binary": false,
+        "ref": "STATUS_STRUCT"
+      }
+    ],
+    "COMMAND_RPC_SUBMIT_SWAP_OFFER.request": [
+      {
+        "wire": "offerId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfgAmount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "rateNum",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "makerPubKey",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "signature",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "ttlBlocks",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "isSoftOrder",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "COMMAND_RPC_SUBMIT_SWAP_OFFER.response": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "DepositRpcInfo": [
+      {
+        "wire": "id",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "term",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "interest",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "creatingTransactionHash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "spendingTransactionHash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "locked",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "unlockHeight",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_BLOCKS_LIST.request": [
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_BLOCKS_LIST.response": [
+      {
+        "wire": "blocks",
+        "type": "std::vector<f_block_short_response>",
+        "binary": false,
+        "ref": "f_block_short_response"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_BLOCK_DETAILS.request": [
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_BLOCK_DETAILS.response": [
+      {
+        "wire": "block",
+        "type": "f_block_details_response",
+        "binary": false,
+        "ref": "f_block_details_response"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_POOL.request": [],
+    "F_COMMAND_RPC_GET_POOL.response": [
+      {
+        "wire": "transactions",
+        "type": "std::vector<f_transaction_short_response>",
+        "binary": false,
+        "ref": "f_transaction_short_response"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_TRANSACTION_DETAILS.request": [
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "F_COMMAND_RPC_GET_TRANSACTION_DETAILS.response": [
+      {
+        "wire": "tx",
+        "type": "Transaction",
+        "binary": false
+      },
+      {
+        "wire": "txDetails",
+        "type": "f_transaction_details_response",
+        "binary": false,
+        "ref": "f_transaction_details_response"
+      },
+      {
+        "wire": "block",
+        "type": "f_block_short_response",
+        "binary": false,
+        "ref": "f_block_short_response"
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "K_COMMAND_RPC_CHECK_RESERVE_PROOF.request": [
+      {
+        "wire": "address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "message",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "signature",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "K_COMMAND_RPC_CHECK_RESERVE_PROOF.response": [
+      {
+        "wire": "good",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "total",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "spent",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "K_COMMAND_RPC_CHECK_TX_PROOF.request": [
+      {
+        "wire": "tx_id",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "dest_address",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "signature",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "K_COMMAND_RPC_CHECK_TX_PROOF.response": [
+      {
+        "wire": "signature_valid",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "received_amount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "outputs",
+        "type": "std::vector<TransactionOutput>",
+        "binary": false
+      },
+      {
+        "wire": "confirmations",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "STATUS_STRUCT": [
+      {
+        "wire": "status",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "TransactionPrefixInfo": [
+      {
+        "wire": "txHash",
+        "type": "Crypto::Hash",
+        "binary": false
+      },
+      {
+        "wire": "txPrefix",
+        "type": "TransactionPrefix",
+        "binary": false
+      }
+    ],
+    "block_complete_entry": [
+      {
+        "wire": "block",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "txs",
+        "type": "std::vector<std::string>",
+        "binary": false
+      }
+    ],
+    "block_header_response": [
+      {
+        "wire": "major_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "minor_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "prev_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "nonce",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "orphan_status",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "depth",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "deposits",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "difficulty",
+        "type": "difficulty_type",
+        "binary": false
+      },
+      {
+        "wire": "reward",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "block_short_response": [
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "cumulative_size",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "transactions_count",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "difficulty",
+        "type": "difficulty_type",
+        "binary": false
+      }
+    ],
+    "f_block_details_response": [
+      {
+        "wire": "major_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "minor_version",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "prev_hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "nonce",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "orphan_status",
+        "type": "bool",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "depth",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "difficulty",
+        "type": "difficulty_type",
+        "binary": false
+      },
+      {
+        "wire": "reward",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "blockSize",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "sizeMedian",
+        "type": "size_t",
+        "binary": false
+      },
+      {
+        "wire": "effectiveSizeMedian",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "transactionsCumulativeSize",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "alreadyGeneratedCoins",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "alreadyGeneratedTransactions",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "baseReward",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "penalty",
+        "type": "double",
+        "binary": false
+      },
+      {
+        "wire": "transactions",
+        "type": "std::vector<f_transaction_short_response>",
+        "binary": false,
+        "ref": "f_transaction_short_response"
+      },
+      {
+        "wire": "totalFeeAmount",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "f_block_short_response": [
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "height",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "difficulty",
+        "type": "difficulty_type",
+        "binary": false
+      },
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "cumul_size",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "tx_count",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "f_transaction_details_response": [
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "size",
+        "type": "size_t",
+        "binary": false
+      },
+      {
+        "wire": "paymentId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "mixin",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "fee",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount_out",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "networkId",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "f_transaction_short_response": [
+      {
+        "wire": "hash",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "fee",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "amount_out",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "size",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "pair_implied_rpc_entry": [
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "impliedUsd",
+        "type": "std::string",
+        "binary": false
+      }
+    ],
+    "price_source_rpc_entry": [
+      {
+        "wire": "name",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "weight",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "rate",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "updatedAt",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "stale",
+        "type": "bool",
+        "binary": false
+      }
+    ],
+    "swap_offer_rpc_entry": [
+      {
+        "wire": "offerId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "xfgAmount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "rateNum",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "makerPubKey",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ttlBlocks",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "postedHeight",
+        "type": "uint32_t",
+        "binary": false
+      }
+    ],
+    "swap_request_result_entry": [
+      {
+        "wire": "offerId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "lockId",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "makerEndpoint",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "adaptorPoint",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "hashLock",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "preSig",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "ctrAddress",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "createdAt",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ],
+    "swap_trade_rpc_entry": [
+      {
+        "wire": "pair",
+        "type": "uint8_t",
+        "binary": false
+      },
+      {
+        "wire": "xfgAmount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "ctrAmount",
+        "type": "uint64_t",
+        "binary": false
+      },
+      {
+        "wire": "rate",
+        "type": "std::string",
+        "binary": false
+      },
+      {
+        "wire": "blockHeight",
+        "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "timestamp",
+        "type": "uint64_t",
+        "binary": false
+      }
+    ]
+  },
+  "walletd": {
+    "methods": {
+      "getBalance": {
+        "request": "GetBalance.Request",
+        "response": "GetBalance.Response"
+      },
+      "getStatus": {
+        "request": "GetStatus.Request",
+        "response": "GetStatus.Response"
+      },
+      "getAddresses": {
+        "request": "GetAddresses.Request",
+        "response": "GetAddresses.Response"
+      },
+      "getTransactions": {
+        "request": "GetTransactions.Request",
+        "response": "GetTransactions.Response"
+      },
+      "sendTransaction": {
+        "request": "SendTransaction.Request",
+        "response": "SendTransaction.Response"
+      },
+      "createIntegrated": {
+        "request": "CreateIntegrated.Request",
+        "response": "CreateIntegrated.Response"
+      }
+    },
+    "structs": {
+      "CreateIntegrated.Request": [
+        {
+          "wire": "address",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "payment_id",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "CreateIntegrated.Response": [
+        {
+          "wire": "integrated_address",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "GetAddresses.Request": [],
+      "GetAddresses.Response": [
+        {
+          "wire": "addresses",
+          "type": "std::vector<std::string>",
+          "binary": false
+        }
+      ],
+      "GetBalance.Request": [
+        {
+          "wire": "address",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "GetBalance.Response": [
+        {
+          "wire": "availableBalance",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "lockedAmount",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "lockedDepositBalance",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "unlockedDepositBalance",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "lockedHeatBalance",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "unlockedHeatBalance",
+          "type": "uint64_t",
+          "binary": false
+        }
+      ],
+      "GetStatus.Request": [],
+      "GetStatus.Response": [
+        {
+          "wire": "blockCount",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "knownBlockCount",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "lastBlockHash",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "peerCount",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "depositCount",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "transactionCount",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "addressCount",
+          "type": "uint32_t",
+          "binary": false
+        }
+      ],
+      "GetTransactions.Request": [
+        {
+          "wire": "addresses",
+          "type": "std::vector<std::string>",
+          "binary": false
+        },
+        {
+          "wire": "blockHash",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "firstBlockIndex",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "blockCount",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "paymentId",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "GetTransactions.Response": [
+        {
+          "wire": "items",
+          "type": "std::vector<TransactionsInBlockRpcInfo>",
+          "binary": false,
+          "ref": "TransactionsInBlockRpcInfo"
+        }
+      ],
+      "SendTransaction.Request": [
+        {
+          "wire": "addresses",
+          "type": "std::vector<std::string>",
+          "binary": false
+        },
+        {
+          "wire": "transfers",
+          "type": "std::vector<WalletRpcOrder>",
+          "binary": false,
+          "ref": "WalletRpcOrder"
+        },
+        {
+          "wire": "changeAddress",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "fee",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "anonymity",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "extra",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "paymentId",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "unlockTime",
+          "type": "uint64_t",
+          "binary": false
+        }
+      ],
+      "SendTransaction.Response": [
+        {
+          "wire": "transactionHash",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "transactionSecretKey",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "TransactionRpcInfo": [
+        {
+          "wire": "state",
+          "type": "uint8_t",
+          "binary": false
+        },
+        {
+          "wire": "transactionHash",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "blockIndex",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "confirmations",
+          "type": "uint32_t",
+          "binary": false
+        },
+        {
+          "wire": "timestamp",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "isBase",
+          "type": "bool",
+          "binary": false
+        },
+        {
+          "wire": "unlockTime",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "amount",
+          "type": "int64_t",
+          "binary": false
+        },
+        {
+          "wire": "fee",
+          "type": "uint64_t",
+          "binary": false
+        },
+        {
+          "wire": "transfers",
+          "type": "std::vector<TransferRpcInfo>",
+          "binary": false,
+          "ref": "TransferRpcInfo"
+        },
+        {
+          "wire": "extra",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "firstDepositId",
+          "type": "size_t",
+          "binary": false
+        },
+        {
+          "wire": "depositCount",
+          "type": "size_t",
+          "binary": false
+        },
+        {
+          "wire": "paymentId",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "TransactionsInBlockRpcInfo": [
+        {
+          "wire": "blockHash",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "transactions",
+          "type": "std::vector<TransactionRpcInfo>",
+          "binary": false,
+          "ref": "TransactionRpcInfo"
+        }
+      ],
+      "TransferRpcInfo": [
+        {
+          "wire": "type",
+          "type": "uint8_t",
+          "binary": false
+        },
+        {
+          "wire": "address",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "amount",
+          "type": "int64_t",
+          "binary": false
+        },
+        {
+          "wire": "message",
+          "type": "std::string",
+          "binary": false
+        }
+      ],
+      "WalletRpcOrder": [
+        {
+          "wire": "message",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "address",
+          "type": "std::string",
+          "binary": false
+        },
+        {
+          "wire": "amount",
+          "type": "uint64_t",
+          "binary": false
+        }
+      ]
+    }
+  }
+}

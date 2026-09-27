@@ -1,13 +1,22 @@
+use fuego_sdk::suite::fuegod::{
+    AmmPoolInfoRequest, AmmPoolInfoResponse, EstimateCdYieldRequest, EstimateCdYieldResponse,
+    GetAliasRequest, GetAliasResponse, IsKeyImageSpentRequest, IsKeyImageSpentResponse,
+    SendRawTxRequest, SendRawTxResponse,
+};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+/// fuegod client. Every call uses the transport fuegod registers for it
+/// (RpcServer.cpp): HTTP JSON endpoints, KV-binary `.bin` endpoints, or
+/// `/json_rpc` methods — see `fuego_sdk::suite::rpc`.
 #[derive(Clone)]
 pub struct DaemonClient {
     pub base_url: String,
     client: Client,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct DaemonInfo {
     pub height: u64,
     pub difficulty: u64,
@@ -18,17 +27,16 @@ pub struct DaemonInfo {
     pub last_block_timestamp: u64,
     pub last_block_reward: u64,
     pub top_block_hash: String,
-    #[serde(default)]
     pub fee_address: String,
     pub status: String,
     pub version: String,
 }
 
 #[derive(Debug, Serialize)]
-struct JsonRpcRequest {
-    jsonrpc: String,
-    id: String,
-    method: String,
+struct JsonRpcRequest<'a> {
+    jsonrpc: &'a str,
+    id: &'a str,
+    method: &'a str,
     params: serde_json::Value,
 }
 
@@ -43,6 +51,14 @@ struct JsonRpcError {
     message: String,
 }
 
+fn require_ok(endpoint: &str, status: &str) -> Result<(), String> {
+    if status == "OK" {
+        Ok(())
+    } else {
+        Err(format!("{endpoint}: daemon status {status:?}"))
+    }
+}
+
 impl DaemonClient {
     pub fn new(base_url: &str) -> Self {
         let client = Client::builder()
@@ -55,47 +71,94 @@ impl DaemonClient {
         }
     }
 
+    async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+        self.client
+            .get(format!("{}{}", self.base_url, path))
+            .send()
+            .await
+            .map_err(|e| format!("HTTP: {e}"))?
+            .json()
+            .await
+            .map_err(|e| format!("JSON: {e}"))
+    }
+
+    async fn post_json<Req: Serialize, Resp: DeserializeOwned>(
+        &self,
+        path: &str,
+        req: &Req,
+    ) -> Result<Resp, String> {
+        let resp = self
+            .client
+            .post(format!("{}{}", self.base_url, path))
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {} from {}", resp.status(), path));
+        }
+        resp.json().await.map_err(|e| format!("JSON: {e}"))
+    }
+
+    async fn post_bin(&self, path: &str, body: Vec<u8>) -> Result<Vec<u8>, String> {
+        let resp = self
+            .client
+            .post(format!("{}{}", self.base_url, path))
+            .header("Content-Type", "application/octet-stream")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {} from {}", resp.status(), path));
+        }
+        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("body: {e}"))
+    }
+
+    async fn json_rpc<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<T, String> {
+        let req = JsonRpcRequest { jsonrpc: "2.0", id: "1", method, params };
+        let resp: JsonRpcResponse<T> = self
+            .client
+            .post(format!("{}/json_rpc", self.base_url))
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP: {e}"))?
+            .json()
+            .await
+            .map_err(|e| format!("JSON: {e}"))?;
+        if let Some(err) = resp.error {
+            Err(format!("RPC: {}", err.message))
+        } else {
+            resp.result.ok_or_else(|| "no result".into())
+        }
+    }
+
     pub async fn get_info(&self) -> Result<DaemonInfo, String> {
-        let url = format!("{}/getinfo", self.base_url);
-        let resp = self.client.get(&url).send().await
-            .map_err(|e| format!("HTTP: {}", e))?;
-        resp.json::<DaemonInfo>().await
-            .map_err(|e| format!("JSON: {}", e))
+        self.get_json("/getinfo").await
     }
 
     pub async fn get_height(&self) -> Result<u64, String> {
-        let resp = self.json_rpc::<serde_json::Value>("getblockcount", serde_json::json!({})).await?;
-        resp.get("count").and_then(|v| v.as_u64())
-            .ok_or("missing count".into())
+        let resp = self
+            .json_rpc::<serde_json::Value>("getblockcount", serde_json::json!({}))
+            .await?;
+        resp.get("count").and_then(|v| v.as_u64()).ok_or_else(|| "missing count".into())
     }
 
     pub async fn get_block_hash(&self, height: u64) -> Result<String, String> {
         self.json_rpc::<String>("on_getblockhash", serde_json::json!([height])).await
     }
 
+    /// Relay status: "OK", "Failed", or another daemon status string.
     pub async fn send_raw_tx(&self, tx_hex: &str) -> Result<String, String> {
-        let url = format!("{}/sendrawtransaction", self.base_url);
-        let resp = self.client.post(&url)
-            .json(&serde_json::json!({"tx_as_hex": tx_hex}))
-            .send().await.map_err(|e| format!("HTTP: {}", e))?;
-        let val: serde_json::Value = resp.json().await
-            .map_err(|e| format!("JSON: {}", e))?;
-        val["status"].as_str().map(|s| s.to_string())
-            .ok_or("missing status".into())
-    }
-
-    /// Binary POST helper for the .bin endpoints.
-    async fn post_bin(&self, path: &str, body: Vec<u8>) -> Result<Vec<u8>, String> {
-        let url = format!("{}{}", self.base_url, path);
-        let resp = self.client.post(&url)
-            .header("Content-Type", "application/octet-stream")
-            .body(body)
-            .send().await
-            .map_err(|e| format!("HTTP: {}", e))?;
-        if !resp.status().is_success() {
-            return Err(format!("HTTP {} from {}", resp.status(), path));
-        }
-        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("body: {}", e))
+        let resp: SendRawTxResponse = self
+            .post_json("/sendrawtransaction", &SendRawTxRequest { tx_as_hex: tx_hex.to_string() })
+            .await?;
+        Ok(resp.status)
     }
 
     /// /queryblockslite.bin — incremental block + tx-prefix sync.
@@ -105,8 +168,9 @@ impl DaemonClient {
         timestamp: u64,
     ) -> Result<fuego_sdk::serialization::QueryBlocksLiteResponse, String> {
         use fuego_sdk::serialization::{parse_query_blocks_lite_response, query_blocks_lite_request};
-        let body = query_blocks_lite_request(block_ids, timestamp);
-        let resp = self.post_bin("/queryblockslite.bin", body).await?;
+        let resp = self
+            .post_bin("/queryblockslite.bin", query_blocks_lite_request(block_ids, timestamp))
+            .await?;
         parse_query_blocks_lite_response(&resp).map_err(|e| e.to_string())
     }
 
@@ -117,25 +181,21 @@ impl DaemonClient {
         outs_count: u64,
     ) -> Result<Vec<fuego_sdk::serialization::RandomOutsForAmount>, String> {
         use fuego_sdk::serialization::{get_random_outs_request, parse_get_random_outs_response};
-        let body = get_random_outs_request(amounts, outs_count);
-        let resp = self.post_bin("/getrandom_outs.bin", body).await?;
+        let resp = self
+            .post_bin("/getrandom_outs.bin", get_random_outs_request(amounts, outs_count))
+            .await?;
         parse_get_random_outs_response(&resp).map_err(|e| e.to_string())
     }
 
-    /// /get_o_indexes.bin — global output indices of a transaction, aligned
-    /// with its outputs. Request: KV doc {txid: 32-byte hash}. Response:
-    /// KV doc {o_indexes: array<uint64>, status: string}.
+    /// /get_o_indexes.bin — global output indices of a transaction.
     pub async fn get_o_indexes(&self, tx_hash: &[u8; 32]) -> Result<Vec<u64>, String> {
-        use fuego_sdk::serialization::{
-            get_o_indexes_request, parse_get_o_indexes_response,
-        };
-        let body = get_o_indexes_request(tx_hash);
-        let resp = self.post_bin("/get_o_indexes.bin", body).await?;
+        use fuego_sdk::serialization::{get_o_indexes_request, parse_get_o_indexes_response};
+        let resp = self.post_bin("/get_o_indexes.bin", get_o_indexes_request(tx_hash)).await?;
         parse_get_o_indexes_response(&resp).map_err(|e| e.to_string())
     }
 
-    /// /getrandom_commitment_outs.bin — decoy commitment outputs for a
-    /// single amount.
+    /// /getrandom_commitment_outs.bin — decoy commitment outputs for one
+    /// amount, created at or below `max_height` (0 = no limit).
     pub async fn get_random_commitment_outs(
         &self,
         amount: u64,
@@ -145,88 +205,46 @@ impl DaemonClient {
         use fuego_sdk::serialization::{
             get_random_commitment_outs_request, parse_get_random_commitment_outs_response,
         };
-        let body = get_random_commitment_outs_request(amount, outs_count, max_height);
-        let resp = self.post_bin("/getrandom_commitment_outs.bin", body).await?;
+        let resp = self
+            .post_bin(
+                "/getrandom_commitment_outs.bin",
+                get_random_commitment_outs_request(amount, outs_count, max_height),
+            )
+            .await?;
         parse_get_random_commitment_outs_response(&resp).map_err(|e| e.to_string())
     }
 
-    /// /amm_pool_info — Hearth pool reserves and spot price.
-    pub async fn amm_pool_info(&self) -> Result<(u64, u64, u64), String> {
-        let val = self
-            .json_rpc::<serde_json::Value>("amm_pool_info", serde_json::json!({}))
-            .await?;
-        let reserve_xfg = val.get("reserve_xfg").and_then(|v| v.as_u64()).unwrap_or(0);
-        let reserve_heat = val.get("reserve_heat").and_then(|v| v.as_u64()).unwrap_or(0);
-        let spot_price = val.get("spot_price").and_then(|v| v.as_u64()).unwrap_or(0);
-        Ok((reserve_xfg, reserve_heat, spot_price))
+    /// /amm_pool_info — Hearth pool reserves, spot price and 8-block TWAP.
+    pub async fn amm_pool_info(&self) -> Result<AmmPoolInfoResponse, String> {
+        let resp: AmmPoolInfoResponse = self.post_json("/amm_pool_info", &AmmPoolInfoRequest {}).await?;
+        require_ok("/amm_pool_info", &resp.status)?;
+        Ok(resp)
     }
 
-    /// /amm_pool_info — full Hearth pool state including LP share supply.
-    pub async fn amm_pool_full(&self) -> Result<(u64, u64, u64, u64), String> {
-        let val = self
-            .json_rpc::<serde_json::Value>("amm_pool_info", serde_json::json!({}))
-            .await?;
-        let reserve_xfg = val.get("reserve_xfg").and_then(|v| v.as_u64()).unwrap_or(0);
-        let reserve_heat = val.get("reserve_heat").and_then(|v| v.as_u64()).unwrap_or(0);
-        let total_lp_shares = val.get("total_lp_shares").and_then(|v| v.as_u64()).unwrap_or(0);
-        let spot_price = val.get("spot_price").and_then(|v| v.as_u64()).unwrap_or(0);
-        Ok((reserve_xfg, reserve_heat, total_lp_shares, spot_price))
-    }
-
-    /// /estimate_cd_yield — interest a CD would pay today.
+    /// /estimate_cd_yield — pool-aware CD interest estimate (v11+ splits
+    /// base and Bonus-Vault bonus).
     pub async fn estimate_cd_yield(
         &self,
         amount: u64,
         creation_height: u32,
-    ) -> Result<u64, String> {
-        let val = self
-            .json_rpc::<serde_json::Value>(
-                "estimate_cd_yield",
-                serde_json::json!({
-                    "amount": amount,
-                    "creation_height": creation_height,
-                }),
-            )
-            .await?;
-        val.get("estimated_interest")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| format!("bad estimate_cd_yield response: {}", val))
+        term: u32,
+    ) -> Result<EstimateCdYieldResponse, String> {
+        let req = EstimateCdYieldRequest { amount, creation_height, current_height: 0, term };
+        let resp: EstimateCdYieldResponse = self.post_json("/estimate_cd_yield", &req).await?;
+        require_ok("/estimate_cd_yield", &resp.status)?;
+        Ok(resp)
     }
 
-    /// /is_key_image_spent (JSON-RPC). Returns an error if the daemon does
-    /// not provide the endpoint (older builds); callers fall back to
-    /// scan-based spent tracking.
+    /// /is_key_image_spent.
     pub async fn is_key_image_spent(&self, key_image: &[u8; 32]) -> Result<bool, String> {
-        let val = self
-            .json_rpc::<serde_json::Value>(
-                "is_key_image_spent",
-                serde_json::json!({ "key_image": hex::encode(key_image) }),
-            )
-            .await?;
-        val.get("spent")
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| format!("bad is_key_image_spent response: {}", val))
+        let req = IsKeyImageSpentRequest { key_image: hex::encode(key_image) };
+        let resp: IsKeyImageSpentResponse = self.post_json("/is_key_image_spent", &req).await?;
+        require_ok("/is_key_image_spent", &resp.status)?;
+        Ok(resp.spent)
     }
 
-    async fn json_rpc<T: serde::de::DeserializeOwned>(
-        &self, method: &str, params: serde_json::Value,
-    ) -> Result<T, String> {
-        let url = format!("{}/json_rpc", self.base_url);
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0".into(),
-            id: "1".into(),
-            method: method.into(),
-            params,
-        };
-        let resp: JsonRpcResponse<T> = self.client.post(&url)
-            .json(&req).send().await
-            .map_err(|e| format!("HTTP: {}", e))?
-            .json().await
-            .map_err(|e| format!("JSON: {}", e))?;
-        if let Some(err) = resp.error {
-            Err(format!("RPC: {}", err.message))
-        } else {
-            resp.result.ok_or("no result".into())
-        }
+    /// /get_alias — registration lookup for an @alias.
+    pub async fn get_alias(&self, alias: &str) -> Result<GetAliasResponse, String> {
+        self.post_json("/get_alias", &GetAliasRequest { alias: alias.to_string() }).await
     }
 }
