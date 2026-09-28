@@ -470,6 +470,13 @@ impl UtxoScanner {
                         &fuego_crypto::PublicKey(*output_key),
                         &secret,
                     );
+                    // Re-scanning a block (a batch replayed after a restart) must
+                    // neither duplicate an output nor bring back a spent one.
+                    if state.spent_images.contains(&key_image.0)
+                        || state.utxos.iter().any(|u| u.key_image == key_image.0)
+                    {
+                        continue;
+                    }
                     state.owners.insert(key_image.0, owner);
                     state.utxos.push(UtxoEntry {
                         amount: output.amount,
@@ -488,6 +495,11 @@ impl UtxoScanner {
                         fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
                     let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
                     if ck.commit_key != commit.commit_key {
+                        continue;
+                    }
+                    if state.spent_images.contains(&ck.key_image)
+                        || state.commitments.iter().any(|c| c.key_image == ck.key_image)
+                    {
                         continue;
                     }
                     state.commitments.push(CommitmentEntry {
@@ -823,6 +835,36 @@ mod subaddress_tests {
         assert_eq!(by.get(&OutputOwner::Subaddress(3)), Some(&250));
         assert_eq!(s.balance().confirmed, 350);
         assert_spendable(&s);
+    }
+
+    #[test]
+    fn rescanning_a_tx_is_idempotent() {
+        let s = scanner();
+        let keys = s.wallet_keys();
+        let tx = pay(&keys.spend_public, &keys.view_public, 7, 100);
+        s.scan_tx_prefix(&[1; 32], &tx, 10).unwrap();
+        assert_eq!(s.scan_tx_prefix(&[1; 32], &tx, 10).unwrap().0, 0);
+        assert_eq!(s.utxos().len(), 1);
+        assert_eq!(s.balance().confirmed, 100);
+        assert_eq!(s.snapshot().history.len(), 1);
+
+        // Once spent, replaying the receiving block must not resurrect it.
+        let image = s.utxos()[0].key_image;
+        let spend = TransactionPrefix {
+            version: 1,
+            unlock_time: 0,
+            inputs: vec![TxInput::Key(crate::serialization::KeyInput {
+                amount: 100,
+                offsets: vec![1],
+                key_image: image,
+            })],
+            outputs: Vec::new(),
+            extra: Vec::new(),
+        };
+        s.scan_tx_prefix(&[2; 32], &spend, 11).unwrap();
+        s.scan_tx_prefix(&[1; 32], &tx, 10).unwrap();
+        assert!(s.utxos().is_empty());
+        assert_eq!(s.balance().confirmed, 0);
     }
 
     #[test]
