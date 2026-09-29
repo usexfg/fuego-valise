@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "suite_commit": "aac32d39c67a247dda683eeac6bb618aa77acb51",
+  "suite_commit": "a0abbbebc6e9aeeffe2dde3f8f3b7887bf0a9067",
   "parameters": {
     "COIN": {
       "type": "uint64_t",
@@ -2264,6 +2264,11 @@
       {
         "wire": "max_height",
         "type": "uint32_t",
+        "binary": false
+      },
+      {
+        "wire": "ring_class",
+        "type": "uint8_t",
         "binary": false
       }
     ],

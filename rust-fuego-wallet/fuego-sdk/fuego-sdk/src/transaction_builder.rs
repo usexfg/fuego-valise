@@ -17,7 +17,7 @@ use crate::serialization::{
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
 use fuego_crypto::ring::{
-    check_ring_signature, derive_commitment_keys, derive_deposit_secret, derive_public_key,
+    check_ring_signature, derive_commitment_public_key_v2, derive_public_key,
     derive_secret_key, generate_key_derivation, generate_key_image, generate_ring_signature,
     hash_to_scalar,
 };
@@ -63,16 +63,17 @@ pub struct BuildDestination {
     pub view_pub: [u8; 32],
 }
 
-/// A commitment destination: minted HEAT or a term-locked CD. The commit
-/// key is derived by the builder from the tx secret key and the given view
-/// key (depositSecret = Hs(D || outputIndex), D = 8*(r*V)). `view_pub`
-/// defaults to the wallet's own view key (mint/CD); HEAT transfers pass the
-/// recipient's view key so only the recipient can spend the output.
+/// A commitment destination: minted HEAT, a term-locked CD or a HEAT
+/// transfer, owned by the address (spend_pub, view_pub). The builder derives
+/// a spend-key-bound (v2) commit key: Hs(D || varint(i) || domain)*G + B with
+/// D = 8*(r*V). The view key finds the output; only the owner's spend key
+/// can spend it — not the sender, not a view-key holder.
 #[derive(Debug, Clone)]
 pub struct BuildCommitmentDestination {
     pub amount: u64,
     pub term: u32,
-    pub view_pub: Option<[u8; 32]>,
+    pub spend_pub: [u8; 32],
+    pub view_pub: [u8; 32],
 }
 
 /// Deterministic tx secret key recovery: r = Hs(viewSecret || inputsHash),
@@ -521,20 +522,19 @@ pub fn build_mixed_output_transaction(
     let mut outputs = Vec::with_capacity(commitment_destinations.len() + key_destinations.len());
     let mut out_index = 0usize;
     for cdest in commitment_destinations {
-        let dest_view = cdest.view_pub.as_ref().unwrap_or(view_pub);
-        let dest_derivation = if dest_view == view_pub {
+        let dest_derivation = if cdest.view_pub == *view_pub {
             tx_derivation
         } else {
-            generate_key_derivation(dest_view, &txkey)
+            generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        let commit_key = derive_commitment_public_key_v2(&dest_derivation, out_index as u32, &cdest.spend_pub)
+            .ok_or_else(|| SdkError::Crypto("commitment owner spend key invalid".into()))?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -632,7 +632,8 @@ pub fn build_mint_transaction(
         .map(|b| BuildCommitmentDestination {
             amount: *b,
             term: crate::serialization::HEAT_TERM,
-            view_pub: None,
+            spend_pub: *change_keys.0,
+            view_pub: *change_keys.1,
         })
         .collect();
 
@@ -737,20 +738,19 @@ pub fn build_commitment_spend_transaction(
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("commitment derivation failed".into()))?;
     for cdest in commitment_destinations {
-        let dest_view = cdest.view_pub.as_ref().unwrap_or(view_pub);
-        let dest_derivation = if dest_view == view_pub {
+        let dest_derivation = if cdest.view_pub == *view_pub {
             tx_derivation
         } else {
-            generate_key_derivation(dest_view, &txkey)
+            generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        let commit_key = derive_commitment_public_key_v2(&dest_derivation, out_index as u32, &cdest.spend_pub)
+            .ok_or_else(|| SdkError::Crypto("commitment owner spend key invalid".into()))?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -811,6 +811,79 @@ pub fn build_commitment_spend_transaction(
     })
 }
 
+/// Build and sign a transaction spending XFG KeyInputs and commitment
+/// outputs together (WalletGreen order: key inputs first, then
+/// CommitmentSpend inputs, so a 0xD6 bonus claim for commitment `i` names
+/// input `key_inputs.len() + i`). The XFG inputs carry the network fee: the
+/// mempool requires it in XFG while HEAT must be conserved or burned via
+/// TreasuryFund.
+#[allow(clippy::too_many_arguments)]
+pub fn build_mixed_input_transaction(
+    key_inputs: &[SpendableOutput],
+    key_decoys: &[Vec<DecoyEntry>],
+    deposits: &[CommitmentDeposit],
+    commitment_decoys: &[Vec<(u32, [u8; 32])>],
+    commitment_destinations: &[BuildCommitmentDestination],
+    key_destinations: &[BuildDestination],
+    view_pub: &[u8; 32],
+    extra_extra: &[u8],
+    rng: &mut impl RngCore,
+) -> Result<BuiltTransaction> {
+    if key_inputs.is_empty() && deposits.is_empty() {
+        return Err(SdkError::InsufficientFunds { need: 0, have: 0 });
+    }
+    if key_decoys.len() != key_inputs.len() || commitment_decoys.len() != deposits.len() {
+        return Err(SdkError::Serialization("decoy groups do not match inputs".into()));
+    }
+
+    let mut wire_inputs: Vec<TxInput> = Vec::with_capacity(key_inputs.len() + deposits.len());
+    let mut signers: Vec<(Vec<[u8; 32]>, usize, [u8; 32], [u8; 32])> =
+        Vec::with_capacity(key_inputs.len() + deposits.len());
+    for (input, decoys) in key_inputs.iter().zip(key_decoys) {
+        let mut ring: Vec<(u32, [u8; 32])> = decoys.iter().map(|d| (d.global_index, d.out_key)).collect();
+        ring.push((input.global_index, input.output_key));
+        ring.sort_by_key(|(idx, _)| *idx);
+        let sec_index = ring
+            .iter()
+            .position(|(idx, _)| *idx == input.global_index)
+            .ok_or_else(|| SdkError::Crypto("real output index not found in ring".into()))?;
+        wire_inputs.push(TxInput::Key(KeyInput {
+            amount: input.amount,
+            offsets: ring.iter().map(|(idx, _)| *idx).collect(),
+            key_image: input.key_image,
+        }));
+        signers.push((ring.iter().map(|(_, k)| *k).collect(), sec_index, input.key_image, input.secret_key));
+    }
+    for (deposit, decoys) in deposits.iter().zip(commitment_decoys) {
+        let mut ring = decoys.clone();
+        ring.push((deposit.global_index, deposit.commit_key));
+        ring.sort_by_key(|(idx, _)| *idx);
+        ring.dedup_by_key(|(idx, _)| *idx);
+        let sec_index = ring
+            .iter()
+            .position(|(idx, _)| *idx == deposit.global_index)
+            .ok_or_else(|| SdkError::Crypto("real commitment index not found in ring".into()))?;
+        wire_inputs.push(TxInput::CommitmentSpend(CommitmentSpendInput {
+            amount: deposit.amount,
+            offsets: ring.iter().map(|(idx, _)| *idx).collect(),
+            key_image: deposit.key_image,
+            claimed_interest: deposit.claimed_interest,
+        }));
+        signers.push((ring.iter().map(|(_, k)| *k).collect(), sec_index, deposit.key_image, deposit.key_scalar));
+    }
+
+    assemble_outputs_and_sign(
+        &wire_inputs,
+        &signers,
+        commitment_destinations,
+        key_destinations,
+        &[],
+        view_pub,
+        extra_extra,
+        rng,
+    )
+}
+
 /// A pool-side commitment output with an explicit commit key (the Hearth
 /// pool commit key). Used for limit-order deposits; the pool spends it.
 #[derive(Debug, Clone)]
@@ -843,20 +916,19 @@ fn assemble_outputs_and_sign(
     );
     let mut out_index = 0usize;
     for cdest in commitment_destinations {
-        let dest_view = cdest.view_pub.as_ref().unwrap_or(view_pub);
-        let dest_derivation = if dest_view == view_pub {
+        let dest_derivation = if cdest.view_pub == *view_pub {
             tx_derivation
         } else {
-            generate_key_derivation(dest_view, &txkey)
+            generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        let commit_key = derive_commitment_public_key_v2(&dest_derivation, out_index as u32, &cdest.spend_pub)
+            .ok_or_else(|| SdkError::Crypto("commitment owner spend key invalid".into()))?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -961,7 +1033,8 @@ pub fn build_swap_xfg_to_heat_transaction(
         .map(|b| BuildCommitmentDestination {
             amount: *b,
             term: HEAT_TERM,
-            view_pub: None,
+            spend_pub: *change_keys.0,
+            view_pub: *change_keys.1,
         })
         .collect();
 
@@ -1039,7 +1112,8 @@ pub fn build_swap_heat_to_xfg_transaction(
             commitment_dests.push(BuildCommitmentDestination {
                 amount: bill,
                 term: HEAT_TERM,
-                view_pub: None,
+                spend_pub: *spend_pub,
+                view_pub: *view_pub_dest,
             });
         }
     }
@@ -1165,7 +1239,8 @@ pub fn build_lp_add_transaction(
     let commitment_dests = vec![BuildCommitmentDestination {
         amount: lp_shares,
         term: crate::serialization::DEPOSIT_TERM_LP,
-        view_pub: None,
+        spend_pub: *change_keys.0,
+        view_pub: *change_keys.1,
     }];
     let mut commitment_dests = commitment_dests;
     if heat_change > 0 {
@@ -1173,7 +1248,8 @@ pub fn build_lp_add_transaction(
             commitment_dests.push(BuildCommitmentDestination {
                 amount: bill,
                 term: HEAT_TERM,
-                view_pub: None,
+                spend_pub: *change_keys.0,
+                view_pub: *change_keys.1,
             });
         }
     }
@@ -1251,7 +1327,8 @@ pub fn build_lp_remove_transaction(
         commitment_dests.push(BuildCommitmentDestination {
             amount: bill,
             term: HEAT_TERM,
-            view_pub: None,
+            spend_pub: *change_keys.0,
+            view_pub: *change_keys.1,
         });
     }
 

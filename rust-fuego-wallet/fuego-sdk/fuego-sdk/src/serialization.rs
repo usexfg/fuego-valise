@@ -748,15 +748,24 @@ pub fn parse_get_random_outs_response(
     Ok(result)
 }
 
+/// Decoy classes of COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS::request::ring_class.
+/// Classes 1-3 skip slashed and pool outputs and keep rings asset-homogeneous.
+pub const RING_CLASS_ANY: u8 = 0;
+pub const RING_CLASS_HEAT: u8 = 1;
+pub const RING_CLASS_HEAT_CD: u8 = 2;
+pub const RING_CLASS_LEGACY_CD: u8 = 3;
+
 /// COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS request (KV binary):
-/// amount uint64, outs_count uint64, max_height uint32.
+/// amount uint64, outs_count uint64, max_height uint32, ring_class uint8.
+/// Daemons without ring_class ignore it and return any class.
 pub fn get_random_commitment_outs_request(
     amount: u64,
     outs_count: u64,
     max_height: u32,
+    ring_class: u8,
 ) -> Vec<u8> {
     let mut out = Vec::new();
-    kv_document_header(3, &mut out);
+    kv_document_header(4, &mut out);
 
     write_kv_name(b"amount", &mut out);
     out.push(5);
@@ -769,6 +778,10 @@ pub fn get_random_commitment_outs_request(
     write_kv_name(b"max_height", &mut out);
     out.push(6);
     out.extend_from_slice(&max_height.to_le_bytes());
+
+    write_kv_name(b"ring_class", &mut out);
+    out.push(8);
+    out.push(ring_class);
     out
 }
 

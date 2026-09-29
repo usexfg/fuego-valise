@@ -7,6 +7,7 @@ mod fuegod;
 mod keystore;
 mod release;
 mod scanner;
+mod seed_store;
 mod server;
 mod swapd;
 mod wallet_service;
@@ -33,8 +34,16 @@ struct Cli {
 #[arg(short = 'P', long, default_value_t = 18189)]
 port: u16,
 
+    /// File holding a 32-byte seed as hex, used for this session instead of
+    /// the stored seed (never pass secrets on the command line).
     #[arg(long)]
-    seed: Option<String>,
+    seed_file: Option<PathBuf>,
+
+    /// File whose first line is the passphrase protecting master_seed.enc
+    /// (FUEGO_WALLET_PASSPHRASE also works). Without one the seed key lives
+    /// in the OS keyring.
+    #[arg(long, global = true)]
+    passphrase_file: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -65,24 +74,6 @@ enum Commands {
         no_swapd: bool,
     },
     Status,
-}
-
-fn load_or_create_seed(wallet_dir: &PathBuf) -> Result<[u8; 32], Box<dyn std::error::Error>> {
-    let seed_path = wallet_dir.join("master_seed.bin");
-    if seed_path.exists() {
-        let data = std::fs::read(&seed_path)?;
-        if data.len() == 32 {
-            let mut seed = [0u8; 32];
-            seed.copy_from_slice(&data);
-            return Ok(seed);
-        }
-    }
-    let mut seed = [0u8; 32];
-    use rand::RngCore;
-    rand::rngs::OsRng.fill_bytes(&mut seed);
-    std::fs::write(&seed_path, &seed)?;
-    log::info!("Created new wallet seed at {:?}", seed_path);
-    Ok(seed)
 }
 
 #[tokio::main]
@@ -119,21 +110,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let daemon_url = format!("http://{}:{}", actual_host, actual_port);
 
             // 2. Initialize SDK wallet
-            let seed = match &cli.seed {
-                Some(s) => {
-                    let bytes = hex::decode(s.trim_start_matches("0x"))
-                        .map_err(|e| format!("invalid seed hex: {}", e))?;
+            let seed: zeroize::Zeroizing<[u8; 32]> = match &cli.seed_file {
+                Some(path) => {
+                    let text = zeroize::Zeroizing::new(
+                        std::fs::read_to_string(path).map_err(|e| format!("read seed file: {}", e))?,
+                    );
+                    let bytes = zeroize::Zeroizing::new(
+                        hex::decode(text.trim().trim_start_matches("0x"))
+                            .map_err(|_| "seed file must hold 64 hex characters".to_string())?,
+                    );
                     if bytes.len() != 32 {
-                        return Err(format!("seed must be 32 bytes").into());
+                        return Err("seed must be 32 bytes".into());
                     }
-                    let mut seed = [0u8; 32];
+                    let mut seed = zeroize::Zeroizing::new([0u8; 32]);
                     seed.copy_from_slice(&bytes);
                     seed
                 }
-                None => load_or_create_seed(&wallet_dir)?,
+                None => {
+                    let source = seed_store::SeedKeySource::resolve(cli.passphrase_file.as_deref())?;
+                    seed_store::load_or_create(&wallet_dir, &source)?
+                }
             };
 
-            let wallet_service = WalletService::new(seed, &daemon_url, wallet_dir.clone(), testnet)
+            let wallet_service = WalletService::new(*seed, &daemon_url, wallet_dir.clone(), testnet)
                 .map_err(|e| format!("Failed to initialize SDK wallet: {}", e))?;
             let wallet_addr = wallet_service.address().await;
             let wallet = Arc::new(Mutex::new(wallet_service));
@@ -191,8 +190,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         Commands::Status => {
             println!("Wallet dir: {:?}", wallet_dir);
-            let seed_path = wallet_dir.join("master_seed.bin");
-            println!("Seed: {}", if seed_path.exists() { "exists" } else { "not found" });
+            let enc = seed_store::encrypted_path(&wallet_dir);
+            let legacy = wallet_dir.join(seed_store::LEGACY_PLAINTEXT_FILE);
+            let state = if enc.exists() {
+                "encrypted"
+            } else if legacy.exists() {
+                "PLAINTEXT (encrypted on next serve)"
+            } else {
+                "not found"
+            };
+            println!("Seed: {}", state);
             println!("Use 'fuego-wallet serve' to start.");
         }
     }

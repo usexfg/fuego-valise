@@ -17,6 +17,10 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
 
   int _selectedTerm = 6;
   double _selectedAmount = 8.0;
+  String _feeAsset = 'HEAT';
+
+  /// 1 HΞΔŦ = 10^7 atomic units (CRYPTONOTE_DISPLAY_DECIMAL_POINT).
+  static const _atomicPerHeat = 10000000;
   bool _submitting = false;
   String? _error;
 
@@ -35,11 +39,7 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
     final totalBlocks = _selectedTerm * _epochBlocks;
     final blockTimeSec = 480;
     final days = (totalBlocks * blockTimeSec) ~/ 86400;
-    final interest = _selectedAmount * 0.02;
-    final apy = (_selectedTerm == 6)   ? '4.2%' :
-               (_selectedTerm == 18)  ? '5.8%' :
-               (_selectedTerm == 36)  ? '7.1%' :
-                                        '8.5%';
+    final bankingFee = _selectedAmount / 1000;
 
     return AlertDialog(
       backgroundColor: AppTheme.cardColor,
@@ -87,16 +87,37 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
             Text('≈ $days days — ${_selectedTerm * _epochBlocks} blocks at 8 min/block',
                 style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
             const SizedBox(height: 12),
+            const Text('Banking fee paid in', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: ['HEAT', 'XFG'].map((a) => ChoiceChip(
+                label: Text(a == 'HEAT' ? 'HΞ∆T' : 'XFG'),
+                selected: _feeAsset == a,
+                selectedColor: AppTheme.primaryColor,
+                labelStyle: TextStyle(
+                  color: _feeAsset == a ? Colors.white : AppTheme.textPrimary,
+                ),
+                backgroundColor: AppTheme.surfaceColor,
+                onSelected: (_) => setState(() => _feeAsset = a),
+              )).toList(),
+            ),
+            const SizedBox(height: 12),
             _buildDetailRow('Deposit', _fmtHeat(_selectedAmount) + (_selectedAmount < 1 ? '' : ' HΞ∆T')),
-            _buildDetailRow('Interest (APY ~$apy)', _fmtHeat(interest) + (interest < 1 ? '' : ' HΞ∆T')),
-            _buildDetailRow('At maturity', _fmtHeat(_selectedAmount + interest) + ((_selectedAmount + interest) < 1 ? '' : ' HΞ∆T')),
+            _buildDetailRow('Banking fee (0.1%)', _feeAsset == 'HEAT'
+                ? _fmtHeat(bankingFee) + (bankingFee < 1 ? '' : ' HΞ∆T')
+                : 'XFG equivalent at pool TWAP'),
+            _buildDetailRow('Network fee', '0.0008 XFG'),
+            _buildDetailRow('Interest', 'variable, paid in HΞ∆T from the epoch fee pool'),
             const SizedBox(height: 8),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 12)),
               ),
-            const Text('0.1% fee to @fuegoxfg developer fund',
+            Text(_feeAsset == 'HEAT'
+                ? 'Banking fee goes to the treasury HΞ∆T reserve.'
+                : 'Banking fee is burned to the SWF ledger.',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 10, fontStyle: FontStyle.italic)),
           ],
         ),
@@ -139,8 +160,9 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
     try {
       await context.read<CdCubit>().createCd(
             coin: 'HEAT',
-            amount: _selectedAmount.toString(),
+            amount: (_selectedAmount * _atomicPerHeat).round().toString(),
             durationBlocks: _selectedTerm * _epochBlocks,
+            feeAsset: _feeAsset,
           );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

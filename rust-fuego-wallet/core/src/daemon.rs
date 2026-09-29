@@ -201,6 +201,7 @@ impl DaemonClient {
         amount: u64,
         outs_count: u64,
         max_height: u32,
+        ring_class: u8,
     ) -> Result<Vec<fuego_sdk::serialization::RandomCommitmentOutEntry>, String> {
         use fuego_sdk::serialization::{
             get_random_commitment_outs_request, parse_get_random_commitment_outs_response,
@@ -208,7 +209,7 @@ impl DaemonClient {
         let resp = self
             .post_bin(
                 "/getrandom_commitment_outs.bin",
-                get_random_commitment_outs_request(amount, outs_count, max_height),
+                get_random_commitment_outs_request(amount, outs_count, max_height, ring_class),
             )
             .await?;
         parse_get_random_commitment_outs_response(&resp).map_err(|e| e.to_string())

@@ -320,10 +320,14 @@ class FuegoRPCService {
     required String coin,
     required String amount,
     int? durationBlocks,
+    String feeAsset = 'HEAT',
   }) async {
+    // amount: atomic units (1 HΞΔŦ = 10^7). feeAsset: 'XFG' or 'HEAT' pays
+    // the 0.1% banking fee (burned to the SWF ledger / treasury HΞΔŦ reserve).
     final params = <String, dynamic>{
       'coin': coin,
       'amount': amount,
+      'fee_asset': feeAsset,
     };
     if (durationBlocks != null) {
       params['duration_blocks'] = durationBlocks;

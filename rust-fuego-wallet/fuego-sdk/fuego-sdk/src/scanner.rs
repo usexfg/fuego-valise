@@ -435,17 +435,41 @@ impl UtxoScanner {
                             xfg_in += output.amount;
                         }
                         OutputTarget::Commitment(commit) => {
-                            let deposit_secret =
-                                fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
-                            let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
-                            if ck.commit_key != commit.commit_key {
-                                continue;
-                            }
+                            // v2 (spend-key bound) first, then legacy v1
+                            // (view-key ECDH only, spendable by the sender).
+                            let v2 = fuego_crypto::ring::derive_commitment_public_key_v2(
+                                &derivation,
+                                i as u32,
+                                &keys.spend_public,
+                            );
+                            let key_scalar = if v2 == Some(commit.commit_key) {
+                                match fuego_crypto::ring::derive_commitment_secret_key_v2(
+                                    &derivation,
+                                    i as u32,
+                                    &keys.spend_secret,
+                                ) {
+                                    Some(x) => x,
+                                    None => continue,
+                                }
+                            } else {
+                                let deposit_secret =
+                                    fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
+                                let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
+                                if ck.commit_key != commit.commit_key {
+                                    continue;
+                                }
+                                ck.key_scalar
+                            };
+                            let key_image = fuego_crypto::generate_key_image(
+                                &fuego_crypto::PublicKey(commit.commit_key),
+                                &key_scalar,
+                            )
+                            .0;
                             state.commitments.push(CommitmentEntry {
                                 amount: output.amount,
                                 commit_key: commit.commit_key,
-                                key_scalar: ck.key_scalar,
-                                key_image: ck.key_image,
+                                key_scalar,
+                                key_image,
                                 global_index: 0,
                                 tx_hash: *tx_hash,
                                 output_position: i as u32,

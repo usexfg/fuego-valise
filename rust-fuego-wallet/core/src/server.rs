@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::wallet_service::{SendOptions, WalletService};
+use crate::wallet_service::{CdFeeAsset, SendOptions, WalletService};
 
 pub struct AppState {
     pub wallet: Arc<Mutex<WalletService>>,
@@ -321,9 +321,12 @@ async fn handle_wallet_method(
             let amount = param_u64(params, "amount").ok_or("missing amount")?;
             let duration = param_u64(params, "duration_blocks").ok_or("missing duration_blocks")?;
             let term = u32::try_from(duration).map_err(|_| "duration_blocks out of range")?;
+            let fee_asset = CdFeeAsset::parse(params.get("fee_asset").and_then(Value::as_str))?;
             let wallet = wallet.lock().await;
-            let (tx_hash, cd_id, maturity) =
-                wallet.create_cd(amount, term).await.map_err(|e| format!("create_cd failed: {}", e))?;
+            let (tx_hash, cd_id, maturity) = wallet
+                .create_cd(amount, term, fee_asset)
+                .await
+                .map_err(|e| format!("create_cd failed: {}", e))?;
             Ok(json!({
                 "cd_id": cd_id,
                 "tx_hash": tx_hash,
@@ -446,9 +449,10 @@ async fn handle_wallet_method(
             let amount = param_u64(params, "amount").ok_or("missing amount")?;
             let epochs = param_u64(params, "epochs").ok_or("missing epochs")?;
             let banking_fee = param_u64(params, "banking_fee").unwrap_or(0);
+            let fee_asset = CdFeeAsset::parse(params.get("fee_asset").and_then(Value::as_str))?;
             let wallet = wallet.lock().await;
             let tx_hash = wallet
-                .heat_cd(amount, epochs.min(u32::MAX as u64) as u32, banking_fee)
+                .heat_cd(amount, epochs.min(u32::MAX as u64) as u32, banking_fee, fee_asset)
                 .await
                 .map_err(|e| format!("heat_cd failed: {}", e))?;
             Ok(json!({ "transactionHash": tx_hash }))

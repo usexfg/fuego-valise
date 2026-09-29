@@ -161,6 +161,59 @@ pub fn derive_secret_key(
     Some(derived)
 }
 
+/// Domain suffix of spend-key-bound (v2) commitment keys
+/// (TransactionExtra.cpp COMMITMENT_KEY_V2_DOMAIN).
+pub const COMMITMENT_KEY_V2_DOMAIN: &[u8; 15] = b"fuego_commit_v2";
+
+/// crypto.cpp derivation_to_scalar with suffix: Hs(D || varint(i) || suffix).
+fn derivation_to_scalar_suffix(derivation: &[u8; 32], output_index: u64, suffix: &[u8]) -> [u8; 32] {
+    let mut buf = Vec::with_capacity(32 + 10 + suffix.len());
+    buf.extend_from_slice(derivation);
+    write_varint(output_index, &mut buf);
+    buf.extend_from_slice(suffix);
+    hash_to_scalar(&buf)
+}
+
+/// v2 commitment key: commitKey = Hs(D || varint(i) || "fuego_commit_v2")*G + B.
+/// The view-key derivation D finds the output; spending needs b.
+pub fn derive_commitment_public_key_v2(
+    derivation: &[u8; 32],
+    output_index: u32,
+    spend_public: &[u8; 32],
+) -> Option<[u8; 32]> {
+    let scalar = derivation_to_scalar_suffix(derivation, output_index as u64, COMMITMENT_KEY_V2_DOMAIN);
+    let mut base = GeP3::default();
+    if !ge_frombytes_vartime(&mut base, spend_public) {
+        return None;
+    }
+    let mut sg = GeP3::default();
+    ge_scalarmult_base(&mut sg, &scalar);
+    let mut cached = GeCached::default();
+    ge_p3_to_cached(&mut cached, &sg);
+    let mut sum = GeP1P1::default();
+    ge_add(&mut sum, &base, &cached);
+    let mut p2 = GeP2::default();
+    ge_p1p1_to_p2(&mut p2, &sum);
+    let mut out = [0u8; 32];
+    ge_tobytes(&mut out, &p2);
+    Some(out)
+}
+
+/// v2 commitment spend scalar: keyScalar = Hs(D || varint(i) || "fuego_commit_v2") + b.
+pub fn derive_commitment_secret_key_v2(
+    derivation: &[u8; 32],
+    output_index: u32,
+    spend_secret: &[u8; 32],
+) -> Option<[u8; 32]> {
+    if !sc_check(spend_secret) {
+        return None;
+    }
+    let scalar = derivation_to_scalar_suffix(derivation, output_index as u64, COMMITMENT_KEY_V2_DOMAIN);
+    let mut out = [0u8; 32];
+    sc_add(&mut out, spend_secret, &scalar);
+    Some(out)
+}
+
 /// `generate_ring_signature` (crypto.cpp:510). One signature per ring member,
 /// each 64 bytes: c_i (32) || r_i (32), in ring order.
 ///

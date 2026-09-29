@@ -79,11 +79,13 @@ class CdCubit extends Cubit<CdState> {
     required String coin,
     required String amount,
     int? durationBlocks,
+    String feeAsset = 'HEAT',
   }) async {
     final result = await _rpc.cdCreate(
       coin: coin,
       amount: amount,
       durationBlocks: durationBlocks,
+      feeAsset: feeAsset,
     );
     await loadAll();
     return result;
