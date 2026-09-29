@@ -1329,7 +1329,8 @@ impl WalletService {
 
     /// claim_cd: withdraw mature finite-term CDs with the interest consensus
     /// accepts (WalletGreen::withdrawDeposit / capInterestByPool):
-    /// only CDs created at or after v11 earn; base interest is capped by
+    /// only HEAT CDs (created at or above the HEAT-CD height) earn — XFG CDs
+    /// are principal-only, zero interest in any asset; base interest is capped by
     /// min(fee pool, CD_APY vault), the Bonus Vault bonus by its backing and
     /// declared per input with 0xD6. The per-transaction totals obey the
     /// same aggregate caps (Blockchain.cpp F-001). Decoys are drawn at or
@@ -1356,12 +1357,11 @@ impl WalletService {
         }
 
         let fee = MINIMUM_FEE;
-        let v11 = self.upgrade_height_v11();
         let mut pool_left: Option<u64> = None;
         let mut bonus_left: Option<u64> = None;
         let mut claims: Vec<(u64, u64)> = Vec::with_capacity(deposits.len());
         for d in &deposits {
-            if d.block_height < v11 {
+            if !self.is_heat_cd(d) {
                 claims.push((0, 0));
                 continue;
             }
@@ -1386,14 +1386,15 @@ impl WalletService {
 
         let interests: Vec<u64> = claims.iter().map(|(i, _)| *i).collect();
         let tx_hash = if self.heat_cd_rules() {
-            // HEAT-CD rules: HEAT CD principal and all interest return as
-            // HEAT bills; legacy XFG principal returns as XFG. The XFG side
-            // pays the network fee — from legacy principal when it covers
-            // it, else from wallet XFG inputs.
+            // HEAT-CD rules: HEAT CD principal plus interest return as HEAT
+            // bills; XFG CDs return principal only, as XFG (their interest
+            // is always 0). The XFG side pays the network fee — from XFG CD
+            // principal when it covers it, else from wallet XFG inputs.
             let heat_payout: u64 = deposits
                 .iter()
                 .zip(&interests)
-                .map(|(d, i)| if self.is_heat_cd(d) { d.amount + i } else { *i })
+                .filter(|(d, _)| self.is_heat_cd(d))
+                .map(|(d, i)| d.amount + i)
                 .sum();
             let xfg_payout: u64 =
                 deposits.iter().filter(|d| !self.is_heat_cd(d)).map(|d| d.amount).sum();
@@ -1499,9 +1500,9 @@ impl WalletService {
             .collect()
     }
 
-    /// Claimable interest for a CD today (0 before v11 or when unavailable).
+    /// Claimable interest for a CD today (XFG CDs: always 0, principal only).
     pub fn cd_interest_estimate_inputs(&self, view: &CdView) -> Option<(DaemonClient, u64, u32, u32)> {
-        (view.deposit_height >= self.upgrade_height_v11()).then(|| {
+        (view.deposit_height >= self.upgrade_height_v12()).then(|| {
             (self.daemon.clone(), view.amount, view.deposit_height as u32, view.term)
         })
     }
