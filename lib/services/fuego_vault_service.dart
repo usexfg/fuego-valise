@@ -339,8 +339,16 @@ class FuegoVaultService {
     }
   }
 
+  final List<void Function()> _lockListeners = [];
+
+  /// Called on every [lock], whichever screen or lifecycle event caused it.
+  void addLockListener(void Function() listener) => _lockListeners.add(listener);
+
   /// Wipe secrets from memory (does not delete disk) — zeroizes before deref.
   void lock() {
+    for (final l in _lockListeners) {
+      try { l(); } catch (_) {}
+    }
     try { _vaultBytes?.fillRange(0, _vaultBytes!.length, 0); } catch (_) {}
     // Strings cannot be zeroized in Dart — drop references and hint GC
     _vaultBytes = null;

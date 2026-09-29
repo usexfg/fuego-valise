@@ -68,8 +68,8 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 ### Backend Startup (main.dart + NodeConnection)
 - `NodeConnection` is the single source of truth for local vs remote mode
 - Platform defaults: **desktop → local**, **mobile → remote** (override via prefs or `FUEGO_USE_LOCAL_NODE`)
-- **Local**: `fuego_walletd -P 18189 serve --local` (embedded fuegod; never spawn a separate fuegod in remote mode)
-- **Remote**: `fuego_walletd -P 18189 serve --daemon-host <seed> --daemon-port <port>` — local proxy always preferred
+- **Local**: `fuego_walletd -P 18189 serve --local --await-wallet` (embedded fuegod; never spawn a separate fuegod in remote mode)
+- **Remote**: `fuego_walletd -P 18189 serve --daemon-host <seed> --daemon-port <port> --await-wallet` — local proxy always preferred
 - Wallet JSON-RPC always targets `http://127.0.0.1:18189` when the proxy is up
 - Desktop local failure auto-falls back to remote proxy + seed failover across `NetworkConfig.seedNodes`
 - Health: `/health` or JSON-RPC `getHealth` on 18189 (up to ~180s for local)
@@ -133,6 +133,16 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
 - Mainnet/testnet: `FUEGO_TESTNET` env wins at launch, else the choice saved by Settings → Network (`node_network` pref). `NodeConnection.switchNetwork()` retargets ports/seeds, persists, and reconnects at runtime; `useTestnet` in `main.dart` follows it.
 - Chain clients (`daemon`, `hearthClient`) and `DexCubit` follow every reconnect through `NodeConnection.addListener`.
+
+## walletd wallet (vault seed)
+
+- walletd starts with no wallet (`--await-wallet`). After unlock, `WalletCubit` sends the vault seed with JSON-RPC `open_wallet` (loopback only). On any vault lock, `close_wallet` runs through `FuegoVaultService.addLockListener`. Wallet methods return `-32001 no wallet open` in between.
+- State lives per wallet in `<walletd data dir>/wallets/<id>/wallet_state.sled`. `<id>` is 8 bytes of Keccak("fuego-walletd-id" || B || A). The db stores its wallet id and refuses another wallet's seed.
+- `/scan_balance` answers only if the posted keys are the open wallet's (409 otherwise). The GUI reopens on 409 and never falls back to walletd `getBalance`.
+- Before this, walletd used its own random `master_seed.bin`. Balance, sends and sub-addresses were for that key, not the vault. If the file exists, walletd syncs it as the legacy wallet (`get_legacy_wallet`, `sweep_legacy_wallet`: 50 outputs per tx). The receive screen offers the sweep. The file is never deleted.
+- Headless use (no `--await-wallet`) keeps the old behaviour: `--seed` or `master_seed.bin`, state in the data-dir root.
+- Sync writes the block hash and the scan state in one atomic sled batch, and re-scanning a block is idempotent. Before this, a quit mid-batch left the stored hash ahead of the stored height, and the blocks in between were never scanned.
+- The app replaces a running walletd that lacks `wallet_status` (older build).
 
 ## Sub-addresses
 

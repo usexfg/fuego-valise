@@ -10,10 +10,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use zeroize::Zeroize;
 
 /// Default ring size when the caller does not specify one (C++ API default
 /// mixIn is 4).
 const DEFAULT_MIXIN: usize = 4;
+/// Inputs per sweep transaction; keeps a sweep of many small outputs under the size limit.
+const MAX_SWEEP_INPUTS: usize = 50;
 /// CryptoNoteConfig.h SWAP_FEE_RATE_BPS / SWAP_FEE_RATE_DIVISOR (AFK taker fee).
 const SWAP_FEE_RATE_BPS: u64 = 100;
 const SWAP_FEE_RATE_DIVISOR: u64 = 10000;
@@ -78,6 +81,9 @@ pub struct WalletService {
     pub wallet: Arc<Mutex<Wallet>>,
     pub daemon: DaemonClient,
     db: sled::Db,
+    /// Hash of the last scanned block. Kept in memory with the height and written to
+    /// disk only together with the scan state, so the two never disagree on disk.
+    top: Arc<Mutex<Option<[u8; 32]>>>,
     testnet: bool,
     /// AFK adaptor secrets, keyed by lock id. In-memory only (like the C++
     /// WalletLegacy m_afkLockSecrets) — never persisted plaintext to sled.
@@ -92,6 +98,7 @@ pub struct SyncEngine {
     pub wallet: Arc<Mutex<Wallet>>,
     pub daemon: DaemonClient,
     db: sled::Db,
+    top: Arc<Mutex<Option<[u8; 32]>>>,
 }
 
 const KEY_HEIGHT: &[u8] = b"height";
@@ -110,6 +117,17 @@ const KEY_SCAN_VERSION: &[u8] = b"scan_version";
 /// so most wallets found no outputs) and sub-address outputs are detected.
 /// State scanned under older rules is rebuilt once from genesis.
 const SCAN_VERSION: u32 = 2;
+/// Id of the wallet whose state this database holds (see `wallet_id`).
+const KEY_WALLET_ID: &[u8] = b"wallet_id";
+
+/// Stable, non-secret id for a wallet: the first 8 bytes of
+/// Keccak("fuego-walletd-id" || spend_public || view_public), hex. Names its state directory.
+pub fn wallet_id(keys: &fuego_sdk::scanner::WalletKeys) -> String {
+    let mut data = b"fuego-walletd-id".to_vec();
+    data.extend_from_slice(&keys.spend_public);
+    data.extend_from_slice(&keys.view_public);
+    hex::encode(&fuego_crypto::cn_fast_hash(&data)[..8])
+}
 
 fn db_get<T: serde::de::DeserializeOwned>(db: &sled::Db, key: &[u8]) -> Option<T> {
     db.get(key).ok().flatten().and_then(|b| bincode::deserialize::<T>(&b).ok())
@@ -119,21 +137,49 @@ fn db_put<T: serde::Serialize>(db: &sled::Db, key: &[u8], value: &T) {
     let _ = bincode::serialize(value).ok().and_then(|b| db.insert(key, b).ok());
 }
 
+/// Open (creating if needed) `<dir>/wallet_state.sled`, owner-only on Unix.
+pub fn open_state_db(dir: &std::path::Path) -> Result<sled::Db> {
+    std::fs::create_dir_all(dir).map_err(|e| SdkError::Storage(format!("create {dir:?}: {e}")))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    }
+    sled::open(dir.join("wallet_state.sled")).map_err(|e| SdkError::Storage(format!("sled open: {e}")))
+}
+
 fn meta_tree(db: &sled::Db) -> sled::Tree {
     db.open_tree("meta").expect("open meta tree")
 }
 
 impl WalletService {
     pub fn new(seed: [u8; 32], daemon_url: &str, wallet_dir: PathBuf, testnet: bool) -> Result<Self> {
-        let wallet = Arc::new(Mutex::new(Wallet::from_seed(seed)?));
-        let daemon = DaemonClient::new(daemon_url);
-        let db = sled::open(wallet_dir.join("wallet_state.sled"))
-            .map_err(|e| SdkError::Storage(format!("sled open: {e}")))?;
+        Self::open(seed, daemon_url, open_state_db(&wallet_dir)?, testnet)
+    }
+
+    /// Open the wallet for `seed` on an already-open state database. Fails if the
+    /// database holds another wallet's state.
+    pub fn open(seed: [u8; 32], daemon_url: &str, db: sled::Db, testnet: bool) -> Result<Self> {
+        let wallet = Wallet::from_seed(seed)?;
+        let id = wallet_id(&wallet.wallet_keys());
+        match db_get::<String>(&db, KEY_WALLET_ID) {
+            Some(stored) if stored != id => {
+                return Err(SdkError::Storage(format!(
+                    "state database belongs to wallet {stored}, not {id}"
+                )));
+            }
+            Some(_) => {}
+            None => {
+                db_put(&db, KEY_WALLET_ID, &id);
+                let _ = db.flush();
+            }
+        }
 
         let service = Self {
-            wallet,
-            daemon,
+            wallet: Arc::new(Mutex::new(wallet)),
+            daemon: DaemonClient::new(daemon_url),
             db,
+            top: Arc::new(Mutex::new(None)),
             testnet,
             afk_secrets: Arc::new(Mutex::new(HashMap::new())),
         };
@@ -146,6 +192,24 @@ impl WalletService {
             let _ = service.db.flush();
         }
         Ok(service)
+    }
+
+    /// See `wallet_id`.
+    pub fn id(&self) -> String {
+        wallet_id(&self.wallet.lock().unwrap().wallet_keys())
+    }
+
+    /// True when (view_secret, spend_public) are this wallet's primary keys (hex).
+    pub fn has_keys(&self, view_secret_hex: &str, spend_public_hex: &str) -> bool {
+        let keys = self.wallet.lock().unwrap().wallet_keys();
+        let eq = |hex_str: &str, key: &[u8; 32]| {
+            let mut buf = [0u8; 32];
+            let ok = hex::decode_to_slice(hex_str.trim(), &mut buf).is_ok()
+                && buf.iter().zip(key).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0;
+            buf.zeroize();
+            ok
+        };
+        eq(view_secret_hex, &keys.view_secret) & eq(spend_public_hex, &keys.spend_public)
     }
 
     /// The wallet's primary address for the configured network.
@@ -230,34 +294,44 @@ impl SyncEngine {
         }
     }
 
+    /// Write the scan state and the matching top-block hash in one atomic batch. The
+    /// hash is read under the wallet lock, which the sync loop also holds while it
+    /// advances both, so a crash or a cancelled sync never leaves the stored hash ahead
+    /// of the stored height (that skipped the blocks in between on the next sync).
     fn persist_state(&self) {
-        let wallet = self.wallet.lock().unwrap();
-        let snapshot = wallet.snapshot_state();
-        let db = &self.db;
-        let _ = bincode::serialize(&snapshot.height).ok().and_then(|b| db.insert(KEY_HEIGHT, b).ok());
-        let _ = bincode::serialize(&snapshot.utxos).ok().and_then(|b| db.insert(b"utxos", b).ok());
-        let _ = bincode::serialize(&snapshot.commitments).ok().and_then(|b| db.insert(b"commitments", b).ok());
-        let _ = bincode::serialize(&snapshot.spent_images).ok().and_then(|b| db.insert(b"spent", b).ok());
-        let _ = bincode::serialize(&snapshot.history).ok().and_then(|b| db.insert(b"history", b).ok());
-        db_put(db, KEY_OWNERS, &snapshot.owners);
-        if let Ok(Some(bytes)) = db.get(KEY_TOP_HASH) {
-            let _ = db.flush();
-            let _ = bytes;
-        } else {
-            let _ = db.flush();
+        fn put<T: Serialize>(batch: &mut sled::Batch, key: &[u8], value: &T) {
+            if let Ok(b) = bincode::serialize(value) {
+                batch.insert(key, b);
+            }
         }
+        let mut batch = sled::Batch::default();
+        {
+            let wallet = self.wallet.lock().unwrap();
+            let snapshot = wallet.snapshot_state();
+            put(&mut batch, KEY_HEIGHT, &snapshot.height);
+            put(&mut batch, b"utxos", &snapshot.utxos);
+            put(&mut batch, b"commitments", &snapshot.commitments);
+            put(&mut batch, b"spent", &snapshot.spent_images);
+            put(&mut batch, b"history", &snapshot.history);
+            put(&mut batch, KEY_OWNERS, &snapshot.owners);
+            match self.top_hash() {
+                Some(h) => put(&mut batch, KEY_TOP_HASH, &h),
+                None => batch.remove(KEY_TOP_HASH),
+            }
+        }
+        let _ = self.db.apply_batch(batch);
+        let _ = self.db.flush();
     }
 
     fn top_hash(&self) -> Option<[u8; 32]> {
+        if let Some(h) = *self.top.lock().unwrap() {
+            return Some(h);
+        }
         self.db
             .get(KEY_TOP_HASH)
             .ok()
             .flatten()
             .and_then(|b| bincode::deserialize::<[u8; 32]>(&b).ok())
-    }
-
-    fn set_top_hash(&self, hash: &[u8; 32]) {
-        let _ = bincode::serialize(hash).ok().and_then(|b| self.db.insert(KEY_TOP_HASH, b).ok());
     }
 
     fn pending(&self) -> Vec<PendingTx> {
@@ -341,8 +415,8 @@ impl SyncEngine {
 
             let wallet = self.wallet.lock().unwrap();
             wallet.set_height(block_height);
+            *self.top.lock().unwrap() = Some(item.block_id);
             drop(wallet);
-            self.set_top_hash(&item.block_id);
             scanned += 1;
         }
 
@@ -384,10 +458,12 @@ impl SyncEngine {
             let images: Vec<[u8; 32]> =
                 self.pending().iter().flat_map(|p| p.key_images.clone()).collect();
             wallet.reserve_pending(&images);
+            *self.top.lock().unwrap() = None;
+            let _ = self.db.remove(KEY_TOP_HASH);
         }
-        let _ = self.db.remove(KEY_TOP_HASH);
-        let _ = self.db.remove(KEY_RESCAN);
         self.persist_state();
+        let _ = self.db.remove(KEY_RESCAN);
+        let _ = self.db.flush();
         log::info!("rescanning from genesis");
     }
 
@@ -471,6 +547,7 @@ impl WalletService {
             wallet: self.wallet.clone(),
             daemon: self.daemon.clone(),
             db: self.db.clone(),
+            top: self.top.clone(),
         }
     }
 
@@ -633,24 +710,53 @@ impl WalletService {
             .into_iter()
             .filter(|u| u.global_index != 0)
             .collect();
+        let own = self.primary_address_string();
+        self.sweep_to(selected, &own).await.map(|(tx, _)| tx)
+    }
+
+    /// Send this wallet's confirmed outputs to `address`, at most `MAX_SWEEP_INPUTS`
+    /// per transaction (largest first). Returns the tx hash, if one was sent, and how
+    /// many outputs are left for the next call. Moves an older walletd wallet's funds
+    /// into the vault wallet.
+    pub async fn sweep_all_to(&self, address: &str) -> std::result::Result<(Option<String>, usize), String> {
+        let selected: Vec<_> = self
+            .wallet
+            .lock()
+            .unwrap()
+            .utxos()
+            .into_iter()
+            .filter(|u| u.global_index != 0)
+            .collect();
+        self.sweep_to(selected, address).await
+    }
+
+    async fn sweep_to(
+        &self,
+        mut selected: Vec<fuego_sdk::scanner::UtxoEntry>,
+        address: &str,
+    ) -> std::result::Result<(Option<String>, usize), String> {
         if selected.is_empty() {
-            return Ok(None);
+            return Ok((None, 0));
         }
+        selected.sort_by(|a, b| b.amount.cmp(&a.amount));
+        let remaining = selected.len().saturating_sub(MAX_SWEEP_INPUTS);
+        selected.truncate(MAX_SWEEP_INPUTS);
         let total: u64 = selected.iter().map(|u| u.amount).sum();
         let fee = MINIMUM_FEE;
         if total <= fee {
-            return Err(format!("legacy balance {total} does not cover the fee {fee}"));
+            return Err(format!("balance {total} does not cover the fee {fee}"));
         }
         let decoys = self.fetch_decoys(&selected, DEFAULT_MIXIN).await?;
-        let own = fuego_sdk::Address(self.primary_address_string());
+        let to = fuego_sdk::Address(address.to_string());
         let built = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .build_with_selection(&selected, &[(own, total - fee)], fee, DEFAULT_MIXIN, &decoys, &mut rand::thread_rng())
+                .build_with_selection(&selected, &[(to, total - fee)], fee, DEFAULT_MIXIN, &decoys, &mut rand::thread_rng())
                 .map_err(|e| format!("build: {e}"))?
         };
         let key_images: Vec<[u8; 32]> = selected.iter().map(|u| u.key_image).collect();
-        self.broadcast_built(built, key_images).await.map(Some)
+        let tx = self.broadcast_built(built, key_images).await?;
+        Ok((Some(tx), remaining))
     }
 
     /// Persist-before-broadcast + reserve + submit, shared by all send paths.
@@ -2146,6 +2252,31 @@ mod subaddress_service_tests {
         // Legacy indices survive a restart.
         let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
         assert_eq!(svc.list_subaddresses().1.iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn height_and_top_hash_are_stored_together() {
+        let dir = temp_dir("persist");
+        {
+            let svc = WalletService::new([8u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+            let engine = svc.sync_engine();
+            // What sync_once does per block: advance both in memory, nothing on disk yet.
+            {
+                let wallet = svc.wallet.lock().unwrap();
+                wallet.set_height(77);
+                *svc.top.lock().unwrap() = Some([0xabu8; 32]);
+            }
+            assert!(svc.db.get(KEY_TOP_HASH).unwrap().is_none(), "hash not written ahead of the state");
+            engine.persist_state();
+        }
+        let svc = WalletService::new([8u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        assert_eq!(svc.wallet.lock().unwrap().height(), 77);
+        assert_eq!(svc.sync_engine().top_hash(), Some([0xabu8; 32]));
+
+        svc.sync_engine().start_rescan();
+        assert_eq!(svc.sync_engine().top_hash(), None);
+        assert!(svc.db.get(KEY_TOP_HASH).unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 

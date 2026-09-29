@@ -69,6 +69,12 @@ class SubaddressStore {
   /// Whether the backend has been told to scan the legacy entries.
   bool _legacyRegistered = false;
 
+  /// Labels by address, so they survive [reconcile].
+  Map<String, String> _labels = {};
+
+  /// Addresses the user removed from the list; [reconcile] keeps them out.
+  Set<String> _hidden = {};
+
   List<Subaddress> get subaddresses => List.unmodifiable(_subaddresses);
   List<Subaddress> get legacy => _subaddresses.where((s) => s.legacy).toList();
   bool get legacyRegistered => _legacyRegistered;
@@ -89,6 +95,12 @@ class SubaddressStore {
             .map((e) => Subaddress.fromJson(e as Map<String, dynamic>, legacyDefault: isOld))
             .toList();
         _legacyRegistered = data['legacyRegistered'] as bool? ?? false;
+        _labels = (data['labels'] as Map<String, dynamic>? ?? const {})
+            .map((k, v) => MapEntry(k, v as String? ?? ''));
+        _hidden = (data['hidden'] as List<dynamic>? ?? const []).cast<String>().toSet();
+        for (final s in _subaddresses) {
+          if (s.label.isNotEmpty) _labels.putIfAbsent(s.address, () => s.label);
+        }
         if (isOld) await _save();
       }
     } catch (e) {
@@ -105,6 +117,8 @@ class SubaddressStore {
         'version': _version,
         'legacyRegistered': _legacyRegistered,
         'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
+        'labels': _labels,
+        'hidden': _hidden.toList(),
       }), flush: true);
       // Mobile app sandboxes are already private, and iOS forbids spawning processes.
       if (Platform.isLinux || Platform.isMacOS) {
@@ -135,8 +149,36 @@ class SubaddressStore {
     );
     _subaddresses.removeWhere((s) => !s.legacy && s.index == index);
     _subaddresses.add(sub);
+    if (sub.label.isNotEmpty) _labels[sub.address] = sub.label;
     await _save();
     return sub;
+  }
+
+  /// Replaces the non-legacy entries with the sub-addresses the backend holds
+  /// for the open wallet. The backend derives them from the wallet's seed, so an
+  /// entry it does not list belongs to another key (another wallet, or the key an
+  /// older walletd generated for itself) and must not be handed out.
+  Future<void> reconcile(List<(int, String)> fromBackend) async {
+    final byAddress = {for (final s in _subaddresses) s.address: s};
+    final current = <Subaddress>[
+      for (final (index, address) in fromBackend)
+        if (!_hidden.contains(address))
+          Subaddress(
+            address: address,
+            label: _labels[address] ?? '',
+            index: index,
+            createdAt: byAddress[address]?.createdAt ?? DateTime.now(),
+          ),
+    ];
+    final next = [..._subaddresses.where((s) => s.legacy), ...current];
+    if (listEquals(
+      next.map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}').toList(),
+      _subaddresses.map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}').toList(),
+    )) {
+      return;
+    }
+    _subaddresses = next;
+    await _save();
   }
 
   Future<void> markLegacyRegistered() async {
@@ -147,6 +189,9 @@ class SubaddressStore {
   /// Hides a sub-address from the list. Legacy entries stay until their funds
   /// are swept, since they are the only record of which old keys to scan.
   Future<void> remove(int index, {bool legacy = false}) async {
+    for (final s in _subaddresses.where((s) => s.index == index && s.legacy == legacy)) {
+      if (!legacy) _hidden.add(s.address);
+    }
     _subaddresses.removeWhere((s) => s.index == index && s.legacy == legacy);
     await _save();
   }
@@ -155,6 +200,7 @@ class SubaddressStore {
     final i = _subaddresses.indexWhere((s) => s.index == index && s.legacy == legacy);
     if (i != -1) {
       _subaddresses[i] = _subaddresses[i].copyWith(label: label);
+      _labels[_subaddresses[i].address] = label;
       await _save();
     }
   }

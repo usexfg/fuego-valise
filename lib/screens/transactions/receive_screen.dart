@@ -391,6 +391,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
               ),
               const SizedBox(height: 12),
+              if (state.legacyWalletBalance > 0) ...[
+                _buildLegacyWalletNotice(state.legacyWalletBalance),
+                const SizedBox(height: 12),
+              ],
 
               // Generate new subaddress
               Row(
@@ -476,6 +480,64 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildLegacyWalletNotice(int balance) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.errorColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Funds outside your recovery phrase',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'An earlier version of the wallet backend kept its own key on this computer '
+            '(master_seed.bin) and received with it. Your recovery phrase does not restore '
+            'those funds. Move them into this wallet.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: _sweepLegacyWallet,
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            child: Text('Move ${(balance / atomicPerCoin).toStringAsFixed(7)} XFG into this wallet'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sweepLegacyWallet() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final (tx, remaining) = await context.read<WalletCubit>().sweepLegacyWallet();
+      final String message;
+      if (tx == null) {
+        message = 'Nothing confirmed to move yet';
+      } else if (remaining > 0) {
+        message = 'Moved part (tx ${tx.substring(0, 12)}…); $remaining outputs left, move again';
+      } else {
+        message = 'Moved into this wallet (tx ${tx.substring(0, 12)}…)';
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(message),
+        backgroundColor: tx == null ? AppTheme.warningColor : AppTheme.successColor,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not move funds: $e'),
+        backgroundColor: AppTheme.errorColor,
+      ));
+    }
   }
 
   Future<void> _sweepLegacy() async {

@@ -592,7 +592,14 @@ class DaemonManager {
       // args, or a dead embedded daemon) answers /health with fuego:false
       // and leaves the chain port 18180 dead — killing the whole stack
       // (swapd, mining, balances). Verify the embedded daemon before reuse.
-      if (useLocalNode && !await _walletdEmbeddedFuegodOk(walletdPort)) {
+      // A walletd from an older app version has no open_wallet and serves a
+      // wallet of its own (master_seed.bin), not the vault: replace it too.
+      final staleBinary = !await _walletdHasWalletSlot(walletdPort);
+      if (staleBinary) {
+        debugPrint('[daemon] walletd on $walletdPort predates open_wallet — restarting');
+        final killErr = await _freePort(walletdPort);
+        if (killErr != null) return killErr;
+      } else if (useLocalNode && !await _walletdEmbeddedFuegodOk(walletdPort)) {
         debugPrint('[daemon] walletd on $walletdPort is stale '
             '(embedded fuegod offline) — killing and restarting');
         final killErr = await _freePort(walletdPort);
@@ -621,6 +628,8 @@ class DaemonManager {
       'serve',
       '--daemon-host', daemonHost,
       '--daemon-port', daemonPort.toString(),
+      // No wallet until the vault is unlocked; WalletCubit hands over its seed.
+      '--await-wallet',
     ];
     if (useTestnet) args.add('--testnet');
     if (useLocalNode) args.add('--local');
@@ -699,6 +708,31 @@ class DaemonManager {
         if (fuego is bool) return fuego;
       }
       return false;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// True when the walletd on [port] implements wallet_status (and so
+  /// open_wallet/close_wallet).
+  Future<bool> _walletdHasWalletSlot(int port) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final req = await client.postUrl(Uri.parse('http://127.0.0.1:$port/json_rpc'));
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'wallet_status',
+        'params': <String, dynamic>{},
+      }));
+      final resp = await req.close().timeout(const Duration(seconds: 2));
+      final body = await resp.transform(utf8.decoder).join();
+      if (resp.statusCode != 200) return false;
+      final data = jsonDecode(body);
+      return data is Map<String, dynamic> && data['result'] is Map;
     } catch (_) {
       return false;
     } finally {

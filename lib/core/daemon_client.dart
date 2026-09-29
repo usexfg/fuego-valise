@@ -161,6 +161,35 @@ class FuegoDaemonClient {
     return r['result'] as Map<String, dynamic>? ?? const {};
   }
 
+  // ── Which wallet walletd serves ──
+  // walletd starts with no wallet (--await-wallet); the app hands it the vault
+  // seed after unlock and takes it back on lock. Always loopback (useWallet).
+
+  /// Opens the vault wallet in walletd. [seedHex] is the 32-byte vault seed.
+  /// Returns walletd's primary address for it.
+  Future<String> openWallet(String seedHex) async {
+    final r = await _walletRpc('open_wallet', {'seed': seedHex});
+    return r['address'] as String? ?? '';
+  }
+
+  /// Stops walletd using the vault keys (vault locked).
+  Future<void> closeWallet() => _walletRpc('close_wallet');
+
+  /// The wallet an older walletd generated for itself (master_seed.bin), when
+  /// present: address and balance. Null when there is none.
+  Future<Map<String, dynamic>?> getLegacyWallet() async {
+    final r = await _walletRpc('get_legacy_wallet');
+    return r.isEmpty ? null : r;
+  }
+
+  /// Moves that wallet's confirmed funds to the open vault wallet, up to 50
+  /// outputs per call. Returns the tx hash (null: nothing to move) and how many
+  /// outputs remain for another call.
+  Future<(String?, int)> sweepLegacyWallet() async {
+    final r = await _walletRpc('sweep_legacy_wallet');
+    return (r['txHash'] as String?, r['remaining'] as int? ?? 0);
+  }
+
   // ── Sub-addresses (fuego-suite scheme, derived and scanned by walletd) ──
 
   /// Hands out the next sub-address. Returns (index, address).
@@ -369,6 +398,10 @@ class FuegoDaemonClient {
           }),
         )
         .timeout(const Duration(seconds: 60));
+    if (resp.statusCode == 409) {
+      // No wallet open, or walletd serves a wallet other than these keys'.
+      throw const WalletdWalletMismatch();
+    }
     if (resp.statusCode != 200) {
       throw FuegoRpcException('scan_balance HTTP ${resp.statusCode}');
     }
@@ -383,4 +416,9 @@ class FuegoRpcException implements Exception {
   const FuegoRpcException(this.message);
   @override
   String toString() => 'FuegoRpcException: $message';
+}
+
+/// walletd has no wallet open, or has one other than the keys the call was for.
+class WalletdWalletMismatch extends FuegoRpcException {
+  const WalletdWalletMismatch() : super('walletd is not serving this wallet');
 }

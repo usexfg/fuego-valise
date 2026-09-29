@@ -10,13 +10,13 @@ mod scanner;
 mod server;
 mod swapd;
 mod wallet_service;
+mod wallet_slot;
 mod walletd;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use crate::wallet_service::WalletService;
+use crate::wallet_slot::WalletSlot;
 
 fn default_wallet_dir() -> PathBuf {
     directories::ProjectDirs::from("org", "usexfg", "fuego-wallet")
@@ -63,19 +63,31 @@ enum Commands {
         /// Skip the xfg-swapd auto-launch even if a config is found.
         #[arg(long)]
         no_swapd: bool,
+
+        /// Start with no wallet open; the GUI sends the vault seed with the
+        /// `open_wallet` JSON-RPC method after unlock. Never creates master_seed.bin.
+        #[arg(long)]
+        await_wallet: bool,
     },
     Status,
 }
 
+fn read_seed_file(wallet_dir: &PathBuf) -> Option<[u8; 32]> {
+    use zeroize::Zeroize;
+    let mut data = std::fs::read(wallet_dir.join("master_seed.bin")).ok()?;
+    let seed = (data.len() == 32).then(|| {
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&data);
+        seed
+    });
+    data.zeroize();
+    seed
+}
+
 fn load_or_create_seed(wallet_dir: &PathBuf) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let seed_path = wallet_dir.join("master_seed.bin");
-    if seed_path.exists() {
-        let data = std::fs::read(&seed_path)?;
-        if data.len() == 32 {
-            let mut seed = [0u8; 32];
-            seed.copy_from_slice(&data);
-            return Ok(seed);
-        }
+    if let Some(seed) = read_seed_file(wallet_dir) {
+        return Ok(seed);
     }
     let mut seed = [0u8; 32];
     use rand::RngCore;
@@ -98,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&wallet_dir)?;
 
     match cli.command.unwrap_or(Commands::Status) {
-        Commands::Serve { daemon_host, daemon_port, testnet, local, swapd_config, no_swapd } => {
+        Commands::Serve { daemon_host, daemon_port, testnet, local, swapd_config, no_swapd, await_wallet } => {
             let (actual_host, actual_port, _daemon_guard) = if local {
                 log::info!("--local: starting embedded fuegod...");
                 let data_dir = wallet_dir.join("fuegod");
@@ -122,27 +134,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let daemon_url = format!("http://{}:{}", actual_host, actual_port);
 
-            // 2. Initialize SDK wallet
-            let seed = match &cli.seed {
-                Some(s) => {
-                    let bytes = hex::decode(s.trim_start_matches("0x"))
-                        .map_err(|e| format!("invalid seed hex: {}", e))?;
-                    if bytes.len() != 32 {
-                        return Err(format!("seed must be 32 bytes").into());
-                    }
-                    let mut seed = [0u8; 32];
-                    seed.copy_from_slice(&bytes);
-                    seed
+            // 2. Wallet. Its state lives in the wallet dir root for the headless
+            // --seed / master_seed.bin wallet (as before), under wallets/<id>/ otherwise.
+            let slot = Arc::new(WalletSlot::new(wallet_dir.clone(), &daemon_url, testnet));
+            if await_wallet {
+                if cli.seed.is_some() {
+                    return Err("--seed cannot be combined with --await-wallet".into());
                 }
-                None => load_or_create_seed(&wallet_dir)?,
-            };
-
-            let wallet_service = WalletService::new(seed, &daemon_url, wallet_dir.clone(), testnet)
-                .map_err(|e| format!("Failed to initialize SDK wallet: {}", e))?;
-            let wallet_addr = wallet_service.address().await;
-            let wallet = Arc::new(Mutex::new(wallet_service));
-
-            log::info!("Wallet address: {}", wallet_addr);
+                // A master_seed.bin left by an older walletd held a wallet the GUI never
+                // showed; keep syncing it so its funds can be swept (sweep_legacy_wallet).
+                if let Some(seed) = read_seed_file(&wallet_dir) {
+                    match slot.open_at(seed, &wallet_dir, true).await {
+                        Ok(id) => log::info!("legacy walletd wallet {} found (master_seed.bin)", id),
+                        Err(e) => log::warn!("legacy master_seed.bin wallet not opened: {}", e),
+                    }
+                }
+                log::info!("waiting for open_wallet");
+            } else {
+                let seed = match &cli.seed {
+                    Some(s) => {
+                        let bytes = hex::decode(s.trim_start_matches("0x"))
+                            .map_err(|e| format!("invalid seed hex: {}", e))?;
+                        if bytes.len() != 32 {
+                            return Err(format!("seed must be 32 bytes").into());
+                        }
+                        let mut seed = [0u8; 32];
+                        seed.copy_from_slice(&bytes);
+                        seed
+                    }
+                    None => load_or_create_seed(&wallet_dir)?,
+                };
+                slot.open_at(seed, &wallet_dir, false)
+                    .await
+                    .map_err(|e| format!("Failed to initialize SDK wallet: {}", e))?;
+                if let Some(w) = slot.current().await {
+                    log::info!("Wallet address: {}", w.lock().await.primary_address_string());
+                }
+            }
 
             // 2.5 Launch xfg-swapd when a swap config is available (unified
             // launcher; the GUI's Swap Settings screen writes the same config
@@ -177,20 +205,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 3. Start background sync (detached engine: never blocks the
-            // JSON-RPC handlers)
-            {
-                let service = wallet.clone();
-                tokio::spawn(async move {
-                    log::info!("Starting background wallet sync...");
-                    let engine = service.lock().await.sync_engine();
-                    engine.sync_loop().await;
-                });
-            }
-
             // 4. Start Axum server
             let bind = format!("{}:{}", cli.host, cli.port);
-            server::run_server(wallet, &daemon_url, &bind).await?;
+            server::run_server(slot, &daemon_url, &bind).await?;
         }
 
         Commands::Status => {

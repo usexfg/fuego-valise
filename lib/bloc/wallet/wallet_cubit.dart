@@ -34,6 +34,10 @@ class WalletState extends Equatable {
   /// Unspent funds on old-scheme sub-addresses, waiting to be swept.
   final int legacySubaddressBalance;
 
+  /// Funds in the wallet an older walletd generated for itself (master_seed.bin),
+  /// which the recovery phrase does not restore. Swept into this wallet.
+  final int legacyWalletBalance;
+
   const WalletState({
     this.isLoading = false,
     this.isConnected = false,
@@ -54,6 +58,7 @@ class WalletState extends Equatable {
     this.scannedHeight = 0,
     this.subaddresses = const [],
     this.legacySubaddressBalance = 0,
+    this.legacyWalletBalance = 0,
   });
 
   WalletState copyWith({
@@ -77,6 +82,7 @@ class WalletState extends Equatable {
     int? scannedHeight,
     List<Subaddress>? subaddresses,
     int? legacySubaddressBalance,
+    int? legacyWalletBalance,
   }) => WalletState(
     isLoading: isLoading ?? this.isLoading,
     isConnected: isConnected ?? this.isConnected,
@@ -97,6 +103,7 @@ class WalletState extends Equatable {
     scannedHeight: scannedHeight ?? this.scannedHeight,
     subaddresses: subaddresses ?? this.subaddresses,
     legacySubaddressBalance: legacySubaddressBalance ?? this.legacySubaddressBalance,
+    legacyWalletBalance: legacyWalletBalance ?? this.legacyWalletBalance,
   );
 
   double get balanceXfg => balance / atomicPerCoin;
@@ -127,6 +134,7 @@ class WalletState extends Equatable {
     scannedHeight,
     subaddresses,
     legacySubaddressBalance,
+    legacyWalletBalance,
   ];
 }
 
@@ -139,6 +147,10 @@ class WalletCubit extends Cubit<WalletState> {
   final SubaddressStore _subaddressStore = SubaddressStore();
   Timer? _pollTimer;
 
+  /// Vault address walletd was last given the seed for; null when walletd is not
+  /// known to hold the unlocked vault (never opened, restarted, or locked).
+  String? _walletdOpenFor;
+
   WalletCubit(
     this._daemon, {
     FuegoRPCService? rpcService,
@@ -150,7 +162,59 @@ class WalletCubit extends Cubit<WalletState> {
        _backendReady = backendReady,
        _security = security ?? SecurityService(),
        super(const WalletState()) {
+    _vault?.addLockListener(_onVaultLocked);
     _init();
+  }
+
+  void _onVaultLocked() {
+    _walletdOpenFor = null;
+    unawaited(_daemon.closeWallet().catchError((_) {}));
+  }
+
+  /// Hands walletd the vault seed so it scans, receives and sends with the
+  /// vault's keys. Returns whether walletd holds the unlocked vault.
+  Future<bool> _ensureWalletdHasVault({bool force = false}) async {
+    final v = _vault;
+    if (v == null || !v.isUnlocked || v.address.isEmpty) return false;
+    if (!force && _walletdOpenFor == v.address) return true;
+    final seed = v.getSeed();
+    if (seed == null || seed.isEmpty) return false;
+    try {
+      await _daemon.openWallet(seed);
+      _walletdOpenFor = v.address;
+      // Each wallet has its own walletd state: re-register old-scheme
+      // sub-addresses with it (a no-op when already known).
+      final legacy = _subaddressStore.legacy;
+      if (legacy.isNotEmpty) {
+        await _daemon.registerLegacySubaddresses(legacy.map((s) => s.index).toList());
+        await _subaddressStore.markLegacyRegistered();
+      }
+      return true;
+    } catch (e) {
+      _log('[wallet] walletd open_wallet failed: $e');
+      _walletdOpenFor = null;
+      return false;
+    }
+  }
+
+  /// Balance of the unlocked vault from walletd. walletd checks the keys, so a
+  /// walletd serving any other wallet is reopened with the vault, never shown.
+  Future<Map<String, dynamic>?> _scanVaultBalance(int startHeight) async {
+    final v = _vault!;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (!await _ensureWalletdHasVault(force: attempt > 0)) return null;
+      try {
+        return await _daemon.scanBalance(
+          viewSecret: v.viewSecretKey!,
+          spendPublic: v.spendPublicKey!,
+          startHeight: startHeight,
+          batchSize: 500,
+        );
+      } on WalletdWalletMismatch {
+        _walletdOpenFor = null;
+      }
+    }
+    return null;
   }
 
   Future<void> _init() async {
@@ -256,26 +320,22 @@ class WalletCubit extends Cubit<WalletState> {
             _vault!.isUnlocked &&
             _vault!.viewSecretKey != null &&
             _vault!.spendPublicKey != null) {
+          // No fallback to walletd's getBalance: if the key check failed, that
+          // balance would belong to some other wallet.
+          bal = state.balance;
+          unlocked = state.unlockedBalance;
           try {
-            final scan = await _daemon.scanBalance(
-              viewSecret: _vault!.viewSecretKey!,
-              spendPublic: _vault!.spendPublicKey!,
-              startHeight: scannedH,
-              batchSize: 500,
-            );
-            bal = scan['balance'] as int? ?? 0;
-            unlocked =
-                scan['unlocked_balance'] as int? ??
-                scan['unlockedBalance'] as int? ??
-                bal;
-            scannedH = scan['scanned_height'] as int? ?? scannedH;
+            final scan = await _scanVaultBalance(scannedH);
+            if (scan != null) {
+              bal = scan['balance'] as int? ?? 0;
+              unlocked =
+                  scan['unlocked_balance'] as int? ??
+                  scan['unlockedBalance'] as int? ??
+                  bal;
+              scannedH = scan['scanned_height'] as int? ?? scannedH;
+            }
           } catch (e) {
-            _log('[wallet] scanBalance failed — local fallback');
-            try {
-              final d = await _daemon.getBalanceDetailed();
-              bal = d.available + d.locked;
-              unlocked = d.available;
-            } catch (_) {}
+            _log('[wallet] scanBalance failed: $e');
           }
         } else {
           try {
@@ -373,6 +433,7 @@ class WalletCubit extends Cubit<WalletState> {
   /// are registered once so walletd finds (and can sweep) funds sent to them.
   Future<Subaddress?> createSubaddress(String label) async {
     try {
+      if (!await _ensureWalletdHasVault()) return null;
       final (index, address) = await _daemon.createSubaddress();
       final sub = await _subaddressStore.add(index: index, address: address, label: label);
       emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
@@ -384,24 +445,47 @@ class WalletCubit extends Cubit<WalletState> {
   }
 
   Future<void> _syncSubaddresses() async {
+    // Only while walletd holds the vault: its list is then the vault's.
+    if (_walletdOpenFor == null) return;
     try {
-      final legacy = _subaddressStore.legacy;
-      if (legacy.isNotEmpty && !_subaddressStore.legacyRegistered) {
-        await _daemon.registerLegacySubaddresses(legacy.map((s) => s.index).toList());
-        await _subaddressStore.markLegacyRegistered();
-      }
       final r = await _daemon.getSubaddresses();
+      final current = [
+        for (final e in (r['subaddresses'] as List<dynamic>? ?? const []))
+          if (e is Map<String, dynamic> && e['index'] is int && e['address'] is String)
+            (e['index'] as int, e['address'] as String),
+      ];
+      await _subaddressStore.reconcile(current);
       final legacyBalance = (r['legacy'] as List<dynamic>? ?? const [])
           .fold<int>(0, (sum, e) => sum + ((e as Map<String, dynamic>)['balance'] as int? ?? 0));
-      emit(state.copyWith(legacySubaddressBalance: legacyBalance));
+      final legacyWallet = await _daemon.getLegacyWallet();
+      emit(state.copyWith(
+        subaddresses: _subaddressStore.subaddresses,
+        legacySubaddressBalance: legacyBalance,
+        legacyWalletBalance: legacyWallet?['balance'] as int? ?? 0,
+      ));
     } catch (e) {
       _log('[wallet] sub-address sync failed: $e');
     }
   }
 
+  /// Moves funds from the wallet an older walletd generated for itself into this
+  /// wallet. Returns the tx hash (null: nothing confirmed to move) and how many
+  /// outputs are left for another sweep.
+  Future<(String?, int)> sweepLegacyWallet() async {
+    if (!await _ensureWalletdHasVault()) {
+      throw const FuegoRpcException('wallet is locked');
+    }
+    final result = await _daemon.sweepLegacyWallet();
+    await refreshWallet();
+    return result;
+  }
+
   /// Moves funds on old-scheme sub-addresses to the main address. Returns the
   /// transaction hash, or null when nothing was confirmed there yet.
   Future<String?> sweepLegacySubaddresses() async {
+    if (!await _ensureWalletdHasVault()) {
+      throw const FuegoRpcException('wallet is locked');
+    }
     final tx = await _daemon.sweepLegacySubaddresses();
     await refreshWallet();
     return tx;
@@ -443,6 +527,10 @@ class WalletCubit extends Cubit<WalletState> {
       throw StateError('Insufficient unlocked balance (including fee)');
     }
 
+    // walletd signs with whatever wallet it has open: make sure it is this one.
+    if (_vault != null && !await _ensureWalletdHasVault()) {
+      throw StateError('Wallet backend is not ready for this wallet');
+    }
     final req = SendTransactionRequest(
       address: address,
       amount: amount,

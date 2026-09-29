@@ -10,10 +10,21 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::wallet_service::WalletService;
+use crate::wallet_slot::WalletSlot;
+use zeroize::Zeroize;
 
 pub struct AppState {
-    pub wallet: Arc<Mutex<WalletService>>,
+    pub slot: Arc<WalletSlot>,
     pub fuegod_url: String,
+}
+
+/// Error for wallet methods called while no wallet is open (walletd started with
+/// --await-wallet and the GUI has not sent open_wallet yet, or the vault is locked).
+pub const NO_WALLET_OPEN: &str = "no wallet open";
+const NO_WALLET_OPEN_CODE: i32 = -32001;
+
+fn need(wallet: Option<&Mutex<WalletService>>) -> Result<&Mutex<WalletService>, String> {
+    wallet.ok_or_else(|| NO_WALLET_OPEN.to_string())
 }
 
 #[derive(Serialize)]
@@ -225,14 +236,14 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
 }
 
 async fn handle_wallet_method(
-    wallet: &Mutex<WalletService>,
+    wallet: Option<&Mutex<WalletService>>,
     _fuegod_url: &str,
     method: &str,
     params: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     match method {
         "getBalance" | "getbalance" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let balance = wallet.balance_full().await;
             Ok(serde_json::json!({
                 "availableBalance": balance.confirmed,
@@ -241,13 +252,13 @@ async fn handle_wallet_method(
             }))
         }
         "getAddress" | "getAddresses" | "get_address" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             Ok(serde_json::json!({
                 "address": wallet.address().await,
             }))
         }
         "getHealth" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let status = wallet.sync_status();
             Ok(serde_json::json!({
                 "wallet": {
@@ -261,7 +272,7 @@ async fn handle_wallet_method(
             }))
         }
         "getStatus" | "get_height" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let status = wallet.sync_status();
             Ok(serde_json::json!({
                 "height": wallet.height().await,
@@ -270,7 +281,7 @@ async fn handle_wallet_method(
             }))
         }
         "getTransactions" | "get_transfers" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let txs = wallet.get_transactions(100).await;
             let items: Vec<serde_json::Value> = txs.iter().map(|tx| {
                 serde_json::json!({
@@ -311,7 +322,7 @@ async fn handle_wallet_method(
                 .and_then(|a| a.as_u64())
                 .unwrap_or(0) as u32;
 
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.send_transaction(&dests, fee, anonymity).await
                 .map_err(|e| format!("send failed: {}", e))?;
             Ok(serde_json::json!({
@@ -320,12 +331,12 @@ async fn handle_wallet_method(
             }))
         }
         "create_subaddress" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let (index, address) = wallet.create_subaddress()?;
             Ok(serde_json::json!({ "index": index, "address": address }))
         }
         "get_subaddresses" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let (subs, legacy) = wallet.list_subaddresses();
             Ok(serde_json::json!({
                 "subaddresses": subs.iter().map(|(i, a, b)| serde_json::json!({
@@ -344,12 +355,12 @@ async fn handle_wallet_method(
                 .map(|v| v.as_u64().filter(|n| *n >= 1 && *n < u32::MAX as u64).map(|n| n as u32)
                     .ok_or("indices must be integers in 1..u32::MAX"))
                 .collect::<Result<_, _>>()?;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let rescan = wallet.register_legacy_subaddresses(&indices);
             Ok(serde_json::json!({ "rescan": rescan }))
         }
         "sweep_legacy_subaddresses" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx = wallet.sweep_legacy_subaddresses().await
                 .map_err(|e| format!("sweep failed: {}", e))?;
             Ok(serde_json::json!({ "txHash": tx }))
@@ -361,7 +372,7 @@ async fn handle_wallet_method(
             let fee = params.get("fee")
                 .and_then(|f| f.as_u64())
                 .unwrap_or(100_000);
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.register_alias(alias, fee).await
                 .map_err(|e| format!("alias registration failed: {}", e))?;
             Ok(serde_json::json!({
@@ -370,7 +381,7 @@ async fn handle_wallet_method(
             }))
         }
         "create_integrated" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let addr = wallet.address().await;
             Ok(serde_json::json!({
                 "integratedAddress": addr,
@@ -425,7 +436,7 @@ async fn handle_wallet_method(
                     .and_then(|v| v.as_u64())
                     .unwrap_or(6);
                 let blocks = term_epochs * 900;
-                let wallet = wallet.lock().await;
+                let wallet = need(wallet)?.lock().await;
                 let tx = wallet.create_cd(amount, blocks as u32).await
                     .map_err(|e| format!("ladder rung failed: {}", e))?;
                 tx_hashes.push(tx);
@@ -433,7 +444,7 @@ async fn handle_wallet_method(
             Ok(serde_json::json!({"tx_hashes": tx_hashes, "created": tx_hashes.len()}))
         }
         "list_cds" | "cd::list" => {
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let cds = wallet.list_cds().await;
             Ok(serde_json::json!({
                 "cds": cds,
@@ -449,7 +460,7 @@ async fn handle_wallet_method(
                 .or_else(|| params.get("term").and_then(|d| d.as_u64()))
                 .or_else(|| params.get("epochs").and_then(|d| d.as_u64()).map(|e| e * 900))
                 .ok_or("missing duration_blocks")?;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.create_cd(amount, duration_blocks as u32).await
                 .map_err(|e| format!("create_cd failed: {}", e))?;
             let height = wallet.height().await;
@@ -468,7 +479,7 @@ async fn handle_wallet_method(
                 .and_then(|a| a.as_str())
                 .unwrap_or("")
                 .to_string();
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.claim_cd().await
                 .map_err(|e| format!("claim_cd failed: {}", e))?;
             Ok(serde_json::json!({
@@ -492,7 +503,7 @@ async fn handle_wallet_method(
                 .and_then(|a| a.as_u64())
                 .or_else(|| params.get("term").and_then(|a| a.as_u64()))
                 .unwrap_or(0) as u32;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.rollover_cd(&cd_id, new_term).await
                 .map_err(|e| format!("rollover_cd failed: {}", e))?;
             Ok(serde_json::json!({
@@ -514,7 +525,7 @@ async fn handle_wallet_method(
             let pair = params.get("pair")
                 .and_then(|p| p.as_u64())
                 .unwrap_or(0);
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let (lock_id, adaptor_point, pre_sig, hash_lock) =
                 wallet.create_afk_lock(amount, timeout_hours as u32, pair as u8).await
                     .map_err(|e| format!("create_afk_lock failed: {}", e))?;
@@ -532,7 +543,7 @@ async fn handle_wallet_method(
             let amount = params.get("amount")
                 .and_then(|a| a.as_u64())
                 .ok_or("missing amount")?;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.send_heat(address, amount).await
                 .map_err(|e| format!("send_heat failed: {}", e))?;
             Ok(serde_json::json!({
@@ -548,7 +559,7 @@ async fn handle_wallet_method(
             let address = params.get("address")
                 .and_then(|a| a.as_str())
                 .ok_or("missing address")?;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let proof = wallet.get_tx_proof(tx_hash, address).await
                 .map_err(|e| format!("get_tx_proof failed: {}", e))?;
             Ok(serde_json::json!({ "signature": proof }))
@@ -558,7 +569,7 @@ async fn handle_wallet_method(
                 .and_then(|a| a.as_u64())
                 .or_else(|| params.get("amount").and_then(|a| a.as_u64()))
                 .ok_or("missing xfg_burned")?;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.mint_heat(xfg_burned).await
                 .map_err(|e| format!("mint_heat failed: {}", e))?;
             Ok(serde_json::json!({
@@ -584,7 +595,7 @@ async fn handle_wallet_method(
                 .and_then(|s| s.parse::<u64>().ok())
                 .or_else(|| params.get("min_output").and_then(|v| v.as_u64()))
                 .unwrap_or(0);
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.amm_swap(direction, input_amount, min_output).await
                 .map_err(|e| format!("swap failed: {}", e))?;
             Ok(serde_json::json!({
@@ -603,7 +614,7 @@ async fn handle_wallet_method(
                 .and_then(|s| s.parse::<u64>().ok())
                 .or_else(|| params.get("heat_amount").and_then(|v| v.as_u64()))
                 .ok_or("missing heat_amount")?;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.lp_add(xfg_amount, heat_amount).await
                 .map_err(|e| format!("add_liq failed: {}", e))?;
             Ok(serde_json::json!({
@@ -627,7 +638,7 @@ async fn handle_wallet_method(
                 .and_then(|s| s.parse::<u64>().ok())
                 .or_else(|| params.get("min_heat").and_then(|v| v.as_u64()))
                 .unwrap_or(0);
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.lp_remove(shares, min_xfg, min_heat).await
                 .map_err(|e| format!("remove_liq failed: {}", e))?;
             Ok(serde_json::json!({
@@ -657,7 +668,7 @@ async fn handle_wallet_method(
                 .and_then(|v| v.as_u64())
                 .or_else(|| params.get("expiration").and_then(|v| v.as_u64()))
                 .unwrap_or(8640) as u32;
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.place_limit_order(side, amount, price_atomic, expiration).await
                 .map_err(|e| format!("place_limit_order failed: {}", e))?;
             Ok(serde_json::json!({
@@ -675,7 +686,7 @@ async fn handle_wallet_method(
             let banking_fee = params.get("banking_fee")
                 .and_then(|f| f.as_u64())
                 .unwrap_or(0);
-            let wallet = wallet.lock().await;
+            let wallet = need(wallet)?.lock().await;
             let tx_hash = wallet.heat_cd(amount, epochs as u32, banking_fee).await
                 .map_err(|e| format!("heat_cd failed: {}", e))?;
             Ok(serde_json::json!({
@@ -701,13 +712,98 @@ fn is_authorized_host(headers: &axum::http::HeaderMap) -> bool {
     }
 }
 
+/// Decode a 32-byte hex seed, wiping the intermediate buffer.
+fn decode_seed(hex_str: &str) -> Result<[u8; 32], String> {
+    let mut seed = [0u8; 32];
+    if hex::decode_to_slice(hex_str.trim().trim_start_matches("0x"), &mut seed).is_err() {
+        seed.zeroize();
+        return Err("seed must be 32 bytes of hex".into());
+    }
+    Ok(seed)
+}
+
+/// Methods that manage which wallet is open. `None`: not one of them.
+async fn handle_slot_method(
+    slot: &WalletSlot,
+    method: &str,
+    body: &mut serde_json::Value,
+) -> Option<Result<serde_json::Value, String>> {
+    let result = match method {
+        "open_wallet" => {
+            // Take the seed out of the request and wipe the copy it held.
+            let mut hex_seed = match body.pointer_mut("/params/seed") {
+                Some(serde_json::Value::String(s)) => std::mem::take(s),
+                _ => String::new(),
+            };
+            let seed = decode_seed(&hex_seed);
+            hex_seed.zeroize();
+            match seed {
+                Err(e) => Err(e),
+                Ok(seed) => match slot.open(seed).await {
+                    Err(e) => Err(e),
+                    Ok(id) => {
+                        let address = match slot.current().await {
+                            Some(w) => w.lock().await.primary_address_string(),
+                            None => String::new(),
+                        };
+                        Ok(serde_json::json!({ "id": id, "address": address }))
+                    }
+                },
+            }
+        }
+        "close_wallet" => Ok(serde_json::json!({ "closed": slot.close().await })),
+        "wallet_status" => Ok(match slot.current().await {
+            Some(w) => {
+                let w = w.lock().await;
+                serde_json::json!({ "open": true, "id": w.id(), "address": w.primary_address_string() })
+            }
+            None => serde_json::json!({ "open": false }),
+        }),
+        "get_legacy_wallet" => Ok(match slot.legacy().await {
+            Some(w) => {
+                let w = w.lock().await;
+                let balance = w.balance_full().await;
+                let status = w.sync_status();
+                serde_json::json!({
+                    "address": w.primary_address_string(),
+                    "balance": balance.confirmed,
+                    "pending": balance.pending + balance.immature,
+                    "height": status.current_height,
+                    "targetHeight": status.target_height,
+                    "syncing": status.is_syncing,
+                })
+            }
+            None => serde_json::Value::Null,
+        }),
+        "sweep_legacy_wallet" => match (slot.legacy().await, slot.current().await) {
+            (None, _) => Err("no legacy wallet".into()),
+            (_, None) => Err(NO_WALLET_OPEN.into()),
+            (Some(legacy), Some(open)) => {
+                let to = open.lock().await.primary_address_string();
+                let legacy = legacy.lock().await;
+                legacy
+                    .sweep_all_to(&to)
+                    .await
+                    .map(|(tx, remaining)| serde_json::json!({ "txHash": tx, "remaining": remaining }))
+            }
+        },
+        _ => return None,
+    };
+    Some(result)
+}
+
+fn rpc_error(id: u64, code: i32, message: String) -> axum::response::Response {
+    let error = JsonRpcError { jsonrpc: "2.0".into(), id, error: RpcErrorDetail { code, message } };
+    (StatusCode::OK, Json(serde_json::to_value(error).unwrap())).into_response()
+}
+
 async fn json_rpc_handler(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    Json(mut body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let id = body.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-    let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("");
+    let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
     if !is_authorized_host(&headers) {
         let error = JsonRpcError {
@@ -717,17 +813,23 @@ async fn json_rpc_handler(
         return (StatusCode::FORBIDDEN, Json(serde_json::to_value(error).unwrap())).into_response();
     }
 
-    let params = body.get("params").cloned().unwrap_or(serde_json::Value::Null);
     let result: Result<serde_json::Value, String> =
-        match handle_wallet_method(&state.wallet, &state.fuegod_url, method, &params).await {
-            Err(e) if e == NOT_A_WALLET_METHOD => {
-                if is_fuegod_method(method) {
-                    proxy_to_fuegod(&state.fuegod_url, &body).await
-                } else {
-                    Err(format!("unknown method: {}", method))
+        match handle_slot_method(&state.slot, &method, &mut body).await {
+            Some(r) => r,
+            None => {
+                let params = body.get("params").cloned().unwrap_or(serde_json::Value::Null);
+                let wallet = state.slot.current().await;
+                match handle_wallet_method(wallet.as_deref(), &state.fuegod_url, &method, &params).await {
+                    Err(e) if e == NOT_A_WALLET_METHOD => {
+                        if is_fuegod_method(&method) {
+                            proxy_to_fuegod(&state.fuegod_url, &body).await
+                        } else {
+                            Err(format!("unknown method: {}", method))
+                        }
+                    }
+                    other => other,
                 }
             }
-            other => other,
         };
 
     match result {
@@ -735,13 +837,8 @@ async fn json_rpc_handler(
             let success = JsonRpcSuccess { jsonrpc: "2.0".into(), id, result: val };
             (StatusCode::OK, Json(serde_json::to_value(success).unwrap())).into_response()
         }
-        Err(msg) => {
-            let error = JsonRpcError {
-                jsonrpc: "2.0".into(), id,
-                error: RpcErrorDetail { code: -32000, message: msg },
-            };
-            (StatusCode::OK, Json(serde_json::to_value(error).unwrap())).into_response()
-        }
+        Err(msg) if msg == NO_WALLET_OPEN => rpc_error(id, NO_WALLET_OPEN_CODE, msg),
+        Err(msg) => rpc_error(id, -32000, msg),
     }
 }
 
@@ -812,10 +909,23 @@ async fn fuegod_post(
 
 // ── Status endpoint (wallet state) ──
 
+fn forbidden() -> axum::response::Response {
+    (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response()
+}
+
+fn no_wallet() -> axum::response::Response {
+    (StatusCode::CONFLICT, Json(serde_json::json!({"error": NO_WALLET_OPEN}))).into_response()
+}
+
 async fn status_handler(
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let wallet = state.wallet.lock().await;
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    if !is_authorized_host(&headers) {
+        return forbidden();
+    }
+    let Some(wallet) = state.slot.current().await else { return no_wallet() };
+    let wallet = wallet.lock().await;
     let balance = wallet.balance_full().await;
     let status = wallet.sync_status();
     Json(serde_json::json!({
@@ -827,49 +937,81 @@ async fn status_handler(
         "target_height": status.target_height,
         "is_syncing": status.is_syncing,
     }))
+    .into_response()
 }
 
-async fn health_check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn health_check(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    if !is_authorized_host(&headers) {
+        return forbidden();
+    }
     let client = reqwest::Client::new();
     let fuegod_ok = client.get(format!("{}/getinfo", state.fuegod_url))
         .send().await
         .map(|r| r.status().is_success())
         .unwrap_or(false);
 
-    let wallet = state.wallet.lock().await;
-    let status = wallet.sync_status();
+    let (wallet_json, scanned) = match state.slot.current().await {
+        Some(wallet) => {
+            let wallet = wallet.lock().await;
+            let status = wallet.sync_status();
+            (
+                serde_json::json!({
+                    "address": wallet.address().await,
+                    "balance": wallet.balance().await,
+                    "height": status.current_height,
+                    "syncing": status.is_syncing,
+                }),
+                serde_json::json!(wallet.height().await),
+            )
+        }
+        None => (serde_json::Value::Null, serde_json::Value::Null),
+    };
 
     Json(serde_json::json!({
         "status": if fuegod_ok { "ok" } else { "degraded" },
         "fuego": fuegod_ok,
         "daemon": fuegod_ok,
         "swap": crate::swapd::swapd_healthy(crate::swapd::SWAPD_RPC_PORT).await,
-        "wallet": {
-            "address": wallet.address().await,
-            "balance": wallet.balance().await,
-            "height": status.current_height,
-            "syncing": status.is_syncing,
-        },
-        "scanned_height": wallet.height().await,
+        "wallet": wallet_json,
+        "scanned_height": scanned,
     }))
+    .into_response()
 }
 
 #[derive(Deserialize)]
 struct ScanBalanceRequest {
     view_secret: String,
     spend_public: String,
-    #[serde(default)]
-    start_height: u64,
-    #[serde(default = "default_batch_size")]
-    batch_size: u64,
 }
 
-fn default_batch_size() -> u64 { 100 }
-
+/// Balance of the open wallet. The caller's keys must be that wallet's: this is how
+/// the GUI confirms walletd is serving the unlocked vault and not some other wallet.
 async fn scan_balance_handler(
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let wallet = state.wallet.lock().await;
+    headers: axum::http::HeaderMap,
+    Json(mut req): Json<ScanBalanceRequest>,
+) -> axum::response::Response {
+    if !is_authorized_host(&headers) {
+        req.view_secret.zeroize();
+        return forbidden();
+    }
+    let Some(wallet) = state.slot.current().await else {
+        req.view_secret.zeroize();
+        return no_wallet();
+    };
+    let wallet = wallet.lock().await;
+    let matches = wallet.has_keys(&req.view_secret, &req.spend_public);
+    req.view_secret.zeroize();
+    if !matches {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "open wallet does not match these keys"})),
+        )
+            .into_response();
+    }
     let balance = wallet.balance_full().await;
     let status = wallet.sync_status();
     Json(serde_json::json!({
@@ -879,15 +1021,16 @@ async fn scan_balance_handler(
         "height": status.current_height,
         "address": wallet.address().await,
     }))
+    .into_response()
 }
 
 pub async fn run_server(
-    wallet: Arc<Mutex<WalletService>>,
+    slot: Arc<WalletSlot>,
     fuegod_url: &str,
     bind_addr: &str,
 ) -> Result<(), String> {
     let state = Arc::new(AppState {
-        wallet,
+        slot,
         fuegod_url: fuegod_url.to_string(),
     });
 
@@ -953,7 +1096,46 @@ mod dispatch_tests {
     use super::*;
 
     async fn call(wallet: &Mutex<WalletService>, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
-        handle_wallet_method(wallet, "http://127.0.0.1:1", method, &params).await
+        handle_wallet_method(Some(wallet), "http://127.0.0.1:1", method, &params).await
+    }
+
+    #[tokio::test]
+    async fn without_an_open_wallet_only_wallet_methods_are_refused() {
+        let params = serde_json::json!({});
+        let rpc = |m: &'static str| handle_wallet_method(None, "http://127.0.0.1:1", m, &params);
+        for m in ["getBalance", "getAddress", "create_subaddress", "sweep_legacy_subaddresses"] {
+            assert_eq!(rpc(m).await.unwrap_err(), NO_WALLET_OPEN, "{m}");
+        }
+        // Wallet methods that share a name with a fuegod endpoint never fall through to it.
+        for m in ["create_cd", "mint_heat", "sendTransaction"] {
+            assert_ne!(rpc(m).await.unwrap_err(), NOT_A_WALLET_METHOD, "{m}");
+        }
+        // Chain methods still reach fuegod.
+        assert_eq!(rpc("getinfo").await.unwrap_err(), NOT_A_WALLET_METHOD);
+    }
+
+    #[tokio::test]
+    async fn slot_methods_open_and_close_the_wallet() {
+        let root = std::env::temp_dir().join(format!("fuego-slotrpc-{}", std::process::id()));
+        let slot = WalletSlot::new(root.clone(), "http://127.0.0.1:1", false);
+        let seed_hex = hex::encode([6u8; 32]);
+        let mut body = serde_json::json!({"method": "open_wallet", "params": {"seed": seed_hex}});
+
+        let opened = handle_slot_method(&slot, "open_wallet", &mut body).await.unwrap().unwrap();
+        assert_eq!(body["params"]["seed"], "", "seed wiped from the request");
+        let status = handle_slot_method(&slot, "wallet_status", &mut serde_json::json!({})).await.unwrap().unwrap();
+        assert_eq!(status["open"], true);
+        assert_eq!(status["address"], opened["address"]);
+
+        let mut bad = serde_json::json!({"params": {"seed": "abcd"}});
+        assert!(handle_slot_method(&slot, "open_wallet", &mut bad).await.unwrap().is_err());
+
+        let closed = handle_slot_method(&slot, "close_wallet", &mut serde_json::json!({})).await.unwrap().unwrap();
+        assert_eq!(closed["closed"], true);
+        assert!(slot.current().await.is_none());
+        assert!(handle_slot_method(&slot, "get_legacy_wallet", &mut serde_json::json!({})).await.unwrap().unwrap().is_null());
+        assert!(handle_slot_method(&slot, "getBalance", &mut serde_json::json!({})).await.is_none());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]

@@ -18,6 +18,10 @@
 | 78 | Suite's CMake adds `-march=native` to Crypto whenever `CI`/`GITHUB_*` is set at configure; release `fuegod`/`xfg-swapd` could SIGILL on user CPUs older than the runner, and the cached wire-check build did SIGILL on another runner. Desktop builds and the wire check now configure with those vars unset; cache key bumped | claude-opus-5-5 | 2026-09-27 | ✅ done |
 | 79 | Android export check used `readelf -s --dyn-syms \| grep -q` under pipefail: grep exits on the match, readelf takes SIGPIPE (141), the step failed with the symbol present. Now `--dyn-syms` only, full read | claude-opus-5-5 | 2026-09-27 | ✅ done |
 | 80 | iOS symbol check failed on the debug simulator build: Xcode `ENABLE_DEBUG_DYLIB` puts app code in `Runner.debug.dylib`. The script now includes it when present | claude-opus-5-5 | 2026-09-27 | ✅ done |
+| 81 | walletd ran on its own random `master_seed.bin`: GUI balance (`scan_balance` ignored the keys), sends, history and sub-addresses were that key's, not the vault's. walletd now starts with `--await-wallet`; the app sends the vault seed (`open_wallet`) after unlock and `close_wallet` on lock; per-wallet state dirs with a wallet-id guard; `scan_balance` checks keys (409) | claude-opus-5-5 | 2026-09-29 | ✅ done |
+| 82 | Existing `master_seed.bin` wallet is synced as the legacy wallet and swept into the vault wallet from the receive screen (`get_legacy_wallet`, `sweep_legacy_wallet`, 50 inputs per tx); file kept | claude-opus-5-5 | 2026-09-29 | ✅ done |
+| 83 | Sync wrote the top block hash per block but the height/outputs per batch: quitting mid-batch skipped blocks for good. Hash and state now written in one sled batch; scanner skips outputs already held or spent (re-scan idempotent) | claude-opus-5-5 | 2026-09-29 | ✅ done |
+| 84 | Sub-address list reconciled with walletd's (labels and hidden entries kept by address); legacy sub-addresses re-registered per opened wallet; stale pre-`open_wallet` walletd is restarted instead of reused | claude-opus-5-5 | 2026-09-29 | ✅ done |
 
 ### Sign-off
 
