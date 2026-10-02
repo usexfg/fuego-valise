@@ -1,5 +1,25 @@
 # CHANGELOG.agent.md
 
+## [2026-10-01] OKOC valise-daemon audit continuation (local index, no source change)
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 85 | The **local** git index held `rust-fuego-wallet/src/walletd.rs` as a byte-exact revert of `ebc6b8a` ("harden walletd password handling + seed perms"). If committed it would have restored a literal `"fuego"` default (ignoring the SecureStorage password Dart passes as `WALLETD_CONTAINER_PASSWORD`/`WALLETD_PASSWORD`) and re-exposed the password via `ps` (CWE-214) — ADV-03, weighted 9.4/10 in the 2026-09-16 guardian audit. Confined to the local index; restored locally, then verified the remote tip already carries the hardened file byte-identically | opencode | 2026-10-01 | ✅ done (no remote change needed) |
+| 86 | `chain_registry.g.dart` differed from the pre-branch baseline by 10 lines (`tier: wallet` → `tier: swap` for op, avax, cro, monad, xpl, pls, uni, rh, bob, gleec). Confirmed intentional: the matching change is in `chains.yaml` and matches the branch's swap-chain commits (`1ab5eee`, `67df1af`). `gen_chains.dart --check` passes on the tip. The stale copy was the local branch, not the tip — no fix applied | opencode | 2026-10-01 | ✅ done (false positive) |
+| 87 | `web/icons/Icon-*.png` (referenced by `web/index.html:27`, `web/manifest.json`) present on the tip; `setup.sh` (Sideloadly/mitmproxy GSA sideload workaround) never tracked on the tip. Neither needed restoring | opencode | 2026-10-01 | ✅ done (no change needed) |
+| 88 | Discarded local commit `c10a4bc` (kept as `backup/c10a4bc-redundant-squash`): it re-squashed 28 commits already on the branch — including the `origin/master` merge `698900e` and tip `db0d4d1` "walletd: serve the vault wallet, not a key of its own" — and held the pre-tier-promotion `chain_registry.g.dart`. Pushing it would have removed 33,866 lines | opencode | 2026-10-01 | ✅ done |
+| 89 | `fuego-suite` submodule was uninitialized, so `fuego-ffi/build.rs:85` panicked and `cargo check` exited 101. Initialized to the recorded pin `524454dd` (an interrupted earlier attempt had left it on unpinned `master` `a36eccb`) | opencode | 2026-10-01 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo check` | ✅ exit 0 (4 pre-existing C warnings in suite `slow-hash.c`: unused `tmp` ×2, `aligned_malloc`, `aligned_free`) |
+| `flutter analyze` / `dart analyze` | ✅ 0 errors, 0 warnings (779 infos) |
+| `flutter test` | ✅ 59/59 |
+| `dart run tool/gen_chains.dart --check` | ✅ up to date (33 chains) |
+| Source changes in this entry | none — investigation, submodule init, and changelog only |
+
 ## [2026-09-26] PR #12 CI and review fixes
 
 | # | Task | Owner | Date | Status |
