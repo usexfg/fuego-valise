@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "suite_commit": "a0abbbebc6e9aeeffe2dde3f8f3b7887bf0a9067",
+  "suite_commit": "3d4b10adb76ed9b925bcd34746872e825e8fa4fd",
   "parameters": {
     "COIN": {
       "type": "uint64_t",
@@ -179,8 +179,8 @@
     },
     "UPGRADE_HEIGHT_V12": {
       "type": "uint32_t",
-      "value": 2666666,
-      "expr": "2666666"
+      "value": 1500000,
+      "expr": "1500000"
     },
     "FUEGO_DEV_FUND_ADDRESS": {
       "type": "string",
