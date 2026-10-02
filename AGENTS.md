@@ -157,6 +157,19 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
   - Legacy sub-address 1's spend key is the main view key.
   - Walletd rescans once when they are registered, and the receive screen offers to sweep them.
 
+## Commitment output keys (HEAT, LP, swap receipts, CDs)
+
+- They follow fuego-suite branch `keyderiv` (`90672944`). Its spec is `docs/developer/v11-p0-commitment-keys-and-asset-accounting-guide.md` in suite.
+  - **Owner-bound:** `P = derive_public_key(D, i, B)`, the same derivation as key outputs, with `B_sub` for a sub-address. Only `b` (or `b_sub`) gives the spend scalar `derive_secret_key(D, i, b)`.
+  - **Legacy:** `keyScalar = Hs("fuego_commit_key" || cn_fast_hash(D || i_LE32))`. The sender and any view-key holder can spend these outputs.
+- `BuildCommitmentDestination` carries the owner's `spend_pub` and `view_pub`. Every builder emits owner-bound keys.
+- The scanner tries owner-bound first: underive, then look up the spend-key table (primary and sub-addresses), then check `x·G == P`. Legacy is the fallback, stored as `CommitmentEntry.exposed = true`.
+- `fuego-sdk/tests/commitment_owner_bound_vectors.rs` holds byte-for-byte vectors from keyderiv's C++:
+  - primary and sub-addresses (0,1) and (0,7);
+  - indices 0, 1, 127, 128 and 1,000,000;
+  - legacy forms.
+- Not compatible with `"fuego_commit_v2"` (suite `a0abbbeb`, valise `0b84fb5` on `claude/valise-sdk-suite-sync-9u8mdk`). Do not merge commitment-key code from those.
+
 ## CryptoNight / keys
 
 - `fuego-ffi/build.rs` compiles suite's `slow-hash.c` with two fixes to the portable path, which every Android ABI uses:

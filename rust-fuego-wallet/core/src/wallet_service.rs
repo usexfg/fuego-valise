@@ -115,8 +115,10 @@ const KEY_RESCAN: &[u8] = b"rescan_requested";
 const KEY_SCAN_VERSION: &[u8] = b"scan_version";
 /// 2: vault secrets are reduced mod l (before, sc_check rejected most view keys,
 /// so most wallets found no outputs) and sub-address outputs are detected.
+/// 3: commitment outputs are matched owner-bound first and legacy ones marked
+/// exposed (the stored commitment layout changed).
 /// State scanned under older rules is rebuilt once from genesis.
-const SCAN_VERSION: u32 = 2;
+const SCAN_VERSION: u32 = 3;
 /// Id of the wallet whose state this database holds (see `wallet_id`).
 const KEY_WALLET_ID: &[u8] = b"wallet_id";
 
@@ -1580,13 +1582,15 @@ impl WalletService {
         let mut commitment_dests = vec![BuildCommitmentDestination {
             amount,
             term: term_blocks,
-            view_pub: None,
+            spend_pub: keys.spend_public,
+            view_pub: keys.view_public,
         }];
         if heat_change > 0 {
             commitment_dests.push(BuildCommitmentDestination {
                 amount: heat_change,
                 term: HEAT_TERM,
-                view_pub: None,
+                spend_pub: keys.spend_public,
+                view_pub: keys.view_public,
             });
         }
 
@@ -1827,7 +1831,8 @@ impl WalletService {
         let commitment_dests = vec![BuildCommitmentDestination {
             amount: rolled_amount,
             term: term_blocks,
-            view_pub: None,
+            spend_pub: keys.spend_public,
+            view_pub: keys.view_public,
         }];
 
         let spends = vec![CommitmentDeposit {
@@ -1905,13 +1910,15 @@ impl WalletService {
         let mut commitment_dests = vec![BuildCommitmentDestination {
             amount,
             term: HEAT_TERM,
-            view_pub: Some(recv_view),
+            spend_pub: recv_spend,
+            view_pub: recv_view,
         }];
         if change > 0 {
             commitment_dests.push(BuildCommitmentDestination {
                 amount: change,
                 term: HEAT_TERM,
-                view_pub: None,
+                spend_pub: keys.spend_public,
+                view_pub: keys.view_public,
             });
         }
 
@@ -1942,7 +1949,6 @@ impl WalletService {
         )
         .map_err(|e| format!("build: {e}"))?;
 
-        let _ = &recv_spend;
         let key_images: Vec<[u8; 32]> = selected.iter().map(|d| d.key_image).collect();
         self.broadcast_built(built, key_images).await
     }

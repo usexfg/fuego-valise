@@ -58,6 +58,9 @@ pub struct CommitmentEntry {
     /// Lock term in blocks. HEAT_TERM = HEAT (spendable); finite term = CD.
     pub term: u32,
     pub block_height: u64,
+    /// Legacy (pre owner-bound) key: derived from the view-key derivation alone,
+    /// so the sender and any view-key holder can spend it too. Sweep it.
+    pub exposed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -491,27 +494,53 @@ impl UtxoScanner {
                     received += output.amount;
                 }
                 OutputTarget::Commitment(commit) => {
-                    let deposit_secret =
-                        fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
-                    let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
-                    if ck.commit_key != commit.commit_key {
-                        continue;
-                    }
-                    if state.spent_images.contains(&ck.key_image)
-                        || state.commitments.iter().any(|c| c.key_image == ck.key_image)
+                    // Owner-bound first (fuego-suite matchOwnerBoundCommitKey): the
+                    // spend key behind P is P - Hs(D, i)G, looked up among this
+                    // wallet's spend keys, primary and sub-addresses. Then the legacy
+                    // form, which the sender and any view-key holder can derive too.
+                    let commit_pub = fuego_crypto::PublicKey(commit.commit_key);
+                    let owned = fuego_crypto::underive_public_key(&derivation, i as u64, &commit_pub)
+                        .and_then(|base| table.by_spend_key.get(&base.0).copied())
+                        .and_then(|(owner, spend_secret)| {
+                            let x = fuego_crypto::derive_secret_key(&derivation, i as u64, &spend_secret)?;
+                            // The scalar must reproduce the published key
+                            // (deriveOwnerBoundKeyImage); otherwise it is not ours.
+                            (fuego_crypto::ring::secret_key_to_public_key(&x) == commit.commit_key)
+                                .then_some((owner, x))
+                        });
+                    let (owner, key_scalar, exposed) = match owned {
+                        Some((owner, x)) => (owner, x, false),
+                        None => {
+                            let deposit_secret =
+                                fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
+                            let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
+                            if ck.commit_key != commit.commit_key {
+                                continue;
+                            }
+                            (OutputOwner::Primary, ck.key_scalar, true)
+                        }
+                    };
+                    let key_image = fuego_crypto::generate_key_image(&commit_pub, &key_scalar).0;
+                    if state.spent_images.contains(&key_image)
+                        || state.commitments.iter().any(|c| c.key_image == key_image)
                     {
                         continue;
                     }
+                    if let OutputOwner::Subaddress(minor) = owner {
+                        highest_subaddress = highest_subaddress.max(minor);
+                    }
+                    state.owners.insert(key_image, owner);
                     state.commitments.push(CommitmentEntry {
                         amount: output.amount,
                         commit_key: commit.commit_key,
-                        key_scalar: ck.key_scalar,
-                        key_image: ck.key_image,
+                        key_scalar,
+                        key_image,
                         global_index: 0,
                         tx_hash: *tx_hash,
                         output_position: i as u32,
                         term: commit.term,
                         block_height,
+                        exposed,
                     });
                     received += output.amount;
                 }
@@ -835,6 +864,59 @@ mod subaddress_tests {
         assert_eq!(by.get(&OutputOwner::Subaddress(3)), Some(&250));
         assert_eq!(s.balance().confirmed, 350);
         assert_spendable(&s);
+    }
+
+    /// One-commitment tx (term HEAT_TERM) whose key is `key_for(D)` at index 0.
+    fn commit_to(view: &[u8; 32], r_seed: u8, key_for: impl Fn(&[u8; 32]) -> [u8; 32]) -> TransactionPrefix {
+        let r = fuego_crypto::Keypair::from_secret([r_seed; 32]);
+        let d = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(*view), &r.secret).unwrap();
+        let mut extra = vec![0x01];
+        extra.extend_from_slice(&r.public);
+        TransactionPrefix {
+            version: 1,
+            unlock_time: 0,
+            inputs: Vec::new(),
+            outputs: vec![TxOutput {
+                amount: 500,
+                target: OutputTarget::Commitment(crate::serialization::CommitmentOutputTarget {
+                    commit_key: key_for(&d),
+                    term: crate::serialization::HEAT_TERM,
+                    amount_commitment: [0u8; 32],
+                    amount_proof: [0u8; crate::serialization::AMOUNT_PROOF_LEN],
+                }),
+            }],
+            extra,
+        }
+    }
+
+    #[test]
+    fn commitments_owner_bound_found_by_owner_legacy_marked_exposed() {
+        let s = scanner();
+        let keys = s.wallet_keys();
+        let (d5, _) = s.subaddress(5).unwrap();
+        let owner_bound = |spend: [u8; 32]| move |d: &[u8; 32]| fuego_crypto::ring::derive_public_key(d, 0, &spend).unwrap();
+
+        s.scan_tx_prefix(&[1; 32], &commit_to(&keys.view_public, 3, owner_bound(keys.spend_public)), 10).unwrap();
+        s.scan_tx_prefix(&[2; 32], &commit_to(&keys.view_public, 4, owner_bound(d5)), 11).unwrap();
+        s.scan_tx_prefix(&[3; 32], &commit_to(&keys.view_public, 5, |d| {
+            fuego_crypto::ring::derive_commitment_keys(&fuego_crypto::ring::derive_deposit_secret(d, 0)).commit_key
+        }), 12).unwrap();
+        // Bound to someone else's spend key: not ours.
+        let stranger = fuego_crypto::Keypair::from_secret([9; 32]).public;
+        s.scan_tx_prefix(&[4; 32], &commit_to(&keys.view_public, 6, owner_bound(stranger)), 13).unwrap();
+
+        let c = s.commitments();
+        assert_eq!(c.len(), 3);
+        assert_eq!(c.iter().map(|e| e.exposed).collect::<Vec<_>>(), vec![false, false, true]);
+        let owners = s.snapshot().owners;
+        let owner_of = |e: &CommitmentEntry| owners.iter().find(|(k, _)| *k == e.key_image).map(|(_, o)| *o);
+        assert_eq!(owner_of(&c[0]), Some(OutputOwner::Primary));
+        assert_eq!(owner_of(&c[1]), Some(OutputOwner::Subaddress(5)));
+        for e in &c {
+            // Every recorded scalar opens its key, and the image matches it.
+            assert_eq!(fuego_crypto::ring::secret_key_to_public_key(&e.key_scalar), e.commit_key);
+            assert_eq!(fuego_crypto::ring::generate_key_image(&e.commit_key, &e.key_scalar), e.key_image);
+        }
     }
 
     #[test]

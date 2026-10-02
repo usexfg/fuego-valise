@@ -17,7 +17,7 @@ use crate::serialization::{
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
 use fuego_crypto::ring::{
-    check_ring_signature, derive_commitment_keys, derive_deposit_secret, derive_public_key,
+    check_ring_signature, derive_public_key,
     derive_secret_key, generate_key_derivation, generate_key_image, generate_ring_signature,
     hash_to_scalar,
 };
@@ -66,16 +66,23 @@ pub struct BuildDestination {
     pub view_pub: [u8; 32],
 }
 
-/// A commitment destination: minted HEAT or a term-locked CD. The commit
-/// key is derived by the builder from the tx secret key and the given view
-/// key (depositSecret = Hs(D || outputIndex), D = 8*(r*V)). `view_pub`
-/// defaults to the wallet's own view key (mint/CD); HEAT transfers pass the
-/// recipient's view key so only the recipient can spend the output.
+/// A commitment destination: HEAT, LP shares, a swap receipt or a term-locked
+/// CD, owned by the address (`spend_pub`, `view_pub`). The builder derives an
+/// owner-bound commit key, P = derive_public_key(D, i, spend_pub) with
+/// D = 8*(r*view_pub) (fuego-suite `deriveOwnerBoundCommitKey`): the view key
+/// finds the output, only the matching spend secret can spend it.
 #[derive(Debug, Clone)]
 pub struct BuildCommitmentDestination {
     pub amount: u64,
     pub term: u32,
-    pub view_pub: Option<[u8; 32]>,
+    pub spend_pub: [u8; 32],
+    pub view_pub: [u8; 32],
+}
+
+/// Owner-bound commit key for output `out_index` (see BuildCommitmentDestination).
+fn owner_bound_commit_key(derivation: &[u8; 32], out_index: usize, spend_pub: &[u8; 32]) -> Result<[u8; 32]> {
+    derive_public_key(derivation, out_index as u64, spend_pub)
+        .ok_or_else(|| SdkError::Crypto("commitment key derivation failed".into()))
 }
 
 /// Deterministic tx secret key recovery: r = Hs(viewSecret || inputsHash),
@@ -524,20 +531,18 @@ pub fn build_mixed_output_transaction(
     let mut outputs = Vec::with_capacity(commitment_destinations.len() + key_destinations.len());
     let mut out_index = 0usize;
     for cdest in commitment_destinations {
-        let dest_view = cdest.view_pub.as_ref().unwrap_or(view_pub);
-        let dest_derivation = if dest_view == view_pub {
+        let dest_derivation = if cdest.view_pub == *view_pub {
             tx_derivation
         } else {
-            generate_key_derivation(dest_view, &txkey)
+            generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        let commit_key = owner_bound_commit_key(&dest_derivation, out_index, &cdest.spend_pub)?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -635,7 +640,8 @@ pub fn build_mint_transaction(
         .map(|b| BuildCommitmentDestination {
             amount: *b,
             term: crate::serialization::HEAT_TERM,
-            view_pub: None,
+            spend_pub: *change_spend,
+            view_pub: *change_view,
         })
         .collect();
 
@@ -740,20 +746,18 @@ pub fn build_commitment_spend_transaction(
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("commitment derivation failed".into()))?;
     for cdest in commitment_destinations {
-        let dest_view = cdest.view_pub.as_ref().unwrap_or(view_pub);
-        let dest_derivation = if dest_view == view_pub {
+        let dest_derivation = if cdest.view_pub == *view_pub {
             tx_derivation
         } else {
-            generate_key_derivation(dest_view, &txkey)
+            generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        let commit_key = owner_bound_commit_key(&dest_derivation, out_index, &cdest.spend_pub)?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -846,20 +850,18 @@ fn assemble_outputs_and_sign(
     );
     let mut out_index = 0usize;
     for cdest in commitment_destinations {
-        let dest_view = cdest.view_pub.as_ref().unwrap_or(view_pub);
-        let dest_derivation = if dest_view == view_pub {
+        let dest_derivation = if cdest.view_pub == *view_pub {
             tx_derivation
         } else {
-            generate_key_derivation(dest_view, &txkey)
+            generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        let commit_key = owner_bound_commit_key(&dest_derivation, out_index, &cdest.spend_pub)?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -955,6 +957,7 @@ pub fn build_swap_xfg_to_heat_transaction(
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
+    let (change_spend, change_view) = change_keys;
     let found: u64 = inputs.iter().map(|u| u.amount).sum();
     let change = found - input_amount - fee;
 
@@ -964,11 +967,11 @@ pub fn build_swap_xfg_to_heat_transaction(
         .map(|b| BuildCommitmentDestination {
             amount: *b,
             term: HEAT_TERM,
-            view_pub: None,
+            spend_pub: *change_spend,
+            view_pub: *change_view,
         })
         .collect();
 
-    let (change_spend, change_view) = change_keys;
     let (change_chunks, dust) = decompose_change(change, DEFAULT_DUST_THRESHOLD);
     let mut key_dests: Vec<BuildDestination> = Vec::with_capacity(change_chunks.len() + 1);
     for chunk in change_chunks {
@@ -1042,7 +1045,8 @@ pub fn build_swap_heat_to_xfg_transaction(
             commitment_dests.push(BuildCommitmentDestination {
                 amount: bill,
                 term: HEAT_TERM,
-                view_pub: None,
+                spend_pub: *spend_pub,
+            view_pub: *view_pub_dest,
             });
         }
     }
@@ -1083,6 +1087,7 @@ pub fn build_lp_add_transaction(
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
+    let (change_spend, change_view) = change_keys;
     if xfg_inputs.is_empty() && heat_deposits.is_empty() {
         return Err(SdkError::InsufficientFunds { need: fee, have: 0 });
     }
@@ -1168,7 +1173,8 @@ pub fn build_lp_add_transaction(
     let commitment_dests = vec![BuildCommitmentDestination {
         amount: lp_shares,
         term: crate::serialization::DEPOSIT_TERM_LP,
-        view_pub: None,
+        spend_pub: *change_spend,
+            view_pub: *change_view,
     }];
     let mut commitment_dests = commitment_dests;
     if heat_change > 0 {
@@ -1176,12 +1182,12 @@ pub fn build_lp_add_transaction(
             commitment_dests.push(BuildCommitmentDestination {
                 amount: bill,
                 term: HEAT_TERM,
-                view_pub: None,
+                spend_pub: *change_spend,
+            view_pub: *change_view,
             });
         }
     }
 
-    let (change_spend, change_view) = change_keys;
     let (change_chunks, dust) = decompose_change(xfg_change, DEFAULT_DUST_THRESHOLD);
     let mut key_dests: Vec<BuildDestination> = Vec::with_capacity(change_chunks.len() + 1);
     for chunk in change_chunks {
@@ -1254,7 +1260,8 @@ pub fn build_lp_remove_transaction(
         commitment_dests.push(BuildCommitmentDestination {
             amount: bill,
             term: HEAT_TERM,
-            view_pub: None,
+            spend_pub: *spend_pub,
+            view_pub: *view_pub_dest,
         });
     }
 
