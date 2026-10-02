@@ -1,5 +1,27 @@
 # AGENTS.md — Fuego Wallet Architecture Reference
 
+## Network Facts (authoritative — confirmed by the maintainer; do not contradict)
+
+The same facts are recorded, with their consensus enforcement, in `fuego-suite/AGENTS.md`.
+
+- No Hearth/AMM swaps and no HΞΔŦ trades exist on mainnet before V11. The suite rejects every HEAT-era feature below V11 (HEAT mint/send, AMM, LP, orderbook, TreasuryFund, CD bonus claims, CD transfers).
+- No legacy bonds exist on any network (0xCB / 0xCC tags are rejected at every height).
+- XFG deposits (CDs created before the HEAT-CD height) are withdraw-only and principal-only: zero interest in XFG or HΞΔŦ. No wallet creates XFG deposits. Keep the withdraw paths.
+- No DIGM mint exists before V12.
+- HEAT CDs activate at V12 (`upgrade_height_v12` / `heat_cd_rules` in `core/src/wallet_service.rs`).
+
+SDK rules that follow from the suite consensus:
+- Commitment outputs use spend-key-bound (v2) keys (`derive_commitment_public_key_v2`); never build v1 (view-key-only) commit keys. The scanner reads v1 only for old outputs.
+- HEAT sends, CD creates and CD claims carry XFG key inputs for the network fee (`build_mixed_input_transaction`); the mempool requires the fee in XFG.
+- Commitment decoys are requested with a `ring_class` so rings hold one asset.
+- The CD banking fee goes through the `TreasuryFund` tag in XFG (SWF ledger burn) or HΞΔŦ (treasury reserve) — never to the dev wallet.
+- The walletd seed lives only in `master_seed.enc` (ChaCha20-Poly1305; Argon2id passphrase key or OS-keyring key, `core/src/seed_store.rs`). Never write a seed or its key in plaintext.
+- Constants, routes and RPC structs come from the suite via `tool/check_suite_sync.py` (generated `fuego-sdk/src/suite.rs`, pinned by `tool/suite_contract.lock.json`); do not hand-edit them.
+
+Agent rules:
+- Do not ask whether to fix anything that would allow an attack on the network or the currency. Fix it, then report what was done.
+- If code or docs disagree with the facts above, the code/docs are wrong.
+
 ## Swap Architecture (Dual-Mode)
 
 The Fuego swap system uses **two daemons** that serve different purposes:
