@@ -231,9 +231,12 @@ fn heat_mint_transaction() {
     for output in &built.tx.prefix.outputs {
         if let OutputTarget::Commitment(c) = &output.target {
             assert_eq!(c.term, HEAT_TERM);
-            let ds = derive_deposit_secret(&derivation, heat_index);
-            let ck = derive_commitment_keys(&ds);
-            assert_eq!(ck.commit_key, c.commit_key, "mint commit key mismatch");
+            // Owner-bound: key is bound to the wallet's spend public key.
+            let expected = fuego_crypto::ring::derive_owner_bound_commit_key(
+                &derivation, heat_index as u64, &spend_pub,
+            )
+            .expect("owner-bound mint commit key");
+            assert_eq!(expected, c.commit_key, "mint commit key mismatch");
             heat_index += 1;
         }
     }
@@ -494,7 +497,7 @@ fn heat_cd_transaction_structure() {
     // heat_cd: spend HEAT deposits -> CD commitment (finite term) + HEAT
     // change + treasury-fund extra.
     let mut rng = StdRng::seed_from_u64(0x5EED_CDCD_CDCD_CDCD);
-    let ((_spend_sec, _spend_pub), (_, view_pub)) = wallet_keys(&mut rng);
+    let ((_spend_sec, own_spend_pub), (_, view_pub)) = wallet_keys(&mut rng);
 
     let mut deposits = Vec::new();
     for _ in 0..1u32 {
@@ -547,8 +550,8 @@ fn heat_cd_transaction_structure() {
         mixin,
         &[],
         &[
-            BuildCommitmentDestination { amount, term: term_blocks, view_pub: None },
-            BuildCommitmentDestination { amount: change, term: HEAT_TERM, view_pub: None },
+            BuildCommitmentDestination { amount, term: term_blocks, view_pub: None, spend_pub: own_spend_pub },
+            BuildCommitmentDestination { amount: change, term: HEAT_TERM, view_pub: None, spend_pub: own_spend_pub },
         ],
         &view_pub,
         MINIMUM_FEE,
@@ -597,7 +600,7 @@ fn heat_cd_transaction_structure() {
 fn tx_proof_roundtrip() {
     use fuego_crypto::ring::{check_tx_proof, generate_tx_proof, raw_scalarmult_key};
     let mut rng = StdRng::seed_from_u64(0x9A0F_9A0F_9A0F_9A0F);
-    let ((_ss, _sp), (view_sec, view_pub)) = wallet_keys(&mut rng);
+    let ((own_spend_sec, own_spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
 
     let prefix = random_scalar(&mut rng);
     let r = random_scalar(&mut rng);
@@ -665,12 +668,18 @@ fn heat_send_recipient_view_key() {
     // send_heat: the recipient commitment must derive with the RECIPIENT's
     // view key so only they can recover/spend it.
     let mut rng = StdRng::seed_from_u64(0x5EED_5EED_5EED_5EED);
-    let ((_ss, _sp), (view_sec, view_pub)) = wallet_keys(&mut rng);
+    let ((own_spend_sec, own_spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
     let recv_view_sec = random_scalar(&mut rng);
     let mut rv = GeP3::default();
     ge_scalarmult_base(&mut rv, &recv_view_sec);
     let mut recv_view = [0u8; 32];
     ge_p3_tobytes(&mut recv_view, &rv);
+    // Recipient spend public key: owner-bound outputs bind ownership to it.
+    let recv_spend_sec = random_scalar(&mut rng);
+    let mut rs = GeP3::default();
+    ge_scalarmult_base(&mut rs, &recv_spend_sec);
+    let mut recv_spend = [0u8; 32];
+    ge_p3_tobytes(&mut recv_spend, &rs);
 
     let sec = random_scalar(&mut rng);
     let mut p = GeP3::default();
@@ -712,8 +721,8 @@ fn heat_send_recipient_view_key() {
         mixin,
         &[],
         &[
-            BuildCommitmentDestination { amount, term: HEAT_TERM, view_pub: Some(recv_view) },
-            BuildCommitmentDestination { amount: change, term: HEAT_TERM, view_pub: None },
+            BuildCommitmentDestination { amount, term: HEAT_TERM, view_pub: Some(recv_view), spend_pub: recv_spend },
+            BuildCommitmentDestination { amount: change, term: HEAT_TERM, view_pub: None, spend_pub: own_spend_pub },
         ],
         &view_pub,
         MINIMUM_FEE,
@@ -726,20 +735,45 @@ fn heat_send_recipient_view_key() {
     let pos = built.tx.prefix.extra.iter().position(|b| *b == 0xF9).expect("send auth");
     assert_eq!(&built.tx.prefix.extra[pos + 1..pos + 9], &amount.to_le_bytes());
 
-    // Recipient output (index 0) must be recoverable with the RECIPIENT's
-    // view key: D = 8*(r*V_recv), depositSecret = Hs(D || 0), commitKey match.
+    // Recipient output (index 0) is OWNER-BOUND: deliverable via the recipient's
+    // view key, but spendable only with the recipient's spend secret. Assert the
+    // security property, not just that a key matches.
     let r_bytes: [u8; 32] = built.tx.prefix.extra[1..33].try_into().unwrap();
     let d_recv = fuego_crypto::generate_key_derivation(
         &fuego_crypto::PublicKey(r_bytes),
         &recv_view_sec,
     )
     .unwrap();
-    let ds = derive_deposit_secret(&d_recv, 0);
-    let ck = derive_commitment_keys(&ds);
     match &built.tx.prefix.outputs[0].target {
         OutputTarget::Commitment(c) => {
-            assert_eq!(c.commit_key, ck.commit_key, "recipient commit key mismatch");
             assert_eq!(c.term, HEAT_TERM);
+            // Owner-bound key for the recipient's spend public key.
+            let expected = fuego_crypto::ring::derive_owner_bound_commit_key(
+                &d_recv, 0, &recv_spend,
+            )
+            .expect("owner-bound commit key");
+            assert_eq!(c.commit_key, expected, "recipient commit key mismatch");
+            // And it must NOT be the legacy sender/view-key-spendable form.
+            let legacy = derive_commitment_keys(&derive_deposit_secret(&d_recv, 0));
+            assert_ne!(
+                c.commit_key, legacy.commit_key,
+                "recipient output must not use the legacy derivation"
+            );
+            // Only the recipient's spend secret yields a valid key image.
+            let (sec, ki) = fuego_crypto::ring::derive_owner_bound_key_image(
+                &d_recv, 0, &c.commit_key, &recv_spend_sec,
+            )
+            .expect("recipient must be able to sign");
+            assert_eq!(fuego_crypto::ring::secret_key_to_public_key(&sec), c.commit_key);
+            // The sender's own spend secret must not work.
+            assert!(
+                fuego_crypto::ring::derive_owner_bound_key_image(
+                    &d_recv, 0, &c.commit_key, &own_spend_sec,
+                )
+                .is_none(),
+                "sender must not be able to sign the recipient output"
+            );
+            let _ = ki;
         }
         _ => panic!("expected commitment output"),
     }
