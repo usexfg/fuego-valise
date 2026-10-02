@@ -365,6 +365,18 @@ async fn handle_wallet_method(
                 .map_err(|e| format!("sweep failed: {}", e))?;
             Ok(serde_json::json!({ "txHash": tx }))
         }
+        // Commitment outputs with legacy keys: the sender and any view-key holder
+        // can spend them too until they are moved.
+        "get_exposed_commitments" => {
+            let wallet = need(wallet)?.lock().await;
+            Ok(wallet.exposed_commitments())
+        }
+        "sweep_exposed_heat" => {
+            let wallet = need(wallet)?.lock().await;
+            let (tx, remaining) = wallet.sweep_exposed_heat().await
+                .map_err(|e| format!("sweep failed: {}", e))?;
+            Ok(serde_json::json!({ "txHash": tx, "remaining": remaining }))
+        }
         "register_alias" => {
             let alias = params.get("alias")
                 .and_then(|a| a.as_str())
@@ -1103,7 +1115,8 @@ mod dispatch_tests {
     async fn without_an_open_wallet_only_wallet_methods_are_refused() {
         let params = serde_json::json!({});
         let rpc = |m: &'static str| handle_wallet_method(None, "http://127.0.0.1:1", m, &params);
-        for m in ["getBalance", "getAddress", "create_subaddress", "sweep_legacy_subaddresses"] {
+        for m in ["getBalance", "getAddress", "create_subaddress", "sweep_legacy_subaddresses",
+                  "get_exposed_commitments", "sweep_exposed_heat"] {
             assert_eq!(rpc(m).await.unwrap_err(), NO_WALLET_OPEN, "{m}");
         }
         // Wallet methods that share a name with a fuegod endpoint never fall through to it.
@@ -1154,6 +1167,11 @@ mod dispatch_tests {
         // No confirmed legacy outputs: nothing to sweep, and no daemon call is made.
         let swept = call(&wallet, "sweep_legacy_subaddresses", serde_json::json!({})).await.unwrap();
         assert!(swept["txHash"].is_null());
+        let exposed = call(&wallet, "get_exposed_commitments", serde_json::json!({})).await.unwrap();
+        assert_eq!(exposed["heat"]["count"], 0);
+        let swept = call(&wallet, "sweep_exposed_heat", serde_json::json!({})).await.unwrap();
+        assert!(swept["txHash"].is_null());
+        assert_eq!(swept["remaining"], 0);
 
         // Names the handler does not implement fall through to the fuegod proxy.
         assert_eq!(call(&wallet, "getinfo", serde_json::json!({})).await.unwrap_err(), NOT_A_WALLET_METHOD);

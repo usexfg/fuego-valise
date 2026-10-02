@@ -168,6 +168,10 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
   - primary and sub-addresses (0,1) and (0,7);
   - indices 0, 1, 127, 128 and 1,000,000;
   - legacy forms.
+- Legacy outputs still on chain stay spendable by their sender and view-key holders until moved.
+  - JSON-RPC `get_exposed_commitments` reports them by kind (heat / cds / lp / other).
+  - `sweep_exposed_heat` moves exposed HEAT into a new owner-bound output, 50 inputs per tx. The receive screen offers it.
+  - Exposed CDs and LP shares are reported only. They stop being exposed when withdrawn, because the withdrawal outputs are owner-bound.
 - Not compatible with `"fuego_commit_v2"` (suite `a0abbbeb`, valise `0b84fb5` on `claude/valise-sdk-suite-sync-9u8mdk`). Do not merge commitment-key code from those.
 
 ## CryptoNight / keys

@@ -324,6 +324,18 @@ impl UtxoScanner {
         self.state.read().unwrap().commitments.clone()
     }
 
+    /// Unspent commitments with legacy keys (spendable by the sender and any
+    /// view-key holder too), not already reserved by a pending spend.
+    pub fn exposed_commitments(&self) -> Vec<CommitmentEntry> {
+        let state = self.state.read().unwrap();
+        state
+            .commitments
+            .iter()
+            .filter(|c| c.exposed && !state.spent_images.contains(&c.key_image))
+            .cloned()
+            .collect()
+    }
+
     /// Spendable HEAT (term == HEAT_TERM, not reserved).
     pub fn heat_outputs(&self) -> Vec<CommitmentEntry> {
         let state = self.state.read().unwrap();

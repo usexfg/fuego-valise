@@ -24,6 +24,7 @@
 | 84 | Sub-address list reconciled with walletd's (labels and hidden entries kept by address); legacy sub-addresses re-registered per opened wallet; stale pre-`open_wallet` walletd is restarted instead of reused | claude-opus-5-5 | 2026-09-29 | ✅ done |
 | 85 | Commitment outputs (HEAT, LP, swap receipts, CDs) were built with the legacy key, spendable by the sender and any view-key holder (`send_heat` even discarded the recipient's spend key). Builders now emit owner-bound keys `derive_public_key(D, i, B)` (suite `keyderiv` parity); scanner matches owner-bound via the sub-address table, falls back to legacy marked `exposed`; SCAN_VERSION 3 | claude-opus-5-5 | 2026-10-02 | ✅ done |
 | 86 | Byte-for-byte C++/Rust vectors from keyderiv (primary + sub-addresses, 5 indices, legacy); Rust-built mint and HEAT-send txs parse and round-trip in suite's production parser with matching hashes | claude-opus-5-5 | 2026-10-02 | ✅ done |
+| 87 | Exposed (legacy-key) commitments: `get_exposed_commitments` report by kind, `sweep_exposed_heat` moves exposed HEAT to a new owner-bound output (50 inputs/tx); receive-screen notice and button; `send_heat` and the sweep share `transfer_heat` | claude-opus-5-5 | 2026-10-02 | ✅ done |
 
 ### Sign-off
 
