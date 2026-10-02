@@ -4,11 +4,12 @@
 
 The same facts are recorded, with their consensus enforcement, in `fuego-suite/AGENTS.md`.
 
-- No Hearth/AMM swaps and no HΞΔŦ trades exist on mainnet before V11. The suite rejects every HEAT-era feature below V11 (HEAT mint/send, AMM, LP, orderbook, TreasuryFund, CD bonus claims, CD transfers).
+- No HΞΔŦ, Hearth (AMM/orderbook), CDs or atomic swaps have been used on mainnet yet. The atomic swap code has been live since V10 but has never worked well enough to be used. The suite rejects every HEAT-era feature (any commitment output or input included) below V11.
+- The HΞΔŦ launch rate is 10:1 (10 XFG = 1 HΞΔŦ). There is no 1:1 rate anywhere; price code fails closed without a pool/TWAP price.
+- CDs start at V12 and are always HΞΔŦ CDs (`upgrade_height_v12` / `heat_cd_rules` in `core/src/wallet_service.rs`). No CD exists before V12.
+- XFG deposits (the pre-existing XFG term deposits) are withdraw-only and principal-only: zero interest in XFG or HΞΔŦ. No wallet creates XFG deposits. Keep the withdraw paths.
 - No legacy bonds exist on any network (0xCB / 0xCC tags are rejected at every height).
-- XFG deposits (CDs created before the HEAT-CD height) are withdraw-only and principal-only: zero interest in XFG or HΞΔŦ. No wallet creates XFG deposits. Keep the withdraw paths.
 - No DIGM mint exists before V12.
-- HEAT CDs activate at V12 (`upgrade_height_v12` / `heat_cd_rules` in `core/src/wallet_service.rs`).
 
 SDK rules that follow from the suite consensus:
 - Commitment outputs use spend-key-bound (v2) keys (`derive_commitment_public_key_v2`); never build v1 (view-key-only) commit keys. The scanner reads v1 only for old outputs.

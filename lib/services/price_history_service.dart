@@ -15,24 +15,6 @@ class PriceHistoryService {
     final List<dynamic> raw = jsonDecode(jsonStr) as List<dynamic>;
     _allCandles = raw.map((e) => Candlestick.fromJson(e as Map<String, dynamic>)).toList();
 
-    // Append final launch-price candle: XFG=$0.15
-    if (_allCandles!.isNotEmpty) {
-      final last = _allCandles!.last;
-      final now = DateTime.now();
-      final launchTs = DateTime(now.year, now.month, now.day)
-              .millisecondsSinceEpoch ~/
-          1000;
-      if (last.time < launchTs) {
-        _allCandles!.add(Candlestick(
-          time: launchTs,
-          open: last.close,
-          high: 0.155,
-          low: 0.145,
-          close: 0.15,
-          volume: 0,
-        ));
-      }
-    }
     return _allCandles!;
   }
 
