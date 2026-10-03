@@ -277,7 +277,6 @@ class FuegoRPCService {
   Future<String> sendHeat({
     required String address,
     required int amount,
-    int fee = 0,
     int mixin = 4,
   }) async {
     try {

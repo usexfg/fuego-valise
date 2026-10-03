@@ -10,7 +10,8 @@ use fuego_crypto::ring::{
 };
 use fuego_sdk::serialization::{serialize_tx, OutputTarget, TxInput, HEAT_TERM};
 use fuego_sdk::transaction_builder::{
-    build_commitment_spend_transaction, build_mint_transaction, decompose_heat_into_bills,
+    build_commitment_spend_transaction, build_commitment_spend_xfg_fee_transaction,
+    build_mint_transaction, decompose_heat_into_bills,
     BuildCommitmentDestination, BuildDestination, CommitmentDeposit, DecoyEntry, SpendableOutput,
     MINIMUM_FEE,
 };
@@ -764,4 +765,102 @@ fn heat_send_recipient_view_key() {
         OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d_own, 1, &spend_pub, &spend_sec),
         _ => panic!("expected commitment output"),
     }
+}
+
+#[test]
+fn heat_send_pays_fee_in_xfg() {
+    // suite's block validation conserves HEAT exactly in a HEAT send; only
+    // XFG may leave as the fee. Key inputs (XFG) come first, then the HEAT
+    // commitment spends; every ring signature verifies.
+    let mut rng = StdRng::seed_from_u64(0xFEE_0F_8EA7);
+    let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
+    let ((recv_spend_sec, recv_spend), (recv_view_sec, recv_view)) = wallet_keys(&mut rng);
+
+    let sec = random_scalar(&mut rng);
+    let commit_key = fuego_crypto::ring::secret_key_to_public_key(&sec);
+    let key_image = fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
+    let deposits = vec![CommitmentDeposit {
+        amount: 100_000_000,
+        commit_key,
+        key_scalar: sec,
+        key_image: key_image.0,
+        global_index: 800,
+        claimed_interest: 0,
+    }];
+    let heat_decoys: Vec<Vec<(u32, [u8; 32])>> = vec![(0..2u8)
+        .map(|k| (801 + k as u32, make_decoy(0, 0x40 + k).out_key))
+        .collect()];
+
+    let fee_input = make_output(30_000, random_scalar(&mut rng), 500);
+    let fee_decoys = vec![vec![make_decoy(498, 1), make_decoy(499, 2)]];
+
+    let amount = 40_000_000u64;
+    let mut extra = Vec::new();
+    fuego_sdk::serialization::add_heat_send_auth_extra(&mut extra, amount);
+    let built = build_commitment_spend_xfg_fee_transaction(
+        &deposits,
+        &heat_decoys,
+        std::slice::from_ref(&fee_input),
+        &fee_decoys,
+        &[
+            BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
+            BuildCommitmentDestination { amount: 60_000_000, term: HEAT_TERM, spend_pub, view_pub },
+        ],
+        (&spend_pub, &view_pub),
+        &view_sec,
+        MINIMUM_FEE,
+        &extra,
+        &mut rng,
+    )
+    .unwrap();
+    let prefix = &built.tx.prefix;
+
+    // Per-asset conservation as suite's pushBlock checks it.
+    assert!(matches!(prefix.inputs[0], TxInput::Key(_)));
+    assert!(matches!(prefix.inputs[1], TxInput::CommitmentSpend(_)));
+    let heat_in: u64 = deposits.iter().map(|d| d.amount).sum();
+    let heat_out: u64 = prefix.outputs.iter().filter(|o| matches!(o.target, OutputTarget::Commitment(_))).map(|o| o.amount).sum();
+    let xfg_out: u64 = prefix.outputs.iter().filter(|o| matches!(o.target, OutputTarget::Key(_))).map(|o| o.amount).sum();
+    assert_eq!(heat_in, heat_out);
+    assert_eq!(fee_input.amount - xfg_out, MINIMUM_FEE);
+
+    // Every ring signature verifies against its ring.
+    let rings: Vec<Vec<[u8; 32]>> = vec![
+        {
+            let mut r: Vec<(u32, [u8; 32])> = fee_decoys[0].iter().map(|d| (d.global_index, d.out_key)).collect();
+            r.push((fee_input.global_index, fee_input.output_key));
+            r.sort_by_key(|(i, _)| *i);
+            r.into_iter().map(|(_, k)| k).collect()
+        },
+        {
+            let mut r = heat_decoys[0].clone();
+            r.push((800, commit_key));
+            r.sort_by_key(|(i, _)| *i);
+            r.into_iter().map(|(_, k)| k).collect()
+        },
+    ];
+    let images = [fee_input.key_image, key_image.0];
+    for i in 0..2 {
+        assert!(fuego_crypto::ring::check_ring_signature(&built.prefix_hash, &images[i], &rings[i], &built.tx.signatures[i]));
+    }
+
+    // Recipient output (index 0) is owner-bound to the recipient; the change
+    // (index 1) to us. XFG change follows the commitment outputs.
+    let r_pub = fuego_sdk::serialization::parse_extra_pubkey(&prefix.extra).unwrap();
+    let d_recv = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_pub), &recv_view_sec).unwrap();
+    let d_own = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_pub), &view_sec).unwrap();
+    for (i, (d, spub, ssec)) in [(d_recv, recv_spend, recv_spend_sec), (d_own, spend_pub, spend_sec)].into_iter().enumerate() {
+        match &prefix.outputs[i].target {
+            OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d, i as u32, &spub, &ssec),
+            _ => panic!("expected commitment output at {i}"),
+        }
+    }
+
+    println!("XFG_FEE_HEAT_SEND_TX {}", hex::encode(&built.serialized));
+    // suite's parseAndValidateTransactionFromBinaryArray parses it, round-trips
+    // it byte for byte and gives this hash.
+    assert_eq!(
+        hex::encode(built.tx_hash),
+        "f374318536f4fcc391afba6af872817e2bf3308beb17d2993481a319401d094b"
+    );
 }

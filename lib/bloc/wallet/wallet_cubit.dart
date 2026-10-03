@@ -545,11 +545,11 @@ class WalletCubit extends Cubit<WalletState> {
     return txHash;
   }
 
-  /// Send ΗΞΔŦ to another address. Requires verified PIN.
+  /// Send ΗΞΔŦ to another address. Requires verified PIN. The network fee
+  /// is [heatTxFeeXfgAtomic] XFG; the ΗΞΔŦ amount arrives in full.
   Future<String> sendHeat({
     required String address,
     required double amount,
-    required double fee,
     required String pin,
     int mixin = 4,
   }) async {
@@ -563,12 +563,11 @@ class WalletCubit extends Cubit<WalletState> {
     if (amount <= 0) {
       throw ArgumentError('Amount must be positive');
     }
-    if (fee < 0) {
-      throw ArgumentError('Fee cannot be negative');
+    if ((amount * atomicPerCoin).round() > state.unlockedHeatBalance) {
+      throw StateError('Insufficient unlocked ΗΞΔŦ balance');
     }
-    final totalAtomic = ((amount + fee) * atomicPerCoin).round();
-    if (totalAtomic > state.unlockedHeatBalance) {
-      throw StateError('Insufficient unlocked ΗΞΔŦ balance (including fee)');
+    if (heatTxFeeXfgAtomic > state.unlockedBalance) {
+      throw StateError('The network fee is paid in XFG: need ${formatXfg(heatTxFeeXfgAtomic)} XFG unlocked');
     }
 
     if (_rpcService == null) {
@@ -577,7 +576,6 @@ class WalletCubit extends Cubit<WalletState> {
     final txHash = await _rpcService!.sendHeat(
       address: address,
       amount: (amount * atomicPerCoin).round(),
-      fee: (fee * atomicPerCoin).round(),
       mixin: mixin,
     );
     if (txHash.isEmpty) {

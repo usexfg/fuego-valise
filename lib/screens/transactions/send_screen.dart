@@ -6,6 +6,7 @@ import 'package:dns_client/src/dns_over_https.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
 import '../../utils/theme.dart';
 import '../../utils/xfg_ticker.dart';
+import '../../core/constants.dart';
 
 class SendScreen extends StatefulWidget {
   const SendScreen({super.key});
@@ -118,14 +119,21 @@ class _SendScreenState extends State<SendScreen> {
     final amountStr = _amountController.text.trim();
     final amount = double.tryParse(amountStr) ?? 0;
     final coin = _isHeat ? 'ΗΞΔŦ' : 'XFG';
-    final fee = _isHeat ? 0.001 : 0.008;
+    // ΗΞΔŦ sends pay the network fee in XFG; XFG sends in XFG.
+    final fee = _isHeat ? heatTxFeeXfgAtomic / atomicPerCoin : 0.008;
     final total = amount + fee;
 
     if (_isHeat) {
-      if (total > wallet.unlockedHeatXfg) {
+      if (amount > wallet.unlockedHeatXfg) {
+        setState(() {
+          _errorMessage = 'Insufficient $coin balance';
+        });
+        return;
+      }
+      if (heatTxFeeXfgAtomic > wallet.unlockedBalance) {
         setState(() {
           _errorMessage =
-              'Insufficient $coin balance (need ${total.toStringAsFixed(7)} $coin including fee)';
+              'The network fee is paid in XFG: need ${fee.toStringAsFixed(7)} XFG unlocked';
         });
         return;
       }
@@ -156,9 +164,12 @@ class _SendScreenState extends State<SendScreen> {
             const SizedBox(height: 8),
             _confirmRow('Amount', '${amount.toStringAsFixed(7)} $coin'),
             const SizedBox(height: 8),
-            _confirmRow('Fee', '${fee.toStringAsFixed(7)} $coin'),
+            _confirmRow('Fee', '${fee.toStringAsFixed(7)} XFG'),
             const Divider(color: AppTheme.textMuted),
-            _confirmRow('Total', '${total.toStringAsFixed(7)} $coin', bold: true),
+            if (_isHeat)
+              _confirmRow('Total', '${amount.toStringAsFixed(7)} $coin + ${fee.toStringAsFixed(7)} XFG', bold: true)
+            else
+              _confirmRow('Total', '${total.toStringAsFixed(7)} $coin', bold: true),
           ],
           ),
         ),
@@ -261,7 +272,6 @@ class _SendScreenState extends State<SendScreen> {
         txHash = await cubit.sendHeat(
           address: address,
           amount: amount,
-          fee: 0.001,
           pin: pin,
         );
       } else {
@@ -387,7 +397,8 @@ class _SendScreenState extends State<SendScreen> {
   void _setMaxAmount() {
     final state = context.read<WalletCubit>().state;
     final availableBalance = _isHeat ? state.unlockedHeatXfg : state.unlockedBalanceXfg;
-    final fee = _isHeat ? 0.001 : 0.01;
+    // ΗΞΔŦ: the whole balance (the fee is XFG).
+    final fee = _isHeat ? 0.0 : 0.01;
     final maxAmount = (availableBalance - fee).clamp(0.0, availableBalance);
     _amountController.text = maxAmount.toStringAsFixed(7);
   }

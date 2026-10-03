@@ -838,7 +838,7 @@ pub struct BuildPoolCommitmentDestination {
 #[allow(clippy::too_many_arguments)]
 fn assemble_outputs_and_sign(
     wire_inputs: &[TxInput],
-    signers: &[(Vec<[u8; 32]>, usize, [u8; 32], [u8; 32])],
+    signers: &[RingSigner],
     commitment_destinations: &[BuildCommitmentDestination],
     key_destinations: &[BuildDestination],
     pool_destinations: &[BuildPoolCommitmentDestination],
@@ -946,6 +946,133 @@ fn assemble_outputs_and_sign(
         prefix_hash,
         serialized,
     })
+}
+
+/// One ring signer: ring public keys, real index, key image, secret scalar.
+type RingSigner = (Vec<[u8; 32]>, usize, [u8; 32], [u8; 32]);
+
+/// Key inputs and their signers. Each ring is the decoys plus the real
+/// output, sorted by global index (prepareKeyInputs).
+fn key_inputs_with_signers(
+    inputs: &[SpendableOutput],
+    decoys: &[Vec<DecoyEntry>],
+) -> Result<(Vec<TxInput>, Vec<RingSigner>)> {
+    if decoys.len() != inputs.len() {
+        return Err(SdkError::Serialization(format!(
+            "xfg decoys per input mismatch: {} inputs, {} decoy groups",
+            inputs.len(),
+            decoys.len()
+        )));
+    }
+    let mut wire = Vec::with_capacity(inputs.len());
+    let mut signers = Vec::with_capacity(inputs.len());
+    for (input, group) in inputs.iter().zip(decoys) {
+        let mut ring: Vec<(u32, [u8; 32])> = group.iter().map(|d| (d.global_index, d.out_key)).collect();
+        ring.push((input.global_index, input.output_key));
+        ring.sort_by_key(|(idx, _)| *idx);
+        let sec_index = ring
+            .iter()
+            .position(|(idx, _)| *idx == input.global_index)
+            .ok_or_else(|| SdkError::Crypto("real output index not found in ring".into()))?;
+        wire.push(TxInput::Key(KeyInput {
+            amount: input.amount,
+            offsets: ring.iter().map(|(idx, _)| *idx).collect(),
+            key_image: input.key_image,
+        }));
+        signers.push((ring.iter().map(|(_, k)| *k).collect(), sec_index, input.key_image, input.secret_key));
+    }
+    Ok((wire, signers))
+}
+
+/// Commitment-spend inputs and their signers, rings built as for key inputs.
+fn commitment_inputs_with_signers(
+    deposits: &[CommitmentDeposit],
+    decoys: &[Vec<(u32, [u8; 32])>],
+) -> Result<(Vec<TxInput>, Vec<RingSigner>)> {
+    if decoys.len() != deposits.len() {
+        return Err(SdkError::Serialization(format!(
+            "commitment decoys per deposit mismatch: {} deposits, {} decoy groups",
+            deposits.len(),
+            decoys.len()
+        )));
+    }
+    let mut wire = Vec::with_capacity(deposits.len());
+    let mut signers = Vec::with_capacity(deposits.len());
+    for (deposit, group) in deposits.iter().zip(decoys) {
+        let mut ring = group.clone();
+        ring.push((deposit.global_index, deposit.commit_key));
+        ring.sort_by_key(|(idx, _)| *idx);
+        let sec_index = ring
+            .iter()
+            .position(|(idx, _)| *idx == deposit.global_index)
+            .ok_or_else(|| SdkError::Crypto("real commitment index not found in ring".into()))?;
+        wire.push(TxInput::CommitmentSpend(CommitmentSpendInput {
+            amount: deposit.amount,
+            offsets: ring.iter().map(|(idx, _)| *idx).collect(),
+            key_image: deposit.key_image,
+            claimed_interest: deposit.claimed_interest,
+        }));
+        signers.push((ring.iter().map(|(_, k)| *k).collect(), sec_index, deposit.key_image, deposit.key_scalar));
+    }
+    Ok((wire, signers))
+}
+
+/// Build and sign a spend of commitment outputs (HEAT, CDs) whose network
+/// fee is paid in XFG.
+///
+/// suite's block validation (`Blockchain::pushBlock`, v10+) conserves HEAT
+/// and LP exactly in every transaction except declared conversions; only XFG
+/// can leave as a fee. A HEAT transfer whose fee comes out of HEAT is accepted
+/// by the mempool (it checks the combined sum) and then invalidates any block
+/// that includes it.
+///
+/// `commitment_destinations` must equal the commitment inputs plus claimed
+/// interest, less any amount a tag in `extra_extra` burns (treasury fund).
+/// `fee_inputs` pay `fee`; their change goes to `xfg_change_keys`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_commitment_spend_xfg_fee_transaction(
+    deposits: &[CommitmentDeposit],
+    decoys: &[Vec<(u32, [u8; 32])>],
+    fee_inputs: &[SpendableOutput],
+    fee_decoys: &[Vec<DecoyEntry>],
+    commitment_destinations: &[BuildCommitmentDestination],
+    xfg_change_keys: (&[u8; 32], &[u8; 32]),
+    view_secret: &[u8; 32],
+    fee: u64,
+    extra_extra: &[u8],
+    rng: &mut impl RngCore,
+) -> Result<BuiltTransaction> {
+    if deposits.is_empty() {
+        return Err(SdkError::Serialization("no commitment inputs".into()));
+    }
+    let fee_found: u64 = fee_inputs.iter().map(|u| u.amount).sum();
+    if fee_found < fee {
+        return Err(SdkError::InsufficientFunds { need: fee, have: fee_found });
+    }
+
+    let (mut wire_inputs, mut signers) = key_inputs_with_signers(fee_inputs, fee_decoys)?;
+    let (c_inputs, c_signers) = commitment_inputs_with_signers(deposits, decoys)?;
+    wire_inputs.extend(c_inputs);
+    signers.extend(c_signers);
+
+    let (change_spend, change_view) = xfg_change_keys;
+    let (chunks, dust) = decompose_change(fee_found - fee, DEFAULT_DUST_THRESHOLD);
+    let key_dests: Vec<BuildDestination> = chunks
+        .into_iter()
+        .chain((dust > 0).then_some(dust))
+        .map(|amount| BuildDestination { amount, spend_pub: *change_spend, view_pub: *change_view })
+        .collect();
+
+    assemble_outputs_and_sign(
+        &wire_inputs,
+        &signers,
+        commitment_destinations,
+        &key_dests,
+        &[],
+        view_secret,
+        extra_extra,
+        rng,
+    )
 }
 
 /// Build and sign an AMM swap XFG→HEAT (direction 0): XFG KeyInputs in,
@@ -1098,83 +1225,12 @@ pub fn build_lp_add_transaction(
     if xfg_inputs.is_empty() && heat_deposits.is_empty() {
         return Err(SdkError::InsufficientFunds { need: fee, have: 0 });
     }
-    if xfg_decoys.len() != xfg_inputs.len() {
-        return Err(SdkError::Serialization(format!(
-            "xfg decoys per input mismatch: {} inputs, {} decoy groups",
-            xfg_inputs.len(),
-            xfg_decoys.len()
-        )));
-    }
-    if heat_decoys.len() != heat_deposits.len() {
-        return Err(SdkError::Serialization(format!(
-            "heat decoys per deposit mismatch: {} deposits, {} decoy groups",
-            heat_deposits.len(),
-            heat_decoys.len()
-        )));
-    }
 
-    // Key input rings.
-    let mut rings: Vec<Vec<(u32, [u8; 32])>> = Vec::with_capacity(xfg_inputs.len());
-    let mut ring_indices: Vec<Vec<u32>> = Vec::with_capacity(xfg_inputs.len());
-    for (i, input) in xfg_inputs.iter().enumerate() {
-        let mut ring: Vec<(u32, [u8; 32])> = xfg_decoys[i]
-            .iter()
-            .map(|d| (d.global_index, d.out_key))
-            .collect();
-        ring.push((input.global_index, input.output_key));
-        ring.sort_by_key(|(idx, _)| *idx);
-        ring_indices.push(ring.iter().map(|(idx, _)| *idx).collect());
-        rings.push(ring);
-    }
-
-    // Commitment input rings.
-    let mut c_rings: Vec<Vec<(u32, [u8; 32])>> = Vec::with_capacity(heat_deposits.len());
-    let mut c_ring_indices: Vec<Vec<u32>> = Vec::with_capacity(heat_deposits.len());
-    for (i, deposit) in heat_deposits.iter().enumerate() {
-        let mut ring: Vec<(u32, [u8; 32])> = heat_decoys[i].clone();
-        ring.push((deposit.global_index, deposit.commit_key));
-        ring.sort_by_key(|(idx, _)| *idx);
-        c_ring_indices.push(ring.iter().map(|(idx, _)| *idx).collect());
-        c_rings.push(ring);
-    }
-
-    // Wire inputs: key inputs first, then commitment spends.
-    let mut wire_inputs: Vec<TxInput> = Vec::with_capacity(xfg_inputs.len() + heat_deposits.len());
-    for (i, input) in xfg_inputs.iter().enumerate() {
-        wire_inputs.push(TxInput::Key(KeyInput {
-            amount: input.amount,
-            offsets: ring_indices[i].clone(),
-            key_image: input.key_image,
-        }));
-    }
-    for (i, deposit) in heat_deposits.iter().enumerate() {
-        wire_inputs.push(TxInput::CommitmentSpend(CommitmentSpendInput {
-            amount: deposit.amount,
-            offsets: c_ring_indices[i].clone(),
-            key_image: deposit.key_image,
-            claimed_interest: deposit.claimed_interest,
-        }));
-    }
-
-    // Signers: key inputs then commitment spends.
-    let mut signers: Vec<(Vec<[u8; 32]>, usize, [u8; 32], [u8; 32])> =
-        Vec::with_capacity(xfg_inputs.len() + heat_deposits.len());
-    for (i, input) in xfg_inputs.iter().enumerate() {
-        let pubs: Vec<[u8; 32]> = rings[i].iter().map(|(_, k)| *k).collect();
-        let sec_index = rings[i]
-            .iter()
-            .position(|(idx, _)| *idx == input.global_index)
-            .ok_or_else(|| SdkError::Crypto("real output index not found in ring".into()))?;
-        signers.push((pubs, sec_index, input.key_image, input.secret_key));
-    }
-    for (i, deposit) in heat_deposits.iter().enumerate() {
-        let pubs: Vec<[u8; 32]> = c_rings[i].iter().map(|(_, k)| *k).collect();
-        let sec_index = c_rings[i]
-            .iter()
-            .position(|(idx, _)| *idx == deposit.global_index)
-            .ok_or_else(|| SdkError::Crypto("real commitment index not found in ring".into()))?;
-        signers.push((pubs, sec_index, deposit.key_image, deposit.key_scalar));
-    }
+    // Wire inputs and signers: key inputs first, then commitment spends.
+    let (mut wire_inputs, mut signers) = key_inputs_with_signers(xfg_inputs, xfg_decoys)?;
+    let (c_inputs, c_signers) = commitment_inputs_with_signers(heat_deposits, heat_decoys)?;
+    wire_inputs.extend(c_inputs);
+    signers.extend(c_signers);
 
     // Outputs: LP commitment first, then HEAT change commitment, then key change.
     let commitment_dests = vec![BuildCommitmentDestination {
@@ -1379,7 +1435,7 @@ pub fn build_place_order_transaction(
         })
         .collect();
 
-    let mut signers: Vec<(Vec<[u8; 32]>, usize, [u8; 32], [u8; 32])> =
+    let mut signers: Vec<RingSigner> =
         Vec::with_capacity(inputs.len());
     for (i, input) in inputs.iter().enumerate() {
         let pubs: Vec<[u8; 32]> = rings[i].iter().map(|(_, k)| *k).collect();
