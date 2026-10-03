@@ -38,13 +38,6 @@ class WalletState extends Equatable {
   /// which the recovery phrase does not restore. Swept into this wallet.
   final int legacyWalletBalance;
 
-  /// HEAT on legacy commitment keys: its sender and any view-key holder can
-  /// spend it too until it is moved (sweepExposedHeat).
-  final int exposedHeat;
-
-  /// CDs, LP shares and other commitments on legacy keys (not movable here).
-  final int exposedOther;
-
   const WalletState({
     this.isLoading = false,
     this.isConnected = false,
@@ -66,8 +59,6 @@ class WalletState extends Equatable {
     this.subaddresses = const [],
     this.legacySubaddressBalance = 0,
     this.legacyWalletBalance = 0,
-    this.exposedHeat = 0,
-    this.exposedOther = 0,
   });
 
   WalletState copyWith({
@@ -92,8 +83,6 @@ class WalletState extends Equatable {
     List<Subaddress>? subaddresses,
     int? legacySubaddressBalance,
     int? legacyWalletBalance,
-    int? exposedHeat,
-    int? exposedOther,
   }) => WalletState(
     isLoading: isLoading ?? this.isLoading,
     isConnected: isConnected ?? this.isConnected,
@@ -115,8 +104,6 @@ class WalletState extends Equatable {
     subaddresses: subaddresses ?? this.subaddresses,
     legacySubaddressBalance: legacySubaddressBalance ?? this.legacySubaddressBalance,
     legacyWalletBalance: legacyWalletBalance ?? this.legacyWalletBalance,
-    exposedHeat: exposedHeat ?? this.exposedHeat,
-    exposedOther: exposedOther ?? this.exposedOther,
   );
 
   double get balanceXfg => balance / atomicPerCoin;
@@ -148,8 +135,6 @@ class WalletState extends Equatable {
     subaddresses,
     legacySubaddressBalance,
     legacyWalletBalance,
-    exposedHeat,
-    exposedOther,
   ];
 }
 
@@ -473,30 +458,14 @@ class WalletCubit extends Cubit<WalletState> {
       final legacyBalance = (r['legacy'] as List<dynamic>? ?? const [])
           .fold<int>(0, (sum, e) => sum + ((e as Map<String, dynamic>)['balance'] as int? ?? 0));
       final legacyWallet = await _daemon.getLegacyWallet();
-      final exposed = await _daemon.getExposedCommitments();
-      int amountOf(String kind) =>
-          (exposed[kind] as Map<String, dynamic>?)?['amount'] as int? ?? 0;
       emit(state.copyWith(
         subaddresses: _subaddressStore.subaddresses,
         legacySubaddressBalance: legacyBalance,
         legacyWalletBalance: legacyWallet?['balance'] as int? ?? 0,
-        exposedHeat: amountOf('heat'),
-        exposedOther: amountOf('cds') + amountOf('lp') + amountOf('other'),
       ));
     } catch (e) {
       _log('[wallet] sub-address sync failed: $e');
     }
-  }
-
-  /// Moves exposed HEAT into a new owner-bound output. Returns the tx hash (null:
-  /// nothing confirmed to move) and how many exposed HEAT outputs remain.
-  Future<(String?, int)> sweepExposedHeat() async {
-    if (!await _ensureWalletdHasVault()) {
-      throw const FuegoRpcException('wallet is locked');
-    }
-    final result = await _daemon.sweepExposedHeat();
-    await refreshWallet();
-    return result;
   }
 
   /// Moves funds from the wallet an older walletd generated for itself into this

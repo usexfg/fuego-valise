@@ -115,10 +115,8 @@ const KEY_RESCAN: &[u8] = b"rescan_requested";
 const KEY_SCAN_VERSION: &[u8] = b"scan_version";
 /// 2: vault secrets are reduced mod l (before, sc_check rejected most view keys,
 /// so most wallets found no outputs) and sub-address outputs are detected.
-/// 3: commitment outputs are matched owner-bound first and legacy ones marked
-/// exposed (the stored commitment layout changed).
 /// State scanned under older rules is rebuilt once from genesis.
-const SCAN_VERSION: u32 = 3;
+const SCAN_VERSION: u32 = 2;
 /// Id of the wallet whose state this database holds (see `wallet_id`).
 const KEY_WALLET_ID: &[u8] = b"wallet_id";
 
@@ -1860,9 +1858,9 @@ impl WalletService {
         self.broadcast_built(built, key_images).await
     }
 
-    /// send_heat: transfer HEAT to another address. The recipient's output is
-    /// bound to their spend key (found with their view key); our change to ours.
-    /// Carries the 0xF9 heat-send auth extra.
+    /// send_heat: transfer HEAT to another address. The recipient's
+    /// commitment output derives with THEIR view key; our HEAT change with
+    /// ours. Carries the 0xF9 heat-send auth extra.
     pub async fn send_heat(
         &self,
         address: &str,
@@ -1871,7 +1869,7 @@ impl WalletService {
         if amount == 0 {
             return Err("amount must be > 0".into());
         }
-        let recipient = fuego_crypto::parse_address(address)
+        let (recv_spend, recv_view) = fuego_crypto::parse_address(address)
             .ok_or_else(|| format!("invalid destination address: {}", address))?;
 
         let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
@@ -1898,84 +1896,15 @@ impl WalletService {
                 needed, found
             ));
         }
-        self.transfer_heat(&selected, recipient, amount).await
-    }
-
-    /// Commitment outputs with legacy keys, which the sender and any view-key
-    /// holder can also spend, by kind: (count, amount) for HEAT, CDs, LP shares
-    /// and anything else.
-    pub fn exposed_commitments(&self) -> serde_json::Value {
-        let wallet = self.wallet.lock().unwrap();
-        let mut kinds: [(u64, u64); 4] = [(0, 0); 4];
-        for c in wallet.exposed_commitments() {
-            let k = match c.term {
-                HEAT_TERM => 0,
-                fuego_sdk::serialization::DEPOSIT_TERM_LP => 2,
-                t if t >= DEPOSIT_MIN_TERM && t <= DEPOSIT_MAX_TERM => 1,
-                _ => 3,
-            };
-            kinds[k].0 += 1;
-            kinds[k].1 += c.amount;
-        }
-        let kind = |(count, amount): (u64, u64)| serde_json::json!({ "count": count, "amount": amount });
-        serde_json::json!({
-            "heat": kind(kinds[0]),
-            "cds": kind(kinds[1]),
-            "lp": kind(kinds[2]),
-            "other": kind(kinds[3]),
-        })
-    }
-
-    /// Move exposed HEAT (legacy keys) into a new owner-bound output of this
-    /// wallet, at most MAX_SWEEP_INPUTS per transaction (largest first).
-    /// Returns the tx hash (None: nothing confirmed to move) and how many
-    /// exposed HEAT outputs are left for another call.
-    pub async fn sweep_exposed_heat(&self) -> std::result::Result<(Option<String>, usize), String> {
-        let (mut selected, own): (Vec<fuego_sdk::scanner::CommitmentEntry>, _) = {
-            let wallet = self.wallet.lock().unwrap();
-            let keys = wallet.wallet_keys();
-            let exposed = wallet
-                .heat_outputs()
-                .into_iter()
-                .filter(|d| d.exposed && d.global_index != 0)
-                .collect();
-            (exposed, (keys.spend_public, keys.view_public))
-        };
-        if selected.is_empty() {
-            return Ok((None, 0));
-        }
-        selected.sort_by(|a, b| b.amount.cmp(&a.amount));
-        let remaining = selected.len().saturating_sub(MAX_SWEEP_INPUTS);
-        selected.truncate(MAX_SWEEP_INPUTS);
-        let total: u64 = selected.iter().map(|d| d.amount).sum();
-        if total <= MINIMUM_FEE {
-            return Err(format!("exposed HEAT {total} does not cover the fee {MINIMUM_FEE}"));
-        }
-        let tx = self.transfer_heat(&selected, own, total - MINIMUM_FEE).await?;
-        Ok((Some(tx), remaining))
-    }
-
-    /// Spend `selected` HEAT: `amount` to `recipient` (spend, view), the rest
-    /// less the fee back to this wallet, every output owner-bound.
-    async fn transfer_heat(
-        &self,
-        selected: &[fuego_sdk::scanner::CommitmentEntry],
-        recipient: ([u8; 32], [u8; 32]),
-        amount: u64,
-    ) -> std::result::Result<String, String> {
-        let found: u64 = selected.iter().map(|d| d.amount).sum();
-        let change = found
-            .checked_sub(amount + MINIMUM_FEE)
-            .ok_or_else(|| format!("insufficient HEAT: need {}, have {}", amount + MINIMUM_FEE, found))?;
+        let change = found - amount - MINIMUM_FEE;
 
         let mixin = DEFAULT_MIXIN;
         let mut decoys = Vec::with_capacity(selected.len());
-        for deposit in selected {
+        for deposit in &selected {
             decoys.push(self.commitment_decoys(deposit, mixin).await?);
         }
 
         let keys = self.wallet.lock().unwrap().wallet_keys();
-        let (recv_spend, recv_view) = recipient;
         let mut commitment_dests = vec![BuildCommitmentDestination {
             amount,
             term: HEAT_TERM,
@@ -2327,48 +2256,6 @@ mod subaddress_service_tests {
         // Legacy indices survive a restart.
         let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
         assert_eq!(svc.list_subaddresses().1.iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2]);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn exposed_report_counts_only_legacy_unreserved_outputs_by_kind() {
-        let dir = temp_dir("exposed");
-        let svc = WalletService::new([6u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
-        let entry = |n: u8, term: u32, amount: u64, exposed: bool| fuego_sdk::scanner::CommitmentEntry {
-            amount,
-            commit_key: [n; 32],
-            key_scalar: [0u8; 32],
-            key_image: [n; 32],
-            global_index: n as u32,
-            tx_hash: [n; 32],
-            output_position: 0,
-            term,
-            block_height: 1,
-            exposed,
-        };
-        {
-            let wallet = svc.wallet.lock().unwrap();
-            wallet.restore_state(&fuego_sdk::scanner::ScannerStateSnapshot {
-                height: 10,
-                utxos: Vec::new(),
-                commitments: vec![
-                    entry(1, HEAT_TERM, 100, true),
-                    entry(2, HEAT_TERM, 50, true),
-                    entry(3, HEAT_TERM, 999, false),
-                    entry(4, DEPOSIT_MIN_TERM, 70, true),
-                    entry(5, fuego_sdk::serialization::DEPOSIT_TERM_LP, 30, true),
-                    entry(6, HEAT_TERM, 7, true),
-                ],
-                spent_images: vec![[6u8; 32]], // reserved by a pending spend
-                history: Vec::new(),
-                owners: Vec::new(),
-            });
-        }
-        let r = svc.exposed_commitments();
-        assert_eq!((r["heat"]["count"].as_u64(), r["heat"]["amount"].as_u64()), (Some(2), Some(150)));
-        assert_eq!(r["cds"]["amount"], 70);
-        assert_eq!(r["lp"]["amount"], 30);
-        assert_eq!(r["other"]["count"], 0);
         let _ = std::fs::remove_dir_all(dir);
     }
 

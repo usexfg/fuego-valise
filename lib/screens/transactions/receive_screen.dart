@@ -395,10 +395,6 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                 _buildLegacyWalletNotice(state.legacyWalletBalance),
                 const SizedBox(height: 12),
               ],
-              if (state.exposedHeat > 0 || state.exposedOther > 0) ...[
-                _buildExposedNotice(state.exposedHeat, state.exposedOther),
-                const SizedBox(height: 12),
-              ],
 
               // Generate new subaddress
               Row(
@@ -518,67 +514,6 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         ],
       ),
     );
-  }
-
-  Widget _buildExposedNotice(int heat, int other) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.errorColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'HEAT on old keys',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'These outputs were created with the old key scheme: whoever sent them, and anyone '
-            'holding your view key, can spend them too. Moving them puts them under a key only '
-            'your spend key opens.'
-            '${other > 0 ? ' CDs and LP shares on old keys (${(other / atomicPerCoin).toStringAsFixed(7)}) stay exposed until they are withdrawn.' : ''}',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
-          ),
-          if (heat > 0) ...[
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: _sweepExposedHeat,
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
-              child: Text('Move ${(heat / atomicPerCoin).toStringAsFixed(7)} HEAT to a new key'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _sweepExposedHeat() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final (tx, remaining) = await context.read<WalletCubit>().sweepExposedHeat();
-      final String message;
-      if (tx == null) {
-        message = 'Nothing confirmed to move yet';
-      } else if (remaining > 0) {
-        message = 'Moved part (tx ${tx.substring(0, 12)}…); $remaining outputs left, move again';
-      } else {
-        message = 'Moved to a new key (tx ${tx.substring(0, 12)}…)';
-      }
-      messenger.showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: tx == null ? AppTheme.warningColor : AppTheme.successColor,
-      ));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content: Text('Could not move HEAT: $e'),
-        backgroundColor: AppTheme.errorColor,
-      ));
-    }
   }
 
   Future<void> _sweepLegacyWallet() async {

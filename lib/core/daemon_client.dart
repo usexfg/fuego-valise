@@ -190,18 +190,6 @@ class FuegoDaemonClient {
     return (r['txHash'] as String?, r['remaining'] as int? ?? 0);
   }
 
-  /// Commitment outputs with legacy keys (spendable by their sender and any
-  /// view-key holder too), by kind: {heat, cds, lp, other} -> {count, amount}.
-  Future<Map<String, dynamic>> getExposedCommitments() => _walletRpc('get_exposed_commitments');
-
-  /// Moves exposed HEAT into a new owner-bound output of this wallet, up to 50
-  /// outputs per call. Returns the tx hash (null: nothing confirmed to move)
-  /// and how many exposed HEAT outputs remain.
-  Future<(String?, int)> sweepExposedHeat() async {
-    final r = await _walletRpc('sweep_exposed_heat');
-    return (r['txHash'] as String?, r['remaining'] as int? ?? 0);
-  }
-
   // ── Sub-addresses (fuego-suite scheme, derived and scanned by walletd) ──
 
   /// Hands out the next sub-address. Returns (index, address).

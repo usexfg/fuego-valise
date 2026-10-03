@@ -140,10 +140,6 @@ impl Wallet {
         self.scanner.heat_outputs()
     }
 
-    pub fn exposed_commitments(&self) -> Vec<CommitmentEntry> {
-        self.scanner.exposed_commitments()
-    }
-
     pub fn reserve_pending(&self, key_images: &[[u8; 32]]) {
         self.scanner.reserve_pending(key_images);
     }
