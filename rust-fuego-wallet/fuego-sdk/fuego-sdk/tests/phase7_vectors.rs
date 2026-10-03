@@ -424,6 +424,7 @@ fn print_cross_language_artifacts() {
     println!("MINT_TX {}", hex::encode(&built.serialized));
     println!("MINT_VIEW_SEC {}", hex::encode(view_sec));
     println!("MINT_SPEND_PUB {}", hex::encode(spend_pub));
+    println!("MINT_SPEND_SEC {}", hex::encode(spend_sec));
     // Verified by the C++ production parser (parseAndValidateTransactionFromBinaryArray):
     // roundtrip byte-identical, hash matches, and every HEAT output's commit
     // key equals deriveCommitmentPublicKeyV2. Pinned for CI.
