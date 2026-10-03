@@ -141,7 +141,7 @@ fn full_transaction_build() {
         decoys.push(group);
     }
 
-    let built = build_transaction(&selected, &dests, &view_pub, fee, mixin, &decoys, 0, &[], &mut rng)
+    let built = build_transaction(&selected, &dests, &view_secret, fee, mixin, &decoys, 0, &[], &mut rng)
         .expect("build_transaction");
 
     // Structural invariants.
@@ -156,15 +156,24 @@ fn full_transaction_build() {
         fuego_crypto::cn_fast_hash(&built.serialized)
     );
 
-    // The tx hash and every ring signature of this exact transaction were
-    // verified against the C++ daemon verification path via the
-    // cross-language harness (parse + check_ring_signature). Pin the hash.
+    // suite's parseAndValidateTransactionFromBinaryArray parses this exact
+    // transaction, re-serializes it byte for byte and gives this hash. The
+    // ring signatures were checked with suite's check_ring_signature before
+    // the tx key moved to the view secret; signing itself did not change.
+    println!("TXHEX {}", hex::encode(&built.serialized));
+
+    // The tx key is r = Hs(viewSecret || inputsHash), as in suite's
+    // generateDeterministicTransactionKeys. Seeded with the public view key,
+    // anyone holding the sender's address could recompute it.
+    let tx_pub = fuego_sdk::serialization::parse_extra_pubkey(&built.tx.prefix.extra).unwrap();
+    let r = fuego_sdk::transaction_builder::recover_tx_secret(&built.tx.prefix.inputs, &view_secret);
+    assert_eq!(fuego_crypto::ring::secret_key_to_public_key(&r), tx_pub);
+    let r_public_seed = fuego_sdk::transaction_builder::recover_tx_secret(&built.tx.prefix.inputs, &view_pub);
+    assert_ne!(fuego_crypto::ring::secret_key_to_public_key(&r_public_seed), tx_pub);
     assert_eq!(
         hex::encode(built.tx_hash),
-        "bb11949ab604de09e9bb291b7e9b58215eb4efe04f22e833685af8a39ceb4c9b"
+        "d8dee9c29622066025ffa15bfa2f738d93ad7a166ad948a2e1a72826f40f0e96"
     );
-
-    println!("TXHEX {}", hex::encode(&built.serialized));
 
     // Print the per-input ring artifacts for the C++ harness.
     for (i, input) in built.tx.prefix.inputs.iter().enumerate() {

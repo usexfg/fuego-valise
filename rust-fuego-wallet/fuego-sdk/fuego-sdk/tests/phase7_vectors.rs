@@ -184,7 +184,7 @@ fn heat_mint_transaction() {
         xfg_burned,
         heat_minted,
         change,
-        &view_pub,
+        &view_sec,
         (&spend_pub, &view_pub),
         fee,
         &mut rng,
@@ -261,7 +261,7 @@ fn heat_mint_transaction() {
 #[test]
 fn commitment_spend_transaction() {
     let mut rng = StdRng::seed_from_u64(0xCDCD_CDCD_CDCD_CDCD);
-    let ((spend_sec, spend_pub), (_, view_pub)) = wallet_keys(&mut rng);
+    let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
 
     // Two finite-term deposits owned by us.
     let mut deposits = Vec::new();
@@ -317,7 +317,7 @@ fn commitment_spend_transaction() {
         mixin,
         &key_dests,
         &[],
-        &view_pub,
+        &view_sec,
         fee,
         &[],
         &mut rng,
@@ -423,17 +423,18 @@ fn print_cross_language_artifacts() {
         3_000_000,
         1_500_000_000,
         7_000_000 - 3_000_000 - MINIMUM_FEE,
-        &view_pub,
+        &view_sec,
         (&spend_pub, &view_pub),
         MINIMUM_FEE,
         &mut rng,
     )
     .unwrap();
+    println!("MINT_TX {}", hex::encode(&built.serialized));
     // Verified by the C++ production parser (parseAndValidateTransactionFromBinaryArray):
     // roundtrip byte-identical, hash matches. Pinned for CI.
     assert_eq!(
         hex::encode(built.tx_hash),
-        "6bff0585758405490d98c3264714167c14c77cde67aca23b13d48a3a67e40c62"
+        "7006fa3931990d39a51b988f7dec35b70e1e1a631405e351469cfe11e2d076fb"
     );
 
     // Commitment-spend artifact.
@@ -483,16 +484,17 @@ fn print_cross_language_artifacts() {
             view_pub,
         }],
         &[],
-        &view_pub,
+        &view_sec,
         MINIMUM_FEE,
         &[],
         &mut rng,
     )
     .unwrap();
+    println!("SPEND_TX {}", hex::encode(&cs.serialized));
     // Verified by the C++ production parser: roundtrip byte-identical.
     assert_eq!(
         hex::encode(cs.tx_hash),
-        "50515b3e7784e02d4e657c52c7eb8317b6736fe15716bf04ac9ff6285e9850a4"
+        "c378b4976fcc2c2cc1f9e0e0c7dbdb2a3ee04bc77589497fe188568481dc826d"
     );
     let _ = view_sec;
 }
@@ -502,7 +504,7 @@ fn heat_cd_transaction_structure() {
     // heat_cd: spend HEAT deposits -> CD commitment (finite term) + HEAT
     // change + treasury-fund extra.
     let mut rng = StdRng::seed_from_u64(0x5EED_CDCD_CDCD_CDCD);
-    let ((_spend_sec, spend_pub), (_, view_pub)) = wallet_keys(&mut rng);
+    let ((_spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
 
     let mut deposits = Vec::new();
     for _ in 0..1u32 {
@@ -558,7 +560,7 @@ fn heat_cd_transaction_structure() {
             BuildCommitmentDestination { amount, term: term_blocks, spend_pub, view_pub },
             BuildCommitmentDestination { amount: change, term: HEAT_TERM, spend_pub, view_pub },
         ],
-        &view_pub,
+        &view_sec,
         MINIMUM_FEE,
         &extra,
         &mut rng,
@@ -719,7 +721,7 @@ fn heat_send_recipient_view_key() {
             BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
             BuildCommitmentDestination { amount: change, term: HEAT_TERM, spend_pub, view_pub },
         ],
-        &view_pub,
+        &view_sec,
         MINIMUM_FEE,
         &extra,
         &mut rng,
@@ -745,9 +747,10 @@ fn heat_send_recipient_view_key() {
         _ => panic!("expected commitment output"),
     }
 
+    println!("HEAT_SEND_TX {}", hex::encode(&built.serialized));
     assert_eq!(
         hex::encode(fuego_crypto::cn_fast_hash(&fuego_sdk::serialization::serialize_tx(&built.tx))),
-        "4f4ea9880c1652b46c20ded43de946031df4eb8aa45017a56a96527467509e1a",
+        "e39df4767d0709eeccec6cf5b556b0478f9e3d066429f5521121b6cd04f7729d",
         "heat-send tx hash must match C++ parseAndValidate roundtrip"
     );
 

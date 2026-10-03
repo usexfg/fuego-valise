@@ -1002,7 +1002,7 @@ impl WalletService {
             xfg_burned,
             heat_minted,
             change,
-            &keys.view_public,
+            &keys.view_secret,
             (&keys.spend_public, &keys.view_public),
             fee,
             &mut rand::thread_rng(),
@@ -1098,7 +1098,7 @@ impl WalletService {
                 expected_heat,
                 min_output,
                 (&keys.spend_public, &keys.view_public),
-                &keys.view_public,
+                &keys.view_secret,
                 fee,
                 &mut rand::thread_rng(),
             )
@@ -1170,7 +1170,7 @@ impl WalletService {
             min_output,
             (&keys.spend_public, &keys.view_public),
             heat_change,
-            &keys.view_public,
+            &keys.view_secret,
             fee,
             &mut rand::thread_rng(),
         )
@@ -1307,7 +1307,7 @@ impl WalletService {
             shares,
             xfg_change,
             heat_change,
-            &keys.view_public,
+            &keys.view_secret,
             (&keys.spend_public, &keys.view_public),
             fee,
             &mut rand::thread_rng(),
@@ -1407,7 +1407,7 @@ impl WalletService {
             min_heat,
             amount_xfg,
             amount_heat,
-            &keys.view_public,
+            &keys.view_secret,
             (&keys.spend_public, &keys.view_public),
             fee,
             &mut rand::thread_rng(),
@@ -1507,7 +1507,7 @@ impl WalletService {
             &address_hash,
             &pool_key,
             (&keys.spend_public, &keys.view_public),
-            &keys.view_public,
+            &keys.view_secret,
             fee,
             &mut rand::thread_rng(),
         )
@@ -1612,7 +1612,7 @@ impl WalletService {
             mixin,
             &[],
             &commitment_dests,
-            &keys.view_public,
+            &keys.view_secret,
             fee,
             &extra_extra,
             &mut rand::thread_rng(),
@@ -1753,7 +1753,7 @@ impl WalletService {
             mixin,
             &key_dests,
             &[],
-            &keys.view_public,
+            &keys.view_secret,
             fee,
             &[],
             &mut rand::thread_rng(),
@@ -1847,7 +1847,7 @@ impl WalletService {
             mixin,
             &[],
             &commitment_dests,
-            &keys.view_public,
+            &keys.view_secret,
             fee,
             &[],
             &mut rand::thread_rng(),
@@ -1940,7 +1940,7 @@ impl WalletService {
             mixin,
             &[],
             &commitment_dests,
-            &keys.view_public,
+            &keys.view_secret,
             MINIMUM_FEE,
             &extra,
             &mut rand::thread_rng(),
@@ -1976,15 +1976,19 @@ impl WalletService {
         let prefix = fuego_sdk::serialization::parse_prefix(&serialized)
             .map_err(|e| format!("stored tx parse failed: {e}"))?;
 
-        // Recover the deterministic tx secret key.
+        // Recover the deterministic tx secret key r = Hs(viewSecret || inputsHash).
+        // Transactions built before the builders took the view secret were
+        // seeded with the view public key instead; try that second.
         let keys = self.wallet.lock().unwrap().wallet_keys();
-        let r = fuego_sdk::transaction_builder::recover_tx_secret(&prefix.inputs, &keys.view_secret);
+        let r_pub = fuego_sdk::serialization::parse_extra_pubkey(&prefix.extra)
+            .ok_or("stored tx has no tx public key")?;
+        let r = [&keys.view_secret, &keys.view_public]
+            .into_iter()
+            .map(|seed| fuego_sdk::transaction_builder::recover_tx_secret(&prefix.inputs, seed))
+            .find(|r| fuego_crypto::ring::secret_key_to_public_key(r) == r_pub)
+            .ok_or("tx key does not match: transaction was not built by this wallet")?;
 
-        // R = r*G; D = r*A (raw, no cofactor).
-        let mut r_p3 = fuego_crypto::ref10::GeP3::default();
-        fuego_crypto::ref10::ge_scalarmult_base(&mut r_p3, &r);
-        let mut r_pub = [0u8; 32];
-        fuego_crypto::ref10::ge_p3_tobytes(&mut r_pub, &r_p3);
+        // D = r*A (raw, no cofactor).
         let d = fuego_crypto::ring::raw_scalarmult_key(&recv_view, &r)
             .ok_or("tx proof derivation failed")?;
 

@@ -19,6 +19,7 @@ use crate::serialization::{
 use fuego_crypto::ring::{
     check_ring_signature, derive_public_key,
     derive_secret_key, generate_key_derivation, generate_key_image, generate_ring_signature,
+    secret_key_to_public_key,
     hash_to_scalar,
 };
 use fuego_crypto::ref10::{ge_p3_tobytes, ge_scalarmult_base, GeP3};
@@ -264,8 +265,11 @@ fn deterministic_tx_key(view_secret: &[u8; 32], inputs: &[TxInput]) -> ([u8; 32]
 /// * `destinations`: outputs to build (recipient amounts + change chunks +
 ///   dust remainder, in any order; they are sorted by amount here, matching
 ///   constructTransaction).
-/// * `view_pub`: this wallet's view public key (the tx-key derivation
-///   source, generateDeterministicTransactionKeys).
+/// * `view_secret`: this wallet's view secret key, the seed of the
+///   deterministic tx key r = Hs(viewSecret || inputsHash)
+///   (generateDeterministicTransactionKeys). Every builder takes the secret:
+///   seeded with the public view key, r is computable by anyone who knows
+///   the sender's address.
 /// * `decoys`: per-input decoy lists (each must be exactly `mixin` entries).
 /// * `fee`: flat fee (>= MINIMUM_FEE).
 /// * `unlock_time`: transaction-level timestamp lock (0 = none).
@@ -274,7 +278,7 @@ fn deterministic_tx_key(view_secret: &[u8; 32], inputs: &[TxInput]) -> ([u8; 32]
 pub fn build_transaction(
     inputs: &[SpendableOutput],
     destinations: &[BuildDestination],
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     fee: u64,
     mixin: usize,
     decoys: &[Vec<DecoyEntry>],
@@ -325,7 +329,7 @@ pub fn build_transaction(
     }
 
     // Deterministic tx key (CryptoNoteFormatUtils.cpp:156).
-    let (txkey, txkey_pub) = deterministic_tx_key(view_pub, &wire_inputs); // the key pair is used for output derivation below
+    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, &wire_inputs); // the key pair is used for output derivation below
 
     // Outputs, sorted by amount (constructTransaction sorts destinations).
     let mut dests: Vec<BuildDestination> = destinations.to_vec();
@@ -471,7 +475,7 @@ pub fn build_mixed_output_transaction(
     mixin: usize,
     commitment_destinations: &[BuildCommitmentDestination],
     key_destinations: &[BuildDestination],
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     fee: u64,
     extra_extra: &[u8],
     rng: &mut impl RngCore,
@@ -523,7 +527,8 @@ pub fn build_mixed_output_transaction(
         }));
     }
 
-    let (txkey, txkey_pub) = deterministic_tx_key(view_pub, &wire_inputs);
+    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, &wire_inputs);
+    let view_pub = &secret_key_to_public_key(view_secret);
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("tx key derivation failed".into()))?;
 
@@ -627,7 +632,7 @@ pub fn build_mint_transaction(
     xfg_burned: u64,
     heat_minted: u64,
     change: u64,
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     change_keys: (&[u8; 32], &[u8; 32]),
     fee: u64,
     rng: &mut impl RngCore,
@@ -671,7 +676,7 @@ pub fn build_mint_transaction(
         mixin,
         &commitment_dests,
         &key_dests,
-        view_pub,
+        view_secret,
         fee,
         &extra,
         rng,
@@ -688,7 +693,7 @@ pub fn build_commitment_spend_transaction(
     ring_size: usize,
     key_destinations: &[BuildDestination],
     commitment_destinations: &[BuildCommitmentDestination],
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     fee: u64,
     extra_extra: &[u8],
     rng: &mut impl RngCore,
@@ -725,7 +730,7 @@ pub fn build_commitment_spend_transaction(
         }));
     }
 
-    let (txkey, txkey_pub) = deterministic_tx_key(view_pub, &wire_inputs);
+    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, &wire_inputs);
 
     // Key outputs (payouts + change), sorted by amount.
     let mut key_dests: Vec<BuildDestination> = key_destinations.to_vec();
@@ -743,6 +748,7 @@ pub fn build_commitment_spend_transaction(
         });
         out_index += 1;
     }
+    let view_pub = &secret_key_to_public_key(view_secret);
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("commitment derivation failed".into()))?;
     for cdest in commitment_destinations {
@@ -836,11 +842,12 @@ fn assemble_outputs_and_sign(
     commitment_destinations: &[BuildCommitmentDestination],
     key_destinations: &[BuildDestination],
     pool_destinations: &[BuildPoolCommitmentDestination],
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     extra_extra: &[u8],
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
-    let (txkey, txkey_pub) = deterministic_tx_key(view_pub, wire_inputs);
+    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, wire_inputs);
+    let view_pub = &secret_key_to_public_key(view_secret);
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("tx key derivation failed".into()))?;
 
@@ -953,7 +960,7 @@ pub fn build_swap_xfg_to_heat_transaction(
     heat_received: u64,
     min_output: u64,
     change_keys: (&[u8; 32], &[u8; 32]),
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
@@ -998,7 +1005,7 @@ pub fn build_swap_xfg_to_heat_transaction(
         mixin,
         &commitment_dests,
         &key_dests,
-        view_pub,
+        view_secret,
         fee,
         &extra,
         rng,
@@ -1017,7 +1024,7 @@ pub fn build_swap_heat_to_xfg_transaction(
     min_output: u64,
     xfg_dest: (&[u8; 32], &[u8; 32]),
     heat_change: u64,
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
@@ -1060,7 +1067,7 @@ pub fn build_swap_heat_to_xfg_transaction(
         ring_size,
         &key_dests,
         &commitment_dests,
-        view_pub,
+        view_secret,
         fee,
         &extra,
         rng,
@@ -1082,7 +1089,7 @@ pub fn build_lp_add_transaction(
     lp_shares: u64,
     xfg_change: u64,
     heat_change: u64,
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     change_keys: (&[u8; 32], &[u8; 32]),
     fee: u64,
     rng: &mut impl RngCore,
@@ -1214,7 +1221,7 @@ pub fn build_lp_add_transaction(
         &commitment_dests,
         &key_dests,
         &[],
-        view_pub,
+        view_secret,
         &extra,
         rng,
     )
@@ -1232,7 +1239,7 @@ pub fn build_lp_remove_transaction(
     min_heat: u64,
     xfg_out: u64,
     heat_out: u64,
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     change_keys: (&[u8; 32], &[u8; 32]),
     fee: u64,
     rng: &mut impl RngCore,
@@ -1274,7 +1281,7 @@ pub fn build_lp_remove_transaction(
         ring_size,
         &key_dests,
         &commitment_dests,
-        view_pub,
+        view_secret,
         fee,
         &extra,
         rng,
@@ -1297,7 +1304,7 @@ pub fn build_place_order_transaction(
     address_hash: &[u8; 32],
     pool_key: &[u8; 32],
     change_keys: (&[u8; 32], &[u8; 32]),
-    view_pub: &[u8; 32],
+    view_secret: &[u8; 32],
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
@@ -1389,7 +1396,7 @@ pub fn build_place_order_transaction(
         &[],
         &key_dests,
         &pool_dests,
-        view_pub,
+        view_secret,
         &extra,
         rng,
     )

@@ -767,7 +767,7 @@ impl UtxoScanner {
         build_signed_transaction(
             &inputs,
             &dests,
-            &keys.view_public,
+            &keys.view_secret,
             fee,
             mixin,
             &decoys_sorted,
