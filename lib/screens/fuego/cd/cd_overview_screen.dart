@@ -449,13 +449,6 @@ class _UserCdCard extends StatelessWidget {
 
   const _UserCdCard({required this.cd});
 
-  /// 8 HEAT CDs run epoch-to-epoch from their start: at the end of the first
-  /// epoch they unlock but auto-roll over until the user withdraws them.
-  bool get _isAutoRoll {
-    final amount = double.tryParse(cd.amount.replaceAll(',', '')) ?? 0;
-    return amount == 8 && cd.coin == 'HEAT';
-  }
-
   @override
   Widget build(BuildContext context) {
     final matured = cd.matured;
@@ -488,11 +481,6 @@ class _UserCdCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(cd.coin, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
-                if (_isAutoRoll) ...[
-                  const SizedBox(width: 6),
-                  const Text('AUTO-ROLL',
-                    style: TextStyle(color: AppTheme.accentColor, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                ],
                 const Spacer(),
                 Flexible(
                   child: Text(cd.amount,
@@ -530,21 +518,7 @@ class _UserCdCard extends StatelessWidget {
             ],
             if (matured) ...[
               const SizedBox(height: 8),
-              if (_isAutoRoll)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => context.read<CdCubit>().claimCd(cd.cdId),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                    child: const Text('Withdraw', style: TextStyle(fontSize: 12)),
-                  ),
-                )
-              else
-                Row(
+              Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
@@ -579,8 +553,7 @@ class _UserCdCard extends StatelessWidget {
   }
 
   /// Manual rollover for fixed-term CDs: reinvest principal + interest into a
-  /// new CD with a selectable term product (6/18/36/72). 8 HEAT CDs auto-roll
-  /// and only offer withdraw.
+  /// new CD with a selectable term product (6/18/36/72).
   void _rollover(BuildContext context) {
     final origEpochs = (cd.maturityHeight - cd.depositHeight) ~/ 900;
     showDialog(
@@ -674,7 +647,7 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
     try {
       final cubit = context.read<CdCubit>();
       for (final r in _rungs) {
-        final blocks = r.amount == 8.0 ? 900 : r.termEpochs * 900;
+        final blocks = r.termEpochs * 900;
         await cubit.createCd(
           coin: 'HEAT',
           amount: r.amount.toStringAsFixed(0),
@@ -705,7 +678,6 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
             ..._rungs.asMap().entries.map((entry) {
               final idx = entry.key;
               final rung = entry.value;
-              final isAuto = rung.amount == 8.0;
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(10),
@@ -742,10 +714,7 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
                       )),
                     ),
                     const SizedBox(height: 6),
-                    if (isAuto)
-                      const Text('Epoch-to-epoch · AUTO-ROLL', style: TextStyle(color: AppTheme.primaryColor, fontSize: 10, fontWeight: FontWeight.w600))
-                    else
-                      Wrap(
+                    Wrap(
                         spacing: 6,
                         children: _termOptions.map((t) => ChoiceChip(
                           label: Text('$t', style: const TextStyle(fontSize: 11)),

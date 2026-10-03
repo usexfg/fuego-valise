@@ -11,15 +11,11 @@ class CreateCdDialog extends StatefulWidget {
 }
 
 class _CreateCdDialogState extends State<CreateCdDialog> {
-  /// Term tiers for fixed-term HEAT CDs (epochs). 8 HEAT CDs are excluded —
-  /// they are epoch-to-epoch auto-rollover only and never expose a term picker.
+  /// Term tiers for HEAT CDs (epochs). fuego-suite accepts 6..72 epochs;
+  /// 8 HEAT is the minimum amount, not a separate product.
   static const _termTiers = [6, 18, 36, 72];
   static const _amountTiers = [8.0, 1000.0, 10000.0, 100000.0, 1000000.0];
   static const _chipLabels = ['8', '1,000', '10,000', '100,000', '1M'];
-
-  /// 8 HEAT CDs run epoch-to-epoch from their start: at the end of the first
-  /// epoch they unlock but auto-roll over until the user pulls them out.
-  static const double _autoRollAmount = 8.0;
 
   int _selectedTerm = 6;
   double _selectedAmount = 8.0;
@@ -27,8 +23,6 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
   String? _error;
 
   static const _epochBlocks = 900;
-
-  bool get _isAutoRoll => _selectedAmount == _autoRollAmount;
 
   String _fmtHeat(double value) {
     if (value >= 1000000) {
@@ -48,7 +42,7 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final totalBlocks = _isAutoRoll ? _epochBlocks : _selectedTerm * _epochBlocks;
+    final totalBlocks = _selectedTerm * _epochBlocks;
     final blockTimeSec = 480;
     final days = (totalBlocks * blockTimeSec) ~/ 86400;
     final interest = _selectedAmount * 0.02;
@@ -83,14 +77,9 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
               )),
             ),
             const SizedBox(height: 20),
-            if (_isAutoRoll)
-              const Text('Epoch-to-epoch · auto-rolls until you withdraw',
-                  style: TextStyle(color: AppTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.w600))
-            else
-              const Text('Term (epochs)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            const Text('Term (epochs)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
             const SizedBox(height: 8),
-            if (!_isAutoRoll)
-              Wrap(
+            Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: _termTiers.map((t) => ChoiceChip(
@@ -104,10 +93,6 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
                   onSelected: (_) => setState(() => _selectedTerm = t),
                 )).toList(),
               ),
-            if (_isAutoRoll)
-              const Text('Unlocks at first epoch end and auto-rolls over '
-                  'each epoch until you withdraw.',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
             const SizedBox(height: 8),
             Text('≈ $days days — $totalBlocks blocks at 8 min/block',
                 style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
@@ -121,8 +106,9 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 12)),
               ),
-            const Text('(0.1% CD creation fee of 0.1% routes to @fuegoxfg '
-                'development fund. There are no fees on CD claims)',
+            const Text('(0.1% CD creation fee routes to @fuegoxfg '
+                'development fund. Creating, claiming or rolling over a CD '
+                'costs a 0.0008 XFG network fee.)',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 10, fontStyle: FontStyle.italic)),
           ],
         ),
@@ -166,7 +152,7 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
       await context.read<CdCubit>().createCd(
             coin: 'HEAT',
             amount: _selectedAmount.toStringAsFixed(0),
-            durationBlocks: _isAutoRoll ? _epochBlocks : _selectedTerm * _epochBlocks,
+            durationBlocks: _selectedTerm * _epochBlocks,
           );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
