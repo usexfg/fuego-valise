@@ -125,7 +125,7 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 - Desktop build + bundling lives only in `.github/actions/build-desktop-backends` and `.github/actions/bundle-desktop-backends`; CI and every desktop release workflow (macOS, App Store, flatpak, snap) use them. Bundle layout: `fuego_walletd`, `fuegod`, `xfg-swapd`, `unified` next to the executable (`Contents/MacOS` on macOS); `libfuego_ffi` in `Contents/Frameworks` (macOS) or `lib/` (Linux). `scripts/sign-macos-app.sh` signs the result.
 - `libfuego_ffi.dylib` is built, never committed (`macos/Runner/libfuego_ffi.dylib` is gitignored). `scripts/build-and-run.sh` builds it for local macOS builds.
 - Linux release packages build on ubuntu-22.04: snap `core22` is 22.04 and `--destructive-mode` requires the host to match. Suite links Boost statically, so the daemons only need OpenSSL 3, libstdc++ and glibc at runtime.
-- iOS cannot spawn `fuego_walletd`; iOS release workflows do not build it (see `docs/IOS_WALLETD_FFI_SCOPE.md`).
+- iOS cannot spawn `fuego_walletd`; iOS release workflows do not build it. Without it iOS has no scanning, balance or sends. `docs/IOS_WALLETD_FFI_SCOPE.md` is the plan: walletd's server runs in-process, started through `fuego-ffi`.
 - iOS links the FFI statically: Runner's `OTHER_LDFLAGS` force-load `rust-fuego-wallet/target/<triple>/release/libfuego_ffi.a` (`aarch64-apple-ios` device, `aarch64-apple-ios-sim` / `x86_64-apple-ios` simulator) `-Xlinker -export_dynamic` stops dead-code stripping from dropping them (nothing native calls them; Dart looks them up at runtime), and `STRIP_STYLE = non-global` keeps them through symbol stripping, for `DynamicLibrary.process()`. The Runner build phase "Build fuego-ffi" (`scripts/build-ios-ffi.sh`) builds the slice for the SDK/arch Xcode is targeting, so a clean `flutter build ios` needs only Rust (`rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`).
 - Linux bundles include a `fuego-valise` launcher symlink to the `fuegowallet` executable (`BINARY_NAME` in `linux/CMakeLists.txt`; "Fuego Valise" is only the display name); `linux/xfg-wallet.desktop` execs it.
 
@@ -170,6 +170,21 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
   - indices 0, 1, 127, 128 and 1,000,000;
   - legacy forms.
 - Not compatible with `"fuego_commit_v2"` (suite `a0abbbeb`, valise `0b84fb5` on `claude/valise-sdk-suite-sync-9u8mdk`). Do not merge commitment-key code from those.
+
+## Transaction keys and fees
+
+- Every SDK builder takes the sender's **view secret**: r = Hs(viewSecret || inputsHash), as in suite's `generateDeterministicTransactionKeys`.
+  - Builders used to take the view public key. Then anyone holding the sender's address could recompute r.
+  - `get_tx_proof` tries the secret seed first, then the public seed, for transactions sent before the fix.
+- suite's `pushBlock` (v10+) conserves HEAT and LP exactly in every transaction except declared conversions (mint, Hearth swap, LP add/remove, limit orders). Only XFG leaves as the fee.
+  - The mempool checks only the combined sum, so a HEAT-paid fee is accepted there and then invalidates the block.
+  - walletd's HEAT send, CD create, claim and rollover pay MINIMUM_FEE in XFG through `build_commitment_spend_xfg_fee_transaction`.
+  - HEAT-paid fees wait for the v12 shielded pool: a fee asset would reveal the transaction type.
+- CD terms are DEPOSIT_MIN_TERM..=DEPOSIT_MAX_TERM (6 to 72 epochs). suite has no auto-roll (disabled until v13). 8 HEAT is the minimum amount.
+- Open in suite (keyderiv Part 2, not started):
+  - Commitment rings mix terms of one amount, and `classifyInputAsset` uses the first ring member.
+  - `fee_summary` pays the combined-asset fee to the miner as XFG.
+- walletd accepts any local caller; its only check is the `Host` header. Step 1 of the iOS scope doc adds token auth on all platforms.
 
 ## CryptoNight / keys
 
