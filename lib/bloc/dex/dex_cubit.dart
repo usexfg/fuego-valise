@@ -876,7 +876,7 @@ class DexCubit extends Cubit<DexState> {
       case ChainTypeSdk.litecoin:
         return 'LTC';
       case ChainTypeSdk.polygon:
-        return 'POLYGON';
+        return 'POLY';
       default:
         return 'SOL';
     }

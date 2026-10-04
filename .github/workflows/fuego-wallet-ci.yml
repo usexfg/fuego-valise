@@ -44,6 +44,13 @@ jobs:
       - name: Check formatting
         run: dart format --set-exit-if-changed lib/ test/
 
+      - name: Chain registry is in sync with chains.yaml
+        run: |
+          # chain_registry.g.dart is generated. Fail if someone edited chains.yaml
+          # (or the generated file) without re-running the generator, so the
+          # registry cannot silently drift from the manifest.
+          dart run tool/gen_chains.dart --check
+
       - name: Run tests (with coverage)
         run: |
           flutter test --coverage

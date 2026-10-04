@@ -259,7 +259,7 @@ chains:
     rpc: https://public-node.rsk.co
     gasToken: RBTC
     color: "#E9B64E"
-    icon: assets/coin-icons/rsk.png
+    icon: assets/coin-icons/rootstock.png
     tier: wallet
     confirmBlocks: 15
 
