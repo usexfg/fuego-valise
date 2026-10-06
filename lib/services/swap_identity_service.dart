@@ -66,8 +66,9 @@ class SwapIdentityService {
     final native = _tryNative();
     if (native == null) return '';
     try {
-      final kp =
-          native.keypairFromSecret(Uint8List.fromList(_hexToBytes(secret)));
+      final kp = native.keypairFromSecret(
+        Uint8List.fromList(_hexToBytes(secret)),
+      );
       final pub = kp['public'];
       return pub is String ? pub : '';
     } catch (_) {
