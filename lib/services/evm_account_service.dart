@@ -28,28 +28,28 @@ class EvmAccount {
   });
 
   EvmAccount copyWith({String? name, String? chainKey}) => EvmAccount(
-        id: id,
-        name: name ?? this.name,
-        chainKey: chainKey ?? this.chainKey,
-        address: address,
-        createdAt: createdAt,
-      );
+    id: id,
+    name: name ?? this.name,
+    chainKey: chainKey ?? this.chainKey,
+    address: address,
+    createdAt: createdAt,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'chainKey': chainKey,
-        'address': address,
-        'createdAt': createdAt,
-      };
+    'id': id,
+    'name': name,
+    'chainKey': chainKey,
+    'address': address,
+    'createdAt': createdAt,
+  };
 
   factory EvmAccount.fromJson(Map<String, dynamic> json) => EvmAccount(
-        id: json['id'] as String? ?? '',
-        name: json['name'] as String? ?? 'EVM Account',
-        chainKey: (json['chainKey'] as String? ?? 'eth').toLowerCase(),
-        address: json['address'] as String? ?? '',
-        createdAt: (json['createdAt'] as num?)?.toInt() ?? 0,
-      );
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? 'EVM Account',
+    chainKey: (json['chainKey'] as String? ?? 'eth').toLowerCase(),
+    address: json['address'] as String? ?? '',
+    createdAt: (json['createdAt'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// Result returned when a key is first created or imported.
@@ -83,7 +83,7 @@ class EvmAccountService {
   Future<void>? _initialization;
 
   EvmAccountService({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   List<EvmAccount> get accounts => List.unmodifiable(_accounts);
   String? get activeId => _activeId;
@@ -181,10 +181,7 @@ class EvmAccountService {
     );
     final previousActive = _activeId;
 
-    await _storage.write(
-      key: _secretStorageKey(id),
-      value: privateKeyHex,
-    );
+    await _storage.write(key: _secretStorageKey(id), value: privateKeyHex);
     _accounts.add(account);
     _activeId = id;
     try {

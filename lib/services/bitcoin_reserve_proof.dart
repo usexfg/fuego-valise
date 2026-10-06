@@ -52,13 +52,18 @@ class BitcoinReserveProof {
 
   static Uint8List _privToPubCompressed(Uint8List priv) {
     final d = _bigIntFromBytes(priv);
-    if (d <= BigInt.zero || d >= _domain.n) throw ArgumentError('Invalid private key');
+    if (d <= BigInt.zero || d >= _domain.n)
+      throw ArgumentError('Invalid private key');
     final q = _domain.G * d;
     if (q == null) throw StateError('point at infinity');
     return q.getEncoded(true);
   }
 
-  static String _p2pkhAddress(Uint8List pubCompressed, int version, int? version2) {
+  static String _p2pkhAddress(
+    Uint8List pubCompressed,
+    int version,
+    int? version2,
+  ) {
     final sha = crypto.sha256.convert(pubCompressed).bytes;
     final h160 = RIPEMD160Digest().process(Uint8List.fromList(sha));
     final payload = <int>[];
@@ -68,7 +73,11 @@ class BitcoinReserveProof {
     return base58encodeChecked(payload);
   }
 
-  static Uint8List _signMessage(Uint8List priv, bool compressed, String message) {
+  static Uint8List _signMessage(
+    Uint8List priv,
+    bool compressed,
+    String message,
+  ) {
     final magic = utf8.encode('\x18Bitcoin Signed Message:\n');
     final msgBytes = utf8.encode(message);
     final varint = _encodeVarInt(msgBytes.length);
@@ -152,8 +161,12 @@ class BitcoinReserveProof {
   static Uint8List _bigIntToBytes(BigInt v) {
     final hex = v.toRadixString(16);
     final padded = (hex.length.isOdd ? '0$hex' : hex);
-    return Uint8List.fromList(List<int>.generate(padded.length ~/ 2,
-        (i) => int.parse(padded.substring(i * 2, i * 2 + 2), radix: 16)));
+    return Uint8List.fromList(
+      List<int>.generate(
+        padded.length ~/ 2,
+        (i) => int.parse(padded.substring(i * 2, i * 2 + 2), radix: 16),
+      ),
+    );
   }
 
   static Uint8List _pad32(Uint8List b) {
@@ -163,7 +176,9 @@ class BitcoinReserveProof {
   }
 
   static String base58encodeChecked(List<int> payload) {
-    final hash = crypto.sha256.convert(crypto.sha256.convert(payload).bytes).bytes;
+    final hash = crypto.sha256
+        .convert(crypto.sha256.convert(payload).bytes)
+        .bytes;
     return base58encode([...payload, ...hash.sublist(0, 4)]);
   }
 
@@ -179,7 +194,8 @@ class BitcoinReserveProof {
     return body;
   }
 
-  static const _alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  static const _alphabet =
+      '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
   static String base58encode(List<int> data) {
     var num = BigInt.zero;
@@ -191,7 +207,10 @@ class BitcoinReserveProof {
       num ~/= BigInt.from(58);
     }
     for (final b in data) {
-      if (b == 0) chars.add('1'); else break;
+      if (b == 0)
+        chars.add('1');
+      else
+        break;
     }
     return chars.reversed.join();
   }
@@ -206,7 +225,10 @@ class BitcoinReserveProof {
     final bytes = num == BigInt.zero ? <int>[] : _bigIntToBytes(num);
     final leading = <int>[];
     for (final c in s.split('')) {
-      if (c == '1') leading.add(0); else break;
+      if (c == '1')
+        leading.add(0);
+      else
+        break;
     }
     return [...leading, ...bytes];
   }

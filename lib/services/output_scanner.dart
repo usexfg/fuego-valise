@@ -52,7 +52,9 @@ class FuegoOutputScanner {
 
         final amount = output['amount'];
         if (amount == null) continue;
-        final amountInt = amount is int ? amount : int.tryParse(amount.toString()) ?? 0;
+        final amountInt = amount is int
+            ? amount
+            : int.tryParse(amount.toString()) ?? 0;
 
         // Actual output key from the transaction (target.key hex).
         final target = output['target'] as Map<String, dynamic>?;

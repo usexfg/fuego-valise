@@ -181,7 +181,8 @@ class SecurityService {
   Future<Duration?> lockoutRemaining() async {
     final until = await _read(_lockUntilKey);
     if (until == null) return null;
-    final rem = (int.tryParse(until) ?? 0) - DateTime.now().millisecondsSinceEpoch;
+    final rem =
+        (int.tryParse(until) ?? 0) - DateTime.now().millisecondsSinceEpoch;
     if (rem <= 0) return null;
     return Duration(milliseconds: rem);
   }
@@ -190,8 +191,7 @@ class SecurityService {
     final n = (await failedAttempts()) + 1;
     await _write(_failedAttemptsKey, n.toString());
     if (n >= maxFailedAttempts) {
-      final until =
-          DateTime.now().add(lockoutDuration).millisecondsSinceEpoch;
+      final until = DateTime.now().add(lockoutDuration).millisecondsSinceEpoch;
       await _write(_lockUntilKey, until.toString());
       await _write(_failedAttemptsKey, '0');
     }
@@ -408,8 +408,9 @@ class SecurityService {
   ) async {
     final algorithm = AesCbc.with256bits(macAlgorithm: Hmac.sha256());
     final secretKey = SecretKey(keyBytes);
-    final decoded = json.decode(utf8.decode(base64Decode(encryptedData)))
-        as Map<String, dynamic>;
+    final decoded =
+        json.decode(utf8.decode(base64Decode(encryptedData)))
+            as Map<String, dynamic>;
     final secretBox = SecretBox(
       base64Decode(decoded['data'] as String),
       nonce: base64Decode(decoded['iv'] as String),
@@ -453,11 +454,18 @@ class SecurityService {
     final freshSaltB64 = base64Encode(freshSalt);
     await _write(_encSaltKey, freshSaltB64);
     final algorithm = AesCbc.with256bits(macAlgorithm: Hmac.sha256());
-    final kdf = Pbkdf2(macAlgorithm: Hmac.sha256(), iterations: _kPbkdf2IterationsV1, bits: _kPbkdf2Bits);
+    final kdf = Pbkdf2(
+      macAlgorithm: Hmac.sha256(),
+      iterations: _kPbkdf2IterationsV1,
+      bits: _kPbkdf2Bits,
+    );
     final pinBytes = utf8.encode(pin);
     SecretKey? secretKey;
     try {
-      secretKey = await kdf.deriveKey(secretKey: SecretKey(pinBytes), nonce: freshSalt);
+      secretKey = await kdf.deriveKey(
+        secretKey: SecretKey(pinBytes),
+        nonce: freshSalt,
+      );
       final encrypted = await algorithm.encrypt(data, secretKey: secretKey);
       final result = {
         'v': 1,
@@ -470,21 +478,27 @@ class SecurityService {
       return base64Encode(utf8.encode(json.encode(result)));
     } finally {
       for (var i = 0; i < pinBytes.length; i++) pinBytes[i] = 0;
-      if (secretKey != null) try { final b = await secretKey.extractBytes(); b.fillRange(0, b.length, 0); } catch (_) {}
+      if (secretKey != null)
+        try {
+          final b = await secretKey.extractBytes();
+          b.fillRange(0, b.length, 0);
+        } catch (_) {}
       freshSalt.fillRange(0, freshSalt.length, 0);
     }
   }
 
   Future<Uint8List> _decryptBytes(String encryptedData, String pin) async {
-    final decoded = json.decode(utf8.decode(base64Decode(encryptedData)))
-        as Map<String, dynamic>;
+    final decoded =
+        json.decode(utf8.decode(base64Decode(encryptedData)))
+            as Map<String, dynamic>;
     final saltB64 = decoded['salt'] as String?;
     // Do NOT overwrite global _encSaltKey from payload — attacker-controlled salt injection (ADV-08)
     // Use payload salt directly for this decrypt only; persist only if global missing and payload looks valid
     String? effectiveSaltB64 = saltB64;
     if (effectiveSaltB64 == null) {
       effectiveSaltB64 = await _read(_encSaltKey);
-      if (effectiveSaltB64 == null) throw StateError('Missing salt for decrypt');
+      if (effectiveSaltB64 == null)
+        throw StateError('Missing salt for decrypt');
     }
     // Derive with payload salt without mutating global state
     final salt = base64Decode(effectiveSaltB64);
@@ -496,7 +510,10 @@ class SecurityService {
     final pinBytes = utf8.encode(pin);
     SecretKey? secretKey;
     try {
-      secretKey = await kdf.deriveKey(secretKey: SecretKey(pinBytes), nonce: salt);
+      secretKey = await kdf.deriveKey(
+        secretKey: SecretKey(pinBytes),
+        nonce: salt,
+      );
       final secretBox = SecretBox(
         base64Decode(decoded['data'] as String),
         nonce: base64Decode(decoded['iv'] as String),
@@ -506,8 +523,14 @@ class SecurityService {
       final decrypted = await aead.decrypt(secretBox, secretKey: secretKey);
       return Uint8List.fromList(decrypted);
     } finally {
-      for (var i = 0; i < pinBytes.length; i++) { pinBytes[i] = 0; }
-      if (secretKey != null) try { final b = await secretKey.extractBytes(); b.fillRange(0, b.length, 0); } catch (_) {}
+      for (var i = 0; i < pinBytes.length; i++) {
+        pinBytes[i] = 0;
+      }
+      if (secretKey != null)
+        try {
+          final b = await secretKey.extractBytes();
+          b.fillRange(0, b.length, 0);
+        } catch (_) {}
     }
   }
 
@@ -584,7 +607,9 @@ class SecurityService {
     final aBytes = utf8.encode(a);
     final bBytes = utf8.encode(b);
     // Constant-time even on length mismatch (no early return)
-    final maxLen = aBytes.length > bBytes.length ? aBytes.length : bBytes.length;
+    final maxLen = aBytes.length > bBytes.length
+        ? aBytes.length
+        : bBytes.length;
     var diff = aBytes.length ^ bBytes.length;
     for (var i = 0; i < maxLen; i++) {
       final ai = i < aBytes.length ? aBytes[i] : 0;
@@ -609,34 +634,33 @@ class SecurityService {
 
   static void _assertValidPin(String pin) {
     if (pin.length < 6 || pin.length > 12) {
-      throw ArgumentError('PIN must be 6–12 digits (4-digit PINs are brute-forceable)');
+      throw ArgumentError(
+        'PIN must be 6–12 digits (4-digit PINs are brute-forceable)',
+      );
     }
     if (!RegExp(r'^\d+$').hasMatch(pin)) {
       throw ArgumentError('PIN must be numeric');
     }
     // Reject trivial PINs
-    if (RegExp(r'^(\d)\1+$').hasMatch(pin) || pin == '123456' || pin == '123456789' || pin == '0123456789') {
-      throw ArgumentError('PIN is too weak — avoid repeated or sequential digits');
+    if (RegExp(r'^(\d)\1+$').hasMatch(pin) ||
+        pin == '123456' ||
+        pin == '123456789' ||
+        pin == '0123456789') {
+      throw ArgumentError(
+        'PIN is too weak — avoid repeated or sequential digits',
+      );
     }
   }
 }
 
-enum AuthenticationMethod {
-  pin,
-  biometric,
-  both,
-}
+enum AuthenticationMethod { pin, biometric, both }
 
 class AuthenticationResult {
   final bool success;
   final AuthenticationMethod? method;
   final String? error;
 
-  const AuthenticationResult({
-    required this.success,
-    this.method,
-    this.error,
-  });
+  const AuthenticationResult({required this.success, this.method, this.error});
 
   factory AuthenticationResult.success(AuthenticationMethod method) {
     return AuthenticationResult(success: true, method: method);

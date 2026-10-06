@@ -144,7 +144,9 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
               ),
             )
           : FadeTransition(
@@ -184,10 +186,47 @@ class _ReceiveScreenState extends State<ReceiveScreen>
   /// the version explicitly keeps QR generation O(1).
   int _qrVersionForLength(int length, {int min = 4}) {
     const capacities = <int>[
-      0, 17, 32, 53, 78, 106, 134, 154, 192, 230, 271,
-      321, 367, 425, 458, 520, 586, 644, 718, 792, 858,
-      929, 1003, 1091, 1171, 1273, 1367, 1465, 1528, 1628, 1732,
-      1840, 1952, 2068, 2188, 2303, 2431, 2563, 2699, 2809, 2953,
+      0,
+      17,
+      32,
+      53,
+      78,
+      106,
+      134,
+      154,
+      192,
+      230,
+      271,
+      321,
+      367,
+      425,
+      458,
+      520,
+      586,
+      644,
+      718,
+      792,
+      858,
+      929,
+      1003,
+      1091,
+      1171,
+      1273,
+      1367,
+      1465,
+      1528,
+      1628,
+      1732,
+      1840,
+      1952,
+      2068,
+      2188,
+      2303,
+      2431,
+      2563,
+      2699,
+      2809,
+      2953,
     ];
     for (int v = min; v <= 40; v++) {
       if (length <= capacities[v]) return v;
@@ -282,7 +321,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                     if (isSelected) ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(4),
@@ -300,8 +342,13 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                   ],
                 ),
                 IconButton(
-                  onPressed: () => _copyToClipboard(masterAddress, 'Master address'),
-                  icon: const Icon(Icons.copy, color: AppTheme.primaryColor, size: 20),
+                  onPressed: () =>
+                      _copyToClipboard(masterAddress, 'Master address'),
+                  icon: const Icon(
+                    Icons.copy,
+                    color: AppTheme.primaryColor,
+                    size: 20,
+                  ),
                   tooltip: 'Copy master address',
                 ),
               ],
@@ -341,7 +388,11 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.shield_outlined, color: AppTheme.warningColor, size: 20),
+          const Icon(
+            Icons.shield_outlined,
+            color: AppTheme.warningColor,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -363,7 +414,9 @@ class _ReceiveScreenState extends State<ReceiveScreen>
   Widget _buildSubaddressSection() {
     return BlocBuilder<WalletCubit, WalletState>(
       builder: (context, state) {
-        final subaddresses = state.subaddresses.where((s) => !s.legacy).toList();
+        final subaddresses = state.subaddresses
+            .where((s) => !s.legacy)
+            .toList();
         final legacy = state.subaddresses.where((s) => s.legacy).toList();
 
         return Container(
@@ -405,7 +458,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                       decoration: const InputDecoration(
                         hintText: 'Label (e.g. "exchange", "friend-alice")',
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
                       onSubmitted: (_) => _generateSubaddress(),
                     ),
@@ -415,9 +471,15 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                     onPressed: _generateSubaddress,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
-                    child: const Text('Generate', style: TextStyle(fontSize: 13)),
+                    child: const Text(
+                      'Generate',
+                      style: TextStyle(fontSize: 13),
+                    ),
                   ),
                 ],
               ),
@@ -428,7 +490,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     'No subaddresses yet. Generate one to receive funds privately.',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
                   ),
                 )
               else
@@ -460,21 +525,33 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         children: [
           const Text(
             'Old-format subaddresses — stop sharing these',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             'They were created with keys that overlap your main keys: funds on the '
             'first one can be spent by anyone holding your view key. The wallet now '
             'scans them and can move what is there to your main address.',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+              height: 1.4,
+            ),
           ),
           if (balance > 0) ...[
             const SizedBox(height: 8),
             ElevatedButton(
               onPressed: _sweepLegacy,
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
-              child: Text('Move ${(balance / atomicPerCoin).toStringAsFixed(7)} XFG to main address'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.errorColor,
+              ),
+              child: Text(
+                'Move ${(balance / atomicPerCoin).toStringAsFixed(7)} XFG to main address',
+              ),
             ),
           ],
         ],
@@ -496,20 +573,32 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         children: [
           const Text(
             'Funds outside your recovery phrase',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             'An earlier version of the wallet backend kept its own key on this computer '
             '(master_seed.bin) and received with it. Your recovery phrase does not restore '
             'those funds. Move them into this wallet.',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+              height: 1.4,
+            ),
           ),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: _sweepLegacyWallet,
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
-            child: Text('Move ${(balance / atomicPerCoin).toStringAsFixed(7)} XFG into this wallet'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+            ),
+            child: Text(
+              'Move ${(balance / atomicPerCoin).toStringAsFixed(7)} XFG into this wallet',
+            ),
           ),
         ],
       ),
@@ -519,24 +608,33 @@ class _ReceiveScreenState extends State<ReceiveScreen>
   Future<void> _sweepLegacyWallet() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final (tx, remaining) = await context.read<WalletCubit>().sweepLegacyWallet();
+      final (tx, remaining) = await context
+          .read<WalletCubit>()
+          .sweepLegacyWallet();
       final String message;
       if (tx == null) {
         message = 'Nothing confirmed to move yet';
       } else if (remaining > 0) {
-        message = 'Moved part (tx ${tx.substring(0, 12)}…); $remaining outputs left, move again';
+        message =
+            'Moved part (tx ${tx.substring(0, 12)}…); $remaining outputs left, move again';
       } else {
         message = 'Moved into this wallet (tx ${tx.substring(0, 12)}…)';
       }
-      messenger.showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: tx == null ? AppTheme.warningColor : AppTheme.successColor,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: tx == null
+              ? AppTheme.warningColor
+              : AppTheme.successColor,
+        ),
+      );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content: Text('Could not move funds: $e'),
-        backgroundColor: AppTheme.errorColor,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not move funds: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
     }
   }
 
@@ -544,17 +642,25 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     final messenger = ScaffoldMessenger.of(context);
     try {
       final tx = await context.read<WalletCubit>().sweepLegacySubaddresses();
-      messenger.showSnackBar(SnackBar(
-        content: Text(tx == null
-            ? 'Nothing confirmed on old subaddresses yet'
-            : 'Moved to main address (tx ${tx.substring(0, 12)}…)'),
-        backgroundColor: tx == null ? AppTheme.warningColor : AppTheme.successColor,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            tx == null
+                ? 'Nothing confirmed on old subaddresses yet'
+                : 'Moved to main address (tx ${tx.substring(0, 12)}…)',
+          ),
+          backgroundColor: tx == null
+              ? AppTheme.warningColor
+              : AppTheme.successColor,
+        ),
+      );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content: Text('Could not move funds: $e'),
-        backgroundColor: AppTheme.errorColor,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not move funds: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
     }
   }
 
@@ -568,10 +674,14 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.08) : AppTheme.surfaceColor,
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.08)
+              : AppTheme.surfaceColor,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.textMuted.withOpacity(0.15),
+            color: isSelected
+                ? AppTheme.primaryColor
+                : AppTheme.textMuted.withOpacity(0.15),
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -591,35 +701,51 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                           style: TextStyle(
                             color: AppTheme.textPrimary,
                             fontSize: 13,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w600,
                           ),
                         ),
                       ),
                       if (sub.legacy) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.errorColor.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(3),
                           ),
                           child: const Text(
                             'OLD FORMAT',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.errorColor),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.errorColor,
+                            ),
                           ),
                         ),
                       ],
                       if (isSelected) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.primaryColor.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(3),
                           ),
                           child: const Text(
                             'ACTIVE',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
+                            ),
                           ),
                         ),
                       ],
@@ -647,7 +773,11 @@ class _ReceiveScreenState extends State<ReceiveScreen>
             IconButton(
               // Legacy entries are the only record of which old keys to scan.
               onPressed: sub.legacy ? null : () => _showDeleteDialog(sub),
-              icon: const Icon(Icons.delete_outline, size: 16, color: AppTheme.errorColor),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 16,
+                color: AppTheme.errorColor,
+              ),
               tooltip: 'Delete',
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             ),
@@ -662,7 +792,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.cardColor,
-        title: const Text('Delete Subaddress', style: TextStyle(color: AppTheme.textPrimary)),
+        title: const Text(
+          'Delete Subaddress',
+          style: TextStyle(color: AppTheme.textPrimary),
+        ),
         content: Text(
           'Delete "${sub.label}"? Any funds sent to this address will still be accessible from your wallet.',
           style: const TextStyle(color: AppTheme.textSecondary),
@@ -670,7 +803,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -680,7 +816,9 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                 _selectMasterAddress();
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+            ),
             child: const Text('Delete'),
           ),
         ],

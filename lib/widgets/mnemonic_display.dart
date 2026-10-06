@@ -18,7 +18,7 @@ class MnemonicDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final words = mnemonic.split(' ');
-    
+
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.backgroundColor.withOpacity(0.5),
@@ -110,9 +110,7 @@ class MnemonicDisplay extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.orange.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.orange.withOpacity(0.3),
-              ),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
             ),
             child: Row(
               children: [
@@ -139,4 +137,3 @@ class MnemonicDisplay extends StatelessWidget {
     );
   }
 }
-

@@ -22,13 +22,15 @@ class FuegoNodeAdapter {
   StreamController<NodeEvent>? _eventController;
 
   FuegoNodeAdapter._internal()
-      : _dio = Dio(BaseOptions(
+    : _dio = Dio(
+        BaseOptions(
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 30),
           headers: {'Content-Type': 'application/json'},
-        )),
-        _nodeUrl = 'http://localhost:18180',
-        _networkConfig = NetworkConfig.mainnet;
+        ),
+      ),
+      _nodeUrl = 'http://localhost:18180',
+      _networkConfig = NetworkConfig.mainnet;
 
   /// Initialize the adapter with a specific node
   Future<bool> init({
@@ -51,13 +53,13 @@ class FuegoNodeAdapter {
         '$_nodeUrl/getinfo',
         options: Options(responseType: ResponseType.json),
       );
-      
+
       if (response.statusCode == 200) {
         _isInitialized = true;
         _emitEvent(NodeEvent.initCompleted());
         return true;
       }
-      
+
       return false;
     } catch (e) {
       debugPrint('NodeAdapter init failed: $e');
@@ -174,10 +176,7 @@ class FuegoNodeAdapter {
   void updateNode(String host, {int? port}) {
     _nodeUrl = 'http://$host:${port ?? _networkConfig.daemonRpcPort}';
     _isInitialized = false;
-    init(
-      nodeUrl: _nodeUrl,
-      networkConfig: _networkConfig,
-    );
+    init(nodeUrl: _nodeUrl, networkConfig: _networkConfig);
   }
 
   /// Deinitialize the adapter
@@ -204,26 +203,20 @@ class NodeEvent {
   final String? message;
   final Map<String, dynamic>? data;
 
-  NodeEvent({
-    required this.type,
-    this.message,
-    this.data,
-  });
+  NodeEvent({required this.type, this.message, this.data});
 
-  factory NodeEvent.initCompleted() => NodeEvent(type: NodeEventType.initCompleted);
-  factory NodeEvent.initFailed(String message) => NodeEvent(
-        type: NodeEventType.initFailed,
-        message: message,
-      );
-  factory NodeEvent.deinitCompleted() => NodeEvent(type: NodeEventType.deinitCompleted);
-  factory NodeEvent.peerCountUpdated(int count) => NodeEvent(
-        type: NodeEventType.peerCountUpdated,
-        data: {'count': count},
-      );
+  factory NodeEvent.initCompleted() =>
+      NodeEvent(type: NodeEventType.initCompleted);
+  factory NodeEvent.initFailed(String message) =>
+      NodeEvent(type: NodeEventType.initFailed, message: message);
+  factory NodeEvent.deinitCompleted() =>
+      NodeEvent(type: NodeEventType.deinitCompleted);
+  factory NodeEvent.peerCountUpdated(int count) =>
+      NodeEvent(type: NodeEventType.peerCountUpdated, data: {'count': count});
   factory NodeEvent.blockchainUpdated(int height) => NodeEvent(
-        type: NodeEventType.blockchainUpdated,
-        data: {'height': height},
-      );
+    type: NodeEventType.blockchainUpdated,
+    data: {'height': height},
+  );
 }
 
 enum NodeEventType {
@@ -233,4 +226,3 @@ enum NodeEventType {
   peerCountUpdated,
   blockchainUpdated,
 }
-

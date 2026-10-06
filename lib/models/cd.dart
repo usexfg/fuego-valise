@@ -28,19 +28,19 @@ class CdInfo {
   });
 
   factory CdInfo.fromJson(Map<String, dynamic> json) => CdInfo(
-        cdId: json['cd_id'] as String? ?? '',
-        owner: json['owner'] as String? ?? '',
-        coin: json['coin'] as String? ?? '',
-        amount: json['amount'] as String? ?? '0',
-        interestRate: json['interest_rate'] as String? ?? '0',
-        maturityHeight: (json['maturity_height'] as num?)?.toInt() ?? 0,
-        depositHeight: (json['deposit_height'] as num?)?.toInt() ?? 0,
-        accruedInterest: json['accrued_interest'] as String? ?? '0',
-        totalValue: json['total_value'] as String? ?? '0',
-        blocksToMaturity: (json['blocks_to_maturity'] as num?)?.toInt() ?? 0,
-        matured: json['matured'] as bool? ?? false,
-        forSale: json['for_sale'] as bool? ?? false,
-      );
+    cdId: json['cd_id'] as String? ?? '',
+    owner: json['owner'] as String? ?? '',
+    coin: json['coin'] as String? ?? '',
+    amount: json['amount'] as String? ?? '0',
+    interestRate: json['interest_rate'] as String? ?? '0',
+    maturityHeight: (json['maturity_height'] as num?)?.toInt() ?? 0,
+    depositHeight: (json['deposit_height'] as num?)?.toInt() ?? 0,
+    accruedInterest: json['accrued_interest'] as String? ?? '0',
+    totalValue: json['total_value'] as String? ?? '0',
+    blocksToMaturity: (json['blocks_to_maturity'] as num?)?.toInt() ?? 0,
+    matured: json['matured'] as bool? ?? false,
+    forSale: json['for_sale'] as bool? ?? false,
+  );
 }
 
 class CdListResult {
@@ -48,11 +48,12 @@ class CdListResult {
   const CdListResult({required this.cds});
 
   factory CdListResult.fromJson(Map<String, dynamic> json) => CdListResult(
-        cds: (json['cds'] as List<dynamic>?)
-                ?.map((e) => CdInfo.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-      );
+    cds:
+        (json['cds'] as List<dynamic>?)
+            ?.map((e) => CdInfo.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [],
+  );
 }
 
 class CdCreateResult {
@@ -71,12 +72,12 @@ class CdCreateResult {
   });
 
   factory CdCreateResult.fromJson(Map<String, dynamic> json) => CdCreateResult(
-        cdId: json['cd_id'] as String,
-        txHash: json['tx_hash'] as String,
-        coin: json['coin'] as String,
-        amount: json['amount'] as String,
-        maturityAt: json['maturity_at'] as String,
-      );
+    cdId: json['cd_id'] as String,
+    txHash: json['tx_hash'] as String,
+    coin: json['coin'] as String,
+    amount: json['amount'] as String,
+    maturityAt: json['maturity_at'] as String,
+  );
 }
 
 class CdClaimResult {
@@ -97,13 +98,13 @@ class CdClaimResult {
   });
 
   factory CdClaimResult.fromJson(Map<String, dynamic> json) => CdClaimResult(
-        cdId: json['cd_id'] as String,
-        txHash: json['tx_hash'] as String,
-        coin: json['coin'] as String,
-        principal: json['principal'] as String,
-        interest: json['interest'] as String,
-        total: json['total'] as String,
-      );
+    cdId: json['cd_id'] as String,
+    txHash: json['tx_hash'] as String,
+    coin: json['coin'] as String,
+    principal: json['principal'] as String,
+    interest: json['interest'] as String,
+    total: json['total'] as String,
+  );
 }
 
 class CdRolloverResult {
@@ -168,8 +169,11 @@ class CdMarketListResult {
 
   factory CdMarketListResult.fromJson(Map<String, dynamic> json) =>
       CdMarketListResult(
-        listings: (json['listings'] as List<dynamic>?)
-                ?.map((e) => CdMarketListing.fromJson(e as Map<String, dynamic>))
+        listings:
+            (json['listings'] as List<dynamic>?)
+                ?.map(
+                  (e) => CdMarketListing.fromJson(e as Map<String, dynamic>),
+                )
                 .toList() ??
             [],
       );
@@ -187,10 +191,10 @@ class CdSellResult {
   });
 
   factory CdSellResult.fromJson(Map<String, dynamic> json) => CdSellResult(
-        listingId: json['listing_id'] as String,
-        cdId: json['cd_id'] as String,
-        txHash: json['tx_hash'] as String,
-      );
+    listingId: json['listing_id'] as String,
+    cdId: json['cd_id'] as String,
+    txHash: json['tx_hash'] as String,
+  );
 }
 
 class CdBuyResult {
@@ -211,13 +215,13 @@ class CdBuyResult {
   });
 
   factory CdBuyResult.fromJson(Map<String, dynamic> json) => CdBuyResult(
-        listingId: json['listing_id'] as String,
-        cdId: json['cd_id'] as String,
-        txHash: json['tx_hash'] as String,
-        coin: json['coin'] as String,
-        amount: json['amount'] as String,
-        pricePaid: json['price_paid'] as String,
-      );
+    listingId: json['listing_id'] as String,
+    cdId: json['cd_id'] as String,
+    txHash: json['tx_hash'] as String,
+    coin: json['coin'] as String,
+    amount: json['amount'] as String,
+    pricePaid: json['price_paid'] as String,
+  );
 }
 
 class CdApyResult {
@@ -234,9 +238,9 @@ class CdApyResult {
   });
 
   factory CdApyResult.fromJson(Map<String, dynamic> json) => CdApyResult(
-        coin: json['coin'] as String? ?? 'XFG',
-        currentApy: (json['current_apy'] as num?)?.toDouble() ?? 0.0,
-        averageApy: (json['average_apy'] as num?)?.toDouble() ?? 0.0,
-        epoch: json['epoch'] as int?,
-      );
+    coin: json['coin'] as String? ?? 'XFG',
+    currentApy: (json['current_apy'] as num?)?.toDouble() ?? 0.0,
+    averageApy: (json['average_apy'] as num?)?.toDouble() ?? 0.0,
+    epoch: json['epoch'] as int?,
+  );
 }

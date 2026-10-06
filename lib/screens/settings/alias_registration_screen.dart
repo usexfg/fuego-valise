@@ -9,7 +9,8 @@ class AliasRegistrationScreen extends StatefulWidget {
   const AliasRegistrationScreen({super.key});
 
   @override
-  State<AliasRegistrationScreen> createState() => _AliasRegistrationScreenState();
+  State<AliasRegistrationScreen> createState() =>
+      _AliasRegistrationScreenState();
 }
 
 class _AliasRegistrationScreenState extends State<AliasRegistrationScreen> {
@@ -61,7 +62,8 @@ class _AliasRegistrationScreenState extends State<AliasRegistrationScreen> {
       if (sub == null) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Unlock your wallet first to generate the alias subaddress';
+          _errorMessage =
+              'Unlock your wallet first to generate the alias subaddress';
         });
         return;
       }
@@ -92,9 +94,7 @@ class _AliasRegistrationScreenState extends State<AliasRegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Register Alias'),
-      ),
+      appBar: AppBar(title: const Text('Register Alias')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -132,11 +132,17 @@ class _AliasRegistrationScreenState extends State<AliasRegistrationScreen> {
               ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 16),
-              Text(_errorMessage!, style: const TextStyle(color: AppTheme.errorColor)),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(color: AppTheme.errorColor),
+              ),
             ],
             if (_successMessage != null) ...[
               const SizedBox(height: 16),
-              Text(_successMessage!, style: const TextStyle(color: AppTheme.successColor)),
+              Text(
+                _successMessage!,
+                style: const TextStyle(color: AppTheme.successColor),
+              ),
             ],
           ],
         ),

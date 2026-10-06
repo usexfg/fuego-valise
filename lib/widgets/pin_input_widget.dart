@@ -45,23 +45,16 @@ class _PinInputWidgetState extends State<PinInputWidget>
       vsync: this,
     );
 
-    _shakeAnimation = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(CurvedAnimation(
-      parent: _shakeController,
-      curve: Curves.elasticIn,
-    ));
+    _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
+    );
 
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 1,
-      end: 0,
-    ).animate(_fadeController);
+    _fadeAnimation = Tween<double>(begin: 1, end: 0).animate(_fadeController);
   }
 
   @override
@@ -147,17 +140,13 @@ class _PinInputWidgetState extends State<PinInputWidget>
                         color: widget.errorMessage != null
                             ? AppTheme.errorColor
                             : _pin[index].isNotEmpty
-                                ? AppTheme.primaryColor
-                                : AppTheme.textMuted,
+                            ? AppTheme.primaryColor
+                            : AppTheme.textMuted,
                         width: 2,
                       ),
                     ),
                     child: _pin[index].isNotEmpty
-                        ? const Icon(
-                            Icons.circle,
-                            size: 8,
-                            color: Colors.white,
-                          )
+                        ? const Icon(Icons.circle, size: 8, color: Colors.white)
                         : null,
                   );
                 }),
@@ -174,9 +163,7 @@ class _PinInputWidgetState extends State<PinInputWidget>
             decoration: BoxDecoration(
               color: AppTheme.errorColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppTheme.errorColor.withOpacity(0.3),
-              ),
+              border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
             ),
             child: Text(
               widget.errorMessage!,
@@ -263,10 +250,7 @@ class _PinInputWidgetState extends State<PinInputWidget>
             children: [
               _buildActionButton(
                 onTap: _onClear,
-                child: const Icon(
-                  Icons.clear,
-                  color: AppTheme.textSecondary,
-                ),
+                child: const Icon(Icons.clear, color: AppTheme.textSecondary),
               ),
               _buildNumberButton('0'),
               _buildActionButton(
@@ -292,9 +276,7 @@ class _PinInputWidgetState extends State<PinInputWidget>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: AppTheme.cardColor,
-          border: Border.all(
-            color: AppTheme.textMuted.withOpacity(0.3),
-          ),
+          border: Border.all(color: AppTheme.textMuted.withOpacity(0.3)),
         ),
         child: Center(
           child: Text(

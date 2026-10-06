@@ -191,13 +191,18 @@ Future<void> showSwapReceiptSheet(BuildContext context, SwapInfo swap) async {
                         icon: const Icon(Icons.copy, size: 16),
                         label: const Text(
                           'Copy JSON',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.surfaceColor,
                           foregroundColor: AppTheme.textPrimary,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -212,7 +217,9 @@ Future<void> showSwapReceiptSheet(BuildContext context, SwapInfo swap) async {
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               const SnackBar(
-                                content: Text('Receipt copied — share via clipboard (share_plus not installed)'),
+                                content: Text(
+                                  'Receipt copied — share via clipboard (share_plus not installed)',
+                                ),
                                 backgroundColor: AppTheme.infoColor,
                               ),
                             );
@@ -221,13 +228,18 @@ Future<void> showSwapReceiptSheet(BuildContext context, SwapInfo swap) async {
                         icon: const Icon(Icons.share, size: 16),
                         label: const Text(
                           'Share',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
@@ -243,10 +255,7 @@ Future<void> showSwapReceiptSheet(BuildContext context, SwapInfo swap) async {
 }
 
 class SwapReceiptButton extends StatelessWidget {
-  const SwapReceiptButton({
-    super.key,
-    required this.swap,
-  });
+  const SwapReceiptButton({super.key, required this.swap});
 
   final SwapInfo swap;
 

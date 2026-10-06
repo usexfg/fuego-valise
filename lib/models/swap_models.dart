@@ -57,9 +57,9 @@ enum SwapLockTypeSdk {
   const SwapLockTypeSdk(this.id, this.label);
 
   static SwapLockTypeSdk fromId(int id) => SwapLockTypeSdk.values.firstWhere(
-        (v) => v.id == id,
-        orElse: () => SwapLockTypeSdk.htlc,
-      );
+    (v) => v.id == id,
+    orElse: () => SwapLockTypeSdk.htlc,
+  );
 
   static SwapLockTypeSdk fromString(String s) {
     final u = s.toUpperCase();
