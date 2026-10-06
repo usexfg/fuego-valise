@@ -29,9 +29,10 @@ runs:
             install -m 755 "backends/$b" "$APP/$b"
           done
           install -m 644 backends/libfuego_ffi.so "$APP/lib/libfuego_ffi.so"
-          # Launcher name used by the .desktop Exec, snap and flatpak. The binary is
-          # BINARY_NAME in linux/CMakeLists.txt; "Fuego Valise" is only the display name.
-          bin=$(sed -n 's/^set(BINARY_NAME "\(.*\)")$/\1/p' linux/CMakeLists.txt)
+          # The installed executable is named by the OUTPUT_NAME property
+          # (APP_DISPLAY_NAME). BINARY_NAME is only the CMake target name, and reading
+          # it here made `test -x` fail against a real bundle.
+          bin=$(sed -n 's/^set(APP_DISPLAY_NAME "\(.*\)")$/\1/p' linux/CMakeLists.txt)
           test -n "$bin" && test -x "$APP/$bin"
           ln -sfn "$bin" "$APP/fuego-valise"
           test -x "$APP/fuego-valise"
