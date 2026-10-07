@@ -538,3 +538,31 @@ Self-review of the merge above using the adversarial-review personas (Saboteur /
 | Personas run | ⚠️ All three sub-agents and the guardian run failed on an opencode `FileSystem.writeFile` snapshot error. Personas were executed inline with direct command evidence instead; guardian loaded on retry and its checklists were applied |
 | All tasks done | Two real test defects found and closed; five guardian checks passed; one hypothesis refuted with evidence; one cost characteristic documented |
 | Scope | Tests and changelog only. No production logic changed in this pass |
+
+## [2026-10-04] Second adversarial pass (multi-agent) — vacuous test fixed, scan cost bounded
+
+Ran the Saboteur and Security Auditor personas as independent sub-agents (read-only, via `git show`). Both returned findings; both were reproduced locally before being believed. **One of them caught a defect in my own previous fix.**
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 128 | `malformed_commit_keys_are_skipped_not_panicked` never entered the output loop | opencode | 2026-10-04 | **Real defect, fixed.** The fixture used `r = [7u8;32]` as the tx one-time pubkey. That is not a valid ed25519 point, so `generate_key_derivation` returned `None` and `scan_tx_prefix` returned *before* the output loop. All 5 assertions ran against a transaction rejected upstream. Rebuilt on a real `R = r*G`. Proof the loop is now reached: substituting a genuinely-owned commit key into slot 0 makes it fail `left: 500, right: 0` |
+| 129 | Unbounded legacy-subaddress registration is a scan-cost amplifier | opencode | 2026-10-04 | Fixed. `set_legacy_subaddresses` had no cap, and every registered account is walked per commitment output while each new index also schedules a full rescan. Added `MAX_LEGACY_SUBADDRESSES = 64` plus `legacy_registration_is_capped` |
+| 130 | Attempted lazy `legacy_derivations` | opencode | 2026-10-04 | **Reverted — it broke a pre-existing feature.** Gating the computation on "tx has a commitment output" made `legacy_subaddress_outputs_need_registration` fail, because the *key*-output arm uses the same vector. Reverted; cost is bounded by 128 instead. Comment left in place so the trap is not re-attempted |
+| 131 | Owner-bound scheme is absent from the pinned daemon | opencode | 2026-10-04 | **CRITICAL, pre-existing, NOT fixed here — needs a decision.** `fuego-suite @ a36eccb5` has zero occurrences of `owner_bound`; the only commitment derivation in the daemon is `deriveCommitmentKeys` (`TransactionExtra.cpp:1750`), and the only discovery rule is `TransfersConsumer.cpp:124`. A `keyderiv` branch exists on the submodule origin at `0925d64c` but is **not** the pin. See the escalation note below |
+
+### Escalation — read before enabling HEAT/CD sends to a counterparty
+
+`transaction_builder.rs` emits `P = B + Hs(D,i)·G` for commitment outputs. The pinned daemon has no matching discovery rule, so **a counterparty wallet using the pinned daemon will not find those outputs**. The vector suites assert agreement with a C++ implementation of a function that exists only on the unpinned `keyderiv` branch, so they prove Rust/Rust agreement, not protocol agreement. Pre-existing since `b8b0e93`, but the merge entrenches it by adding a scanner arm and three suites that make the form look protocol-blessed. Options: pin the submodule to `keyderiv`, or revert commitment creation to `deriveCommitmentKeys` until the daemon ships a discovery rule. **Not decided or changed here.**
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test --workspace` | ✅ **116 passed, 0 failed** |
+| `cargo build -p fuego-sdk` | ✅ clean, no warnings |
+| Fixture non-vacuity | ✅ owned-key substitution fails `500 vs 0` |
+| Cap enforced | ✅ 4,998-index flood stops at 64 |
+| Reverted-optimization check | ✅ `legacy_subaddress_outputs_need_registration` passes again |
+| Personas | ⚠️ Saboteur and Security Auditor ran as independent sub-agents. The New Hire persona was not re-run (three parallel agents previously died on an opencode snapshot error); disk was at 97% and 3.1 GB of scratch was reclaimed first |
+| All tasks done | Two defects fixed and verified; one optimization attempted and reverted after it broke a test; one CRITICAL escalated, not fixed |
+| Scope | `scanner.rs` tests + one const. No production behaviour changed except the registration cap |

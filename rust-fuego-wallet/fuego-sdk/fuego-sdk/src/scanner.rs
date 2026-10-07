@@ -102,6 +102,12 @@ pub enum OutputOwner {
 /// to recently handed-out addresses are found even after a seed restore.
 pub const SUBADDRESS_LOOKAHEAD: u32 = 50;
 
+/// Upper bound on registered pre-suite-scheme legacy sub-addresses. Each one is
+/// an extra ECDH derivation walked per commitment output, so this bounds scan
+/// cost. Generous against real usage (single digits) and deliberately far below
+/// anything that would make a rescan pathological.
+pub const MAX_LEGACY_SUBADDRESSES: usize = 64;
+
 /// Spend keys the scanner recognises after underiving an output key with the
 /// master view derivation, and the legacy accounts that need their own.
 struct ScanKeys {
@@ -254,6 +260,15 @@ impl UtxoScanner {
         for &index in indices {
             if index == 0 || index == u32::MAX || table.legacy.iter().any(|a| a.index == index) {
                 continue;
+            }
+            // Every registered legacy account is walked for every commitment
+            // output on every scan, so the count is a direct multiplier on scan
+            // cost and each new index also schedules a full rescan. Real wallets
+            // carry a handful (the Dart migration forwards only pre-v2 store
+            // entries), so cap it rather than let a caller scale this without
+            // bound.
+            if table.legacy.len() >= MAX_LEGACY_SUBADDRESSES {
+                break;
             }
             let spend = self.vault.derive_keypair(index);
             let view = self.vault.derive_keypair(index + 1);
@@ -426,10 +441,17 @@ impl UtxoScanner {
 
         let table = self.scan_keys.read().unwrap();
         // Legacy accounts have their own view keys, hence their own derivations.
+        // Used by BOTH the key-output and commitment-output arms, so it cannot be
+        // gated on output type. An earlier attempt to compute it only for
+        // commitment transactions broke `legacy_subaddress_outputs_need_registration`
+        // -- key outputs on legacy accounts silently stopped being found. The cost
+        // is bounded by MAX_LEGACY_SUBADDRESSES instead.
         let legacy_derivations: Vec<Option<[u8; 32]>> = table
             .legacy
             .iter()
-            .map(|a| fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r), &a.view_secret))
+            .map(|a| {
+                fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r), &a.view_secret)
+            })
             .collect();
         let mut highest_subaddress = 0u32;
 
@@ -1052,8 +1074,16 @@ mod subaddress_tests {
         ];
 
         for (n, key) in junk.iter().enumerate() {
-            let mut extra = vec![0x01];
-            extra.extend_from_slice(&[7u8; 32]);
+            // Build on a REAL R = r*G. Using a junk r here is worse than useless:
+            // generate_key_derivation would fail its ge_frombytes_vartime gate and
+            // scan_tx_prefix would return before the output loop, so the fixture
+            // would never reach the commit_key code it claims to test.
+            let r = fuego_crypto::Keypair::from_secret([7u8; 32]);
+            let extra = {
+                let mut e = vec![0x01];
+                e.extend_from_slice(&r.public);
+                e
+            };
             let prefix = TransactionPrefix {
                 version: 1,
                 unlock_time: 0,
@@ -1091,6 +1121,22 @@ mod subaddress_tests {
         });
         assert_eq!(s.scan_tx_prefix(&[99u8; 32], &valid, 11).unwrap().0, 500);
         assert_eq!(s.heat_outputs().len(), 1, "control: a valid commitment is credited");
+    }
+
+    #[test]
+    fn legacy_registration_is_capped() {
+        let s = scanner();
+        assert!(s.set_legacy_subaddresses(&[1]));
+        // Overflow attempt must not grow the table past the cap.
+        let flood: Vec<u32> = (2..5000).collect();
+        s.set_legacy_subaddresses(&flood);
+        assert_eq!(
+            s.legacy_subaddresses().len(),
+            MAX_LEGACY_SUBADDRESSES,
+            "legacy accounts are a scan-cost multiplier and must stay bounded"
+        );
+        // And the table is still usable for its original entry.
+        assert!(s.legacy_subaddresses().contains(&1));
     }
 
     #[test]
