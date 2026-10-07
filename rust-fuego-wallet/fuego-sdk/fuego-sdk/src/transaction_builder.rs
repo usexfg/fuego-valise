@@ -17,7 +17,7 @@ use crate::serialization::{
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
 use fuego_crypto::ring::{
-    check_ring_signature, derive_public_key,
+    check_ring_signature, derive_owner_bound_commit_key, derive_public_key,
     derive_secret_key, generate_key_derivation, generate_key_image, generate_ring_signature,
     secret_key_to_public_key,
     hash_to_scalar,
@@ -82,7 +82,7 @@ pub struct BuildCommitmentDestination {
 
 /// Owner-bound commit key for output `out_index` (see BuildCommitmentDestination).
 fn owner_bound_commit_key(derivation: &[u8; 32], out_index: usize, spend_pub: &[u8; 32]) -> Result<[u8; 32]> {
-    derive_public_key(derivation, out_index as u64, spend_pub)
+    derive_owner_bound_commit_key(derivation, out_index as u64, spend_pub)
         .ok_or_else(|| SdkError::Crypto("commitment key derivation failed".into()))
 }
 

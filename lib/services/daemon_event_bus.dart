@@ -4,6 +4,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/chain_info.dart';
+import '../models/swap_models.dart';
+
 /// Dart EventBus mirroring the fuego-suite dashboard's unified daemon monitoring.
 ///
 /// Polls all 3 daemons (fuegod, walletd, xfg-swapd) on independent timers,
@@ -513,26 +516,8 @@ class DaemonEventBus {
     if (pairName == null || pairName.isEmpty) {
       return '';
     }
-    // Minimal explorer map inline to avoid importing ChainInfo if not needed.
-    const Map<String, String> explorerTx = <String, String>{
-      'BTC': 'https://mempool.space/tx/{txid}',
-      'LTC': 'https://litecoinspace.org/tx/{txid}',
-      'BCH': 'https://blockchair.com/bitcoin-cash/transaction/{txid}',
-      'KMD': 'https://kmdexplorer.io/tx/{txid}',
-      'DCR': 'https://dcrdata.decred.org/tx/{txid}',
-      'ETH': 'https://etherscan.io/tx/{txid}',
-      'ARB': 'https://arbiscan.io/tx/{txid}',
-      'BASE': 'https://basescan.org/tx/{txid}',
-      'BNB': 'https://bscscan.com/tx/{txid}',
-      'POLY': 'https://polygonscan.com/tx/{txid}',
-      'SOL': 'https://solscan.io/tx/{txid}',
-      'XMR': 'https://xmrchain.net/tx/{txid}',
-    };
-    final String? tmpl = explorerTx[pairName];
-    if (tmpl == null) {
-      return '';
-    }
-    return tmpl.replaceAll('{txid}', txid);
+    // Delegates to ChainInfo so there is one explorer map, not two.
+    return ChainInfo.explorerTxUrl(pairName, txid);
   }
 
   String? _extractPairName(Map<String, dynamic> raw) {
@@ -553,21 +538,11 @@ class DaemonEventBus {
     if (pairId == null) {
       return null;
     }
-    const Map<int, String> names = <int, String>{
-      0: 'SOL',
-      1: 'ETH',
-      2: 'XMR',
-      3: 'BCH',
-      4: 'ARB',
-      5: 'BASE',
-      6: 'KMD',
-      7: 'BNB',
-      8: 'DCR',
-      9: 'BTC',
-      10: 'LTC',
-      11: 'POLYGON',
-    };
-    return names[pairId];
+    // Derived from SwapPairSdk rather than a local id table: a hardcoded
+    // 0-11 map silently dropped ten wired pairs (GLEEC, RHC, AVAX, CRO, BOB,
+    // UNI, XPL, PLS, MON, OP) and emitted `POLYGON` for id 11, which no
+    // ChainInfo map is keyed by — so those rows lost their explorer link.
+    return SwapPairSdk.tryFromId(pairId)?.ticker;
   }
 
   bool _isTerminalState(String state) {

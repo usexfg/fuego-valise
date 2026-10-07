@@ -59,9 +59,30 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 | XMR | Run your own monerod + monero-wallet-rpc (recommended), or use a remote node from monero.fail |
 
 ### Known Issues
-- POLYGON missing from `swapPairToString()`, `swapPairFromString()`, `msPerBlock()`, `PriceOracle.cpp` in xfg-swapd C++ code — shows "???" in logs, fails at CLI level, but works via JSON config.
-- `main.cpp` help text only lists "SOL, ETH, XMR, BCH, ARB, BASE" — stale.
+
 - SPV mode is read-only; claim/refund requires RPC mode for UTXO chains.
+- **The chain set is mirrored by hand in many places, and has drifted before.** One `SwapPair`
+  enum is restated as ~10 C++ `switch` tables, a Go CLI list, dashboard JS/HTML, and ~10 lists
+  in Dart. Adding a chain is a ~40-item cross-language checklist. The live landmines, all of
+  which fail *silently* rather than at compile time:
+  - `src/CryptoNoteCore/SwapOfferRelay.h` `MAX_PAIR_INDEX` is hand-synced across the module
+    boundary. Raising `SwapPair` without raising it drops every offer for the new pair in
+    `validateOffer`.
+  - `for (pair = 0; pair <= SwapPair::DOT; ++pair)` loop sentinels (`src/Rpc/RpcServer.cpp`,
+    `src/SwapDaemon/SwapDaemon.cpp`) compile fine and silently skip a newly appended pair.
+  - `PriceOracle::ctrDivisor()` defaults to a *plausible-but-wrong* `1e8`, unlike
+    `getEffectiveRate()` which returns an obvious `0.0`. A missing case corrupts
+    `requiredCtrAmount` in integer math.
+  - `swapPairFromString()` guards `s.size() > 12` before any comparison, so a chain name
+    longer than 12 chars is unparseable.
+- `swapxfg/app/pairs.go` (`ActivePairs`) covers 7 of 29 pairs, and
+  `dashboard/static/js/swapxfg.js` `CHAIN_INFO` covers 10 of 29 — the Go CLI and the
+  dashboard can only see a fraction of what the daemon supports.
+- `swap_config.example.json` uses key names `ChainClientConfig.cpp` never reads (`btc_host`
+  vs `btc_rpc_host`, `eth_wif` vs `eth_priv_key`). Following it verbatim yields a silently
+  unconfigured daemon.
+- `src/SwapDaemon/CLV/` is a fully-written `EthChainClient` subclass with no `SwapPair` value,
+  config field, registration, or CMake entry — an orphan adapter.
 
 ## Dart Wallet Backend Architecture
 

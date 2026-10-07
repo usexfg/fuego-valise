@@ -508,13 +508,51 @@ impl UtxoScanner {
                     let (owner, key_scalar) = match owned {
                         Some(found) => found,
                         None => {
-                            let deposit_secret =
-                                fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
-                            let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
-                            if ck.commit_key != commit.commit_key {
-                                continue;
+                            // Pre-v11 legacy accounts carry their own view key, hence
+                            // their own derivation D = 8*(r*A_legacy). The master
+                            // derivation cannot match them, so try the legacy form on
+                            // the master first, then each legacy account under its own
+                            // derivation, owner-bound before legacy-form. Without this
+                            // the output is silently invisible and the funds are
+                            // stranded, because sweep_legacy_subaddresses only walks
+                            // state.utxos.
+                            let master_legacy = {
+                                let deposit_secret =
+                                    fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
+                                let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
+                                (ck.commit_key == commit.commit_key).then_some(ck.key_scalar)
+                            };
+                            if let Some(scalar) = master_legacy {
+                                (OutputOwner::Primary, scalar)
+                            } else {
+                                let mut hit: Option<(OutputOwner, [u8; 32])> = None;
+                                for (acct, d) in table.legacy.iter().zip(&legacy_derivations) {
+                                    let Some(d) = d else { continue };
+                                    // Owner-bound first: x*G == P is enforced inside.
+                                    if let Some((x, _)) = fuego_crypto::ring::derive_owner_bound_key_image(
+                                        d,
+                                        i as u64,
+                                        &commit.commit_key,
+                                        &acct.spend_secret,
+                                    ) {
+                                        hit = Some((OutputOwner::LegacySubaddress(acct.index), x));
+                                        break;
+                                    }
+                                    let dep = fuego_crypto::ring::derive_deposit_secret(d, i as u32);
+                                    let ck = fuego_crypto::ring::derive_commitment_keys(&dep);
+                                    if ck.commit_key == commit.commit_key {
+                                        hit = Some((OutputOwner::LegacySubaddress(acct.index), ck.key_scalar));
+                                        break;
+                                    }
+                                }
+                                // NOTE: deliberately does not raise `highest_subaddress`
+                                // with acct.index -- that tracks suite-scheme minors, not
+                                // legacy keypair indices.
+                                match hit {
+                                    Some(found) => found,
+                                    None => continue,
+                                }
                             }
-                            (OutputOwner::Primary, ck.key_scalar)
                         }
                     };
                     let key_image = fuego_crypto::generate_key_image(&commit_pub, &key_scalar).0;
@@ -912,6 +950,71 @@ mod subaddress_tests {
             assert_eq!(fuego_crypto::ring::secret_key_to_public_key(&e.key_scalar), e.commit_key);
             assert_eq!(fuego_crypto::ring::generate_key_image(&e.commit_key, &e.key_scalar), e.key_image);
         }
+    }
+
+    /// A pre-suite-scheme legacy sub-address is an independent keypair, so its
+    /// ECDH derivation is `D = 8*(r*A_legacy)`, NOT the master one. Before the
+    /// commitment arm consulted `table.legacy`, these outputs matched neither
+    /// the owner-bound nor the legacy-form test and were dropped by `continue`:
+    /// invisible, unspendable, and unreachable by `sweep_legacy_subaddresses`,
+    /// which only walks `state.utxos`.
+    #[test]
+    fn commitments_found_on_legacy_accounts() {
+        let s = scanner();
+        assert!(s.set_legacy_subaddresses(&[1]));
+
+        let vault = s.vault();
+        let legacy_spend = vault.derive_keypair(1); // account n: spend = keypair n
+        let legacy_view = vault.derive_keypair(2); // account n: view = keypair n+1
+        assert_ne!(
+            legacy_view.public,
+            s.wallet_keys().view_public,
+            "a legacy account must have its own view key, or this proves nothing"
+        );
+
+        let owner_bound = |spend: [u8; 32]| move |d: &[u8; 32]| {
+            fuego_crypto::ring::derive_owner_bound_commit_key(d, 0, &spend).unwrap()
+        };
+        let legacy_form = |d: &[u8; 32]| {
+            fuego_crypto::ring::derive_commitment_keys(&fuego_crypto::ring::derive_deposit_secret(
+                d, 0,
+            ))
+            .commit_key
+        };
+
+        // Owner-bound commitment to the legacy account.
+        s.scan_tx_prefix(
+            &[1; 32],
+            &commit_to(&legacy_view.public, 3, owner_bound(legacy_spend.public)),
+            10,
+        )
+        .unwrap();
+        // Legacy-form commitment to the legacy account (Colin's branch misses
+        // this one: its None fallback still uses the master derivation).
+        s.scan_tx_prefix(
+            &[2; 32],
+            &commit_to(&legacy_view.public, 4, legacy_form),
+            11,
+        )
+        .unwrap();
+
+        let c = s.commitments();
+        assert_eq!(c.len(), 2, "both legacy-account commitments must be attributed");
+        for e in &c {
+            assert_eq!(
+                fuego_crypto::ring::secret_key_to_public_key(&e.key_scalar),
+                e.commit_key,
+                "the recorded scalar must open its key"
+            );
+            assert_eq!(
+                fuego_crypto::ring::generate_key_image(&e.commit_key, &e.key_scalar),
+                e.key_image
+            );
+        }
+        // HEAT is tracked as commitments, not in the XFG balance.
+        let heat = s.heat_outputs();
+        assert_eq!(heat.len(), 2, "both legacy-account commitments must be spendable HEAT");
+        assert_eq!(heat.iter().map(|e| e.amount).sum::<u64>(), 1000);
     }
 
     #[test]

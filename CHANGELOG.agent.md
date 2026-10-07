@@ -1,5 +1,58 @@
 # CHANGELOG.agent.md
 
+## [2026-10-04] Merge Colin's owner-bound commitment keys into the audit branch
+
+Merge `origin/feat/owner-bound-commitment-keys` (`51598e6`) into `origin/claude/okoc-valise-daemon-audit-1niqzp` (`5f32382`), fork `75034c0`. 4 files / 25 hunks. Performed in a scratch worktree; the dirty working tree was not touched. **Not pushed.**
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 112 | Resolve `transaction_builder.rs` (11 hunks) by keeping our side | opencode | 2026-10-04 | Done; ours carries `ddb7d12`, which changed every builder signature `view_pub` -> `view_secret`. Colin's side seeds `r = Hs(viewPub ‖ inputsHash)`, and his file has 4 `deterministic_tx_key(view_pub` against our 6 `deterministic_tx_key(view_secret`. Taking his side would have re-exposed `r` to anyone knowing the sender's address, defeating owner-bound commitments |
+| 113 | Resolve `phase7_vectors.rs` (7 hunks) by keeping our side | opencode | 2026-10-04 | Done; keeps the C++ `parseAndValidate` round-trip hashes `e39df476…` / `7006fa39…` and clears Colin's 2 failures |
+| 114 | Resolve `wallet_service.rs` (5 hunks) by keeping our side + his comment | opencode | 2026-10-04 | Done; his entire diff to this file was 5 `spend_pub` lines we already had plus one comment |
+| 115 | Resolve `scanner.rs` (2 hunks) by keeping ours and adding his legacy-account loop | opencode | 2026-10-04 | Done; **taking his side wholesale would have regressed two things** — it drops `state.owners.insert` for commitments, which breaks the existing `commitments_found_owner_bound_by_owner_and_legacy` owner assertions, and it raises `highest_subaddress` with a *legacy keypair index*, corrupting the suite-sub-address lookahead |
+| 116 | Close the partial gap in his fix | opencode | 2026-10-04 | His `None` fallback still uses the master `derivation`, so a legacy-*form* commitment at a legacy account is still missed on his branch. The merged loop tries owner-bound then legacy-form, each under the account's own derivation |
+| 117 | Add regression test `commitments_found_on_legacy_accounts` | opencode | 2026-10-04 | Done; **negative control**: with the patch removed it fails `left: 0, right: 2`, independently reproducing the gap. With the patch, both commitments are found and every recorded scalar opens its key |
+| 118 | Route our builder helper onto Colin's `ring.rs` wrapper | opencode | 2026-10-04 | Done; his 4 wrappers auto-merged and all compile. `owner_bound_commit_key` now calls `derive_owner_bound_commit_key`, so the factoring is shared without any regression |
+| 119 | Record that `b8b0e93`'s commit message overclaims | opencode | 2026-10-04 | `CommitmentEntry.exposed` and `SCAN_VERSION 3` are named in the message but exist in neither branch. Noted in task 110 of the 2026-10-04 entry above |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo build --workspace` | ✅ clean, no errors, no warnings |
+| `cargo test --workspace` | ✅ **114 passed, 0 failed** (fuego-crypto 20, fuego-ffi 6, fuego-sdk 64, walletd 24) |
+| Both vector suites coexist | ✅ `ownerbound_vectors` (Colin's, 70 vectors) **and** `commitment_owner_bound_vectors` (ours) both pass; `crosscheck_ownerbound_vectors` proves parity 70/70 |
+| `phase7_vectors` | ✅ 10/10; Colin's 2 failures cleared |
+| Regression test negative control | ✅ fails `0 vs 2` without the patch, passes with it |
+| Byte-vector parity negative control | ✅ flipping one expected byte fails the assert |
+| All tasks done | Merge resolved and verified in a scratch worktree. **No push, no PR** |
+| `flutter test` | ✅ **72 passed, 0 failed** — includes Colin's 13 `swap_pair_drift_test.dart` |
+| `flutter analyze --no-pub --fatal-warnings --no-fatal-infos` | ✅ exit 0; 0 errors, 0 warnings (780 info-level, pre-existing) |
+| Scope | Merge + scanner fix + two test files. The pre-existing dirty working tree, local branches and refs were left untouched |
+
+## [2026-10-01] Swap-pair drift: 10 DeXFG pairs rendered as `PAIR_<n>`
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 90 | `SwapInfo.pairName` (`swap_daemon_client.dart`) carried a private 0-11 id table. Pairs with ids ≥ 12 — GLEEC(12), RHC(13), AVAX(14), CRO(15), BOB(16), UNI(18), XPL(19), PLS(23), MON(25), OP(26) — resolved to `PAIR_12`..`PAIR_26`, so **10 of the 22** DeXFG pairs lost name, colour, icon, decimals and explorer link, and their Direct-tab filter chips could never match. Now derived from `SwapPairSdk` | opencode | 2026-10-01 | ✅ done |
+| 91 | `POLYGON` vs `POLY` key mismatch: three emitters returned `'POLYGON'` (`swap_daemon_client.dart`, `daemon_event_bus.dart`, `dex_cubit._pairNameForChain`) while every `ChainInfo` map is keyed `'POLY'`. Dead explorer link, dead POLY filter chip, default 7-decimal formatting on Polygon. All three now emit `'POLY'` | opencode | 2026-10-01 | ✅ done |
+| 92 | `DaemonEventBus._extractPairName` had the same 0-11 table *and* a duplicate inline 12-entry `explorerTx` map. Now derives from `SwapPairSdk` and delegates to `ChainInfo.explorerTxUrl`, so there is one explorer map rather than two | opencode | 2026-10-01 | ✅ done |
+| 93 | `ChainInfo.explorerTx` was missing 7 wired swap chains. Added OP (`optimistic.etherscan.io`), PLS (`scan.pulsechain.com`), MON (`monadscan.com`), UNI (`uniscan.xyz`). **GLEEC, RHC and XPL deliberately left absent** — no authoritative explorer URL exists in-repo and a wrong one in a wallet is a phishing risk, so they are pinned as known gaps in the new test instead of guessed | opencode | 2026-10-01 | ✅ done (3 gaps tracked by test) |
+| 94 | `ChainInfo.ptlc` had no descriptor for KMD or DCR despite both being wired `SwapPairSdk` pairs; added. Also `gleec.png` was referenced but absent (sourced from the suite dashboard's copy) and `chains.yaml` pointed `rsk` at a non-existent `rsk.png` (corrected to `rootstock.png`); registry regenerated | opencode | 2026-10-01 | ✅ done |
+| 95 | `gen_chains.dart --check` existed but ran in **no** CI job — the manifest could drift from `chain_registry.g.dart` undetected. Added a "Chain registry is in sync with chains.yaml" step to the `analyze` job in `fuego-wallet-ci.yml` | opencode | 2026-10-01 | ✅ done |
+| 96 | New `test/swap_pair_drift_test.dart` (13 tests) locks the fix: ids match C++ `SwapTypes.h` verbatim, `pairName` never falls back to `PAIR_<n>`, the ten previously-broken ids are named individually, every swapable chain has colour/icon/decimals/PTLC, referenced icon assets exist on disk, explorer coverage matches the explicit known-gap set, and `ChainInfo.swapableChains == SwapPairSdk` tickers | opencode | 2026-10-01 | ✅ done |
+| 97 | `AGENTS.md` was stale: claimed 12 `SwapPair` values (29 — 25 registered, 4 staged) and listed POLYGON as missing from four C++ tables (it is present in all four upstream). Replaced the Known Issues list with the four *silent* failure modes (`MAX_PAIR_INDEX`, `DOT` loop sentinels, `ctrDivisor` defaulting to a plausible-wrong `1e8`, the 12-char parse guard) and the stale `swapxfg` / dashboard / `swap_config.example.json` / orphan `CLV/` facts. Left the Rust SDK's "12 pairs" line alone — verified accurate | opencode | 2026-10-01 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `flutter analyze --fatal-warnings --no-fatal-infos` | ✅ 0 errors, 0 warnings, exit 0 (781 infos, all pre-existing) |
+| `flutter test` | ✅ 72/72 (59 pre-existing + 13 new) |
+| `dart run tool/gen_chains.dart --check` | ✅ up to date (33 chains) |
+| Not touched | `rust-fuego-wallet/fuego-sdk/fuego-crypto/src/ring.rs` and the untracked `ownerbound_vectors*` are pre-existing unrelated working-tree changes — deliberately left alone |
+| Source changes in this entry | 6 files + 1 new test + 1 icon asset + CI step + AGENTS.md |
+
 ## [2026-10-01] OKOC valise-daemon audit continuation (local index, no source change)
 
 | # | Task | Owner | Date | Status |

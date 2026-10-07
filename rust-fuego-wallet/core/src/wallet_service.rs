@@ -1820,6 +1820,7 @@ impl WalletService {
         let mut commitment_dests = vec![BuildCommitmentDestination {
             amount,
             term: HEAT_TERM,
+            // Owner-bound: only the recipient's spend key can authorize this.
             spend_pub: recv_spend,
             view_pub: recv_view,
         }];
