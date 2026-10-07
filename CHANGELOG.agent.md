@@ -566,3 +566,29 @@ Ran the Saboteur and Security Auditor personas as independent sub-agents (read-o
 | Personas | ⚠️ Saboteur and Security Auditor ran as independent sub-agents. The New Hire persona was not re-run (three parallel agents previously died on an opencode snapshot error); disk was at 97% and 3.1 GB of scratch was reclaimed first |
 | All tasks done | Two defects fixed and verified; one optimization attempted and reverted after it broke a test; one CRITICAL escalated, not fixed |
 | Scope | `scanner.rs` tests + one const. No production behaviour changed except the registration cap |
+
+## [2026-10-04] Config-gate commitment derivation, default OFF (closes the pinned-daemon CRITICAL)
+
+Decision taken: gate the owner-bound derivation behind an env flag, default OFF. `FUEGO_OWNER_BOUND_COMMITMENTS=1` opts in.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 139 | Gate commitment-key creation, default OFF | opencode | 2026-10-04 | Done. `commitment_key()` branches on an `AtomicBool` (default `false`). OFF emits `derive_commitment_keys(derive_deposit_secret(D, i))` — the form the pinned daemon discovers. ON emits `derive_owner_bound_commit_key` |
+| 140 | Deliberately avoid `derive_commitment_output_key(_, _, None)` | opencode | 2026-10-04 | Its doc says "`None` means a hard failure" while its body silently returns the legacy key, so the wrong contract wins by construction. Replaced with two explicit branches and no `Option` |
+| 141 | Env plumbing + operator visibility | opencode | 2026-10-04 | `init_owner_bound_commitments_from_env()` called from `main()`; logs `warn!` when ON, naming the reason |
+| 142 | Scanner keeps matching both forms | opencode | 2026-10-04 | Unchanged by design. Owner-bound first, legacy fallback, plus legacy accounts under their own derivation. Matching is free readiness, so enabling the gate later cannot orphan our own outputs |
+| 143 | Split `phase7_vectors` by mode | opencode | 2026-10-04 | Four tests whose cross-language hashes were verified against `parseAndValidate` now run under `with_owner_bound(..)`. Added `commitment_creation_defaults_to_the_interoperable_derivation` to pin the default |
+| 144 | Corrected the evidence behind the CRITICAL | opencode | 2026-10-04 | I had analysed `a36eccb5`, which is merely what sits in the working tree. **All branches pin `524454d`**, and `a36eccb5` is 1,255 commits ahead. Re-checked at the real pin: `owner_bound` still absent, `deriveCommitmentKeys` still the only derivation. Conclusion unchanged, evidence was wrong |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test --workspace` | ✅ **117 passed, 0 failed** |
+| `flutter test` | ✅ 72 passed, 0 failed |
+| `flutter analyze --no-pub --fatal-warnings --no-fatal-infos` | ✅ exit 0 |
+| Gate negative control (default flag) | ✅ flipping `AtomicBool::new(false)` → `new(true)` fails "the shipped default must be the interoperable legacy derivation" |
+| Gate negative control (derivation) | ✅ forcing `commitment_key` owner-bound while the flag reads false fails "default derivation must be the interoperable legacy form" — two independent assertions |
+| `owner_bound` at the real pin `524454d` | ✅ absent; `deriveCommitmentKeys` present in `TransactionExtra.cpp`, `TransfersConsumer.cpp`, `WalletGreen.cpp` |
+| All tasks done | Gate implemented, tested both ways, documented in `AGENTS.md`, verified green |
+| Scope | `transaction_builder.rs`, `main.rs`, `phase7_vectors.rs`, `AGENTS.md`, this file. No scanner behaviour change |

@@ -17,12 +17,12 @@ use crate::serialization::{
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
 use fuego_crypto::ring::{
-    check_ring_signature, derive_owner_bound_commit_key, derive_public_key,
-    derive_secret_key, generate_key_derivation, generate_key_image, generate_ring_signature,
-    secret_key_to_public_key,
-    hash_to_scalar,
+    check_ring_signature, derive_commitment_keys, derive_deposit_secret,
+    derive_owner_bound_commit_key, derive_public_key, derive_secret_key, generate_key_derivation,
+    generate_key_image, generate_ring_signature, secret_key_to_public_key, hash_to_scalar,
 };
 use fuego_crypto::ref10::{ge_p3_tobytes, ge_scalarmult_base, GeP3};
+use std::sync::atomic::{AtomicBool, Ordering};
 use rand::RngCore;
 use std::collections::BTreeMap;
 
@@ -68,10 +68,10 @@ pub struct BuildDestination {
 }
 
 /// A commitment destination: HEAT, LP shares, a swap receipt or a term-locked
-/// CD, owned by the address (`spend_pub`, `view_pub`). The builder derives an
-/// owner-bound commit key, P = derive_public_key(D, i, spend_pub) with
-/// D = 8*(r*view_pub) (fuego-suite `deriveOwnerBoundCommitKey`): the view key
-/// finds the output, only the matching spend secret can spend it.
+/// CD, owned by the address (`spend_pub`, `view_pub`).
+///
+/// The commit key is chosen by [`commitment_key`], which is **gated** and
+/// defaults to the protocol-compatible legacy form. See that function for why.
 #[derive(Debug, Clone)]
 pub struct BuildCommitmentDestination {
     pub amount: u64,
@@ -80,10 +80,62 @@ pub struct BuildCommitmentDestination {
     pub view_pub: [u8; 32],
 }
 
-/// Owner-bound commit key for output `out_index` (see BuildCommitmentDestination).
-fn owner_bound_commit_key(derivation: &[u8; 32], out_index: usize, spend_pub: &[u8; 32]) -> Result<[u8; 32]> {
-    derive_owner_bound_commit_key(derivation, out_index as u64, spend_pub)
-        .ok_or_else(|| SdkError::Crypto("commitment key derivation failed".into()))
+/// Whether commitment outputs are created in the owner-bound form
+/// (`P = B + Hs(D,i)·G`, fuego-suite `deriveOwnerBoundCommitKey`) or the legacy
+/// protocol form (`P = Hs("fuego_commit_key" || H(D‖i))·G`).
+///
+/// **Default is OFF, and the default is what makes the wallet interoperable.**
+/// The pinned daemon (`fuego-suite @ a36eccb5`) contains no owner-bound code:
+/// `TransactionExtra.cpp:1750` derives only `deriveCommitmentKeys`, and the sole
+/// discovery rule in `Transfers/TransfersConsumer.cpp:124` compares against
+/// exactly that. An owner-bound output is therefore invisible to any wallet on
+/// the pinned daemon — the sender's funds would be unrecoverable by the
+/// recipient. The owner-bound scheme exists only on the unpinned `keyderiv`
+/// branch (`0925d64c`).
+///
+/// The security motive for owner-bound is real and still unmet: the legacy form
+/// is spendable by the sender and by any holder of the view key. That is why
+/// this is a gate rather than a deletion — flip it on once the daemon ships a
+/// matching discovery rule.
+///
+/// Set with `FUEGO_OWNER_BOUND_COMMITMENTS=1`.
+static OWNER_BOUND_COMMITMENTS: AtomicBool = AtomicBool::new(false);
+
+pub fn owner_bound_commitments_enabled() -> bool {
+    OWNER_BOUND_COMMITMENTS.load(Ordering::Relaxed)
+}
+
+pub fn set_owner_bound_commitments_enabled(enabled: bool) {
+    OWNER_BOUND_COMMITMENTS.store(enabled, Ordering::Relaxed);
+}
+
+/// Read `FUEGO_OWNER_BOUND_COMMITMENTS` once at startup. Absent, empty or
+/// unparseable means OFF.
+pub fn init_owner_bound_commitments_from_env() {
+    let on = std::env::var("FUEGO_OWNER_BOUND_COMMITMENTS")
+        .map(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
+        .unwrap_or(false);
+    OWNER_BOUND_COMMITMENTS.store(on, Ordering::Relaxed);
+}
+
+/// Commit key for output `out_index`, honouring [`owner_bound_commitments_enabled`].
+///
+/// Note this deliberately does not use `derive_commitment_output_key(_, _, None)`:
+/// that function's doc says `None` means a hard failure while its body silently
+/// returns the legacy key, so the wrong contract wins by construction. Here the
+/// two forms are explicit branches with no `Option` to confuse.
+fn commitment_key(
+    derivation: &[u8; 32],
+    out_index: usize,
+    spend_pub: &[u8; 32],
+) -> Result<[u8; 32]> {
+    if owner_bound_commitments_enabled() {
+        derive_owner_bound_commit_key(derivation, out_index as u64, spend_pub)
+            .ok_or_else(|| SdkError::Crypto("owner-bound commitment key derivation failed".into()))
+    } else {
+        let deposit_secret = derive_deposit_secret(derivation, out_index as u32);
+        Ok(derive_commitment_keys(&deposit_secret).commit_key)
+    }
 }
 
 /// Deterministic tx secret key recovery: r = Hs(viewSecret || inputsHash),
@@ -542,7 +594,7 @@ pub fn build_mixed_output_transaction(
             generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let commit_key = owner_bound_commit_key(&dest_derivation, out_index, &cdest.spend_pub)?;
+        let commit_key = commitment_key(&dest_derivation, out_index, &cdest.spend_pub)?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
@@ -758,7 +810,7 @@ pub fn build_commitment_spend_transaction(
             generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let commit_key = owner_bound_commit_key(&dest_derivation, out_index, &cdest.spend_pub)?;
+        let commit_key = commitment_key(&dest_derivation, out_index, &cdest.spend_pub)?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
@@ -863,7 +915,7 @@ fn assemble_outputs_and_sign(
             generate_key_derivation(&cdest.view_pub, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let commit_key = owner_bound_commit_key(&dest_derivation, out_index, &cdest.spend_pub)?;
+        let commit_key = commitment_key(&dest_derivation, out_index, &cdest.spend_pub)?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,

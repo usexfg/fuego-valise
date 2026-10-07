@@ -17,6 +17,40 @@ use fuego_sdk::transaction_builder::{
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+/// The commitment-key derivation is process-global and gated, defaulting to the
+/// interoperable legacy form. Tests that assert the owner-bound form must opt in
+/// explicitly, and must not run concurrently with tests that assert the default,
+/// so every gate-sensitive test takes this lock.
+fn gate_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Run `f` with owner-bound commitment creation forced ON (the only mode whose
+/// cross-language hashes have been verified against the daemon's
+/// parseAndValidate). Restores the previous value afterwards.
+fn with_owner_bound<T>(f: impl FnOnce() -> T) -> T {
+    let _g = gate_lock();
+    let prev = fuego_sdk::transaction_builder::owner_bound_commitments_enabled();
+    fuego_sdk::transaction_builder::set_owner_bound_commitments_enabled(true);
+    let out = f();
+    fuego_sdk::transaction_builder::set_owner_bound_commitments_enabled(prev);
+    out
+}
+
+/// Run `f` with the shipped default (legacy, interoperable) commitment form.
+fn with_default_derivation<T>(f: impl FnOnce() -> T) -> T {
+    let _g = gate_lock();
+    let prev = fuego_sdk::transaction_builder::owner_bound_commitments_enabled();
+    fuego_sdk::transaction_builder::set_owner_bound_commitments_enabled(false);
+    let out = f();
+    fuego_sdk::transaction_builder::set_owner_bound_commitments_enabled(prev);
+    out
+}
 
 fn make_output(amount: u64, secret: [u8; 32], global_index: u32) -> SpendableOutput {
     let mut p = GeP3::default();
@@ -155,106 +189,109 @@ fn adaptor_generation_self_consistent() {
 
 #[test]
 fn heat_mint_transaction() {
-    let mut rng = StdRng::seed_from_u64(0xFEED_FACE_CAFE_BEEF);
-    let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
+    with_owner_bound(|| {
+        let mut rng = StdRng::seed_from_u64(0xFEED_FACE_CAFE_BEEF);
+        let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
 
-    let inputs = vec![
-        make_output(5_000_000, random_scalar(&mut rng), 100),
-        make_output(2_000_000, random_scalar(&mut rng), 101),
-    ];
-    let xfg_burned = 3_000_000u64;
-    let heat_minted = 1_500_000_000u64; // 150 HEAT
-    let fee = MINIMUM_FEE;
-    let found: u64 = inputs.iter().map(|i| i.amount).sum();
-    let change = found - xfg_burned - fee;
+        let inputs = vec![
+            make_output(5_000_000, random_scalar(&mut rng), 100),
+            make_output(2_000_000, random_scalar(&mut rng), 101),
+        ];
+        let xfg_burned = 3_000_000u64;
+        let heat_minted = 1_500_000_000u64; // 150 HEAT
+        let fee = MINIMUM_FEE;
+        let found: u64 = inputs.iter().map(|i| i.amount).sum();
+        let change = found - xfg_burned - fee;
 
-    let mixin = 2;
-    let decoys: Vec<Vec<DecoyEntry>> = inputs
-        .iter()
-        .map(|i| {
-            (0..mixin)
-                .map(|k| make_decoy(i.global_index + 1 + k as u32, (i.global_index % 200) as u8 + k as u8))
-                .collect()
-        })
-        .collect();
+        let mixin = 2;
+        let decoys: Vec<Vec<DecoyEntry>> = inputs
+            .iter()
+            .map(|i| {
+                (0..mixin)
+                    .map(|k| make_decoy(i.global_index + 1 + k as u32, (i.global_index % 200) as u8 + k as u8))
+                    .collect()
+            })
+            .collect();
 
-    let built = build_mint_transaction(
-        &inputs,
-        &decoys,
-        mixin,
-        xfg_burned,
-        heat_minted,
-        change,
-        &view_sec,
-        (&spend_pub, &view_pub),
-        fee,
-        &mut rng,
-    )
-    .unwrap();
+        let built = build_mint_transaction(
+            &inputs,
+            &decoys,
+            mixin,
+            xfg_burned,
+            heat_minted,
+            change,
+            &view_sec,
+            (&spend_pub, &view_pub),
+            fee,
+            &mut rng,
+        )
+        .unwrap();
 
-    // Structure.
-    assert_eq!(built.tx.prefix.version, 2);
-    let bills = decompose_heat_into_bills(heat_minted);
-    let heat_sum: u64 = built
-        .tx
-        .prefix
-        .outputs
-        .iter()
-        .filter_map(|o| match &o.target {
-            OutputTarget::Commitment(c) if c.term == HEAT_TERM => Some(o.amount),
-            _ => None,
-        })
-        .sum();
-    assert_eq!(heat_sum, heat_minted, "minted HEAT must equal outputs");
-    assert_eq!(heat_sum, bills.iter().sum::<u64>());
+        // Structure.
+        assert_eq!(built.tx.prefix.version, 2);
+        let bills = decompose_heat_into_bills(heat_minted);
+        let heat_sum: u64 = built
+            .tx
+            .prefix
+            .outputs
+            .iter()
+            .filter_map(|o| match &o.target {
+                OutputTarget::Commitment(c) if c.term == HEAT_TERM => Some(o.amount),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(heat_sum, heat_minted, "minted HEAT must equal outputs");
+        assert_eq!(heat_sum, bills.iter().sum::<u64>());
 
-    // XFG conservation (daemon per-asset check): in.xfg >= out.xfg + fee,
-    // the difference is the burn that mints the HEAT outputs.
-    let xfg_out: u64 = built
-        .tx
-        .prefix
-        .outputs
-        .iter()
-        .filter_map(|o| match &o.target {
-            OutputTarget::Key(_) => Some(o.amount),
-            _ => None,
-        })
-        .sum();
-    let in_sum: u64 = built.tx.prefix.inputs.iter().map(|i| i.amount()).sum();
-    assert!(in_sum >= xfg_out + fee, "XFG must cover outputs + fee");
-    assert_eq!(in_sum - xfg_out - fee, xfg_burned, "burn must be exact");
+        // XFG conservation (daemon per-asset check): in.xfg >= out.xfg + fee,
+        // the difference is the burn that mints the HEAT outputs.
+        let xfg_out: u64 = built
+            .tx
+            .prefix
+            .outputs
+            .iter()
+            .filter_map(|o| match &o.target {
+                OutputTarget::Key(_) => Some(o.amount),
+                _ => None,
+            })
+            .sum();
+        let in_sum: u64 = built.tx.prefix.inputs.iter().map(|i| i.amount()).sum();
+        assert!(in_sum >= xfg_out + fee, "XFG must cover outputs + fee");
+        assert_eq!(in_sum - xfg_out - fee, xfg_burned, "burn must be exact");
 
-    // Auth extra: 0xF5 || xfgBurned LE || heatMinted LE.
-    let extra = &built.tx.prefix.extra;
-    let f5 = extra.iter().position(|b| *b == 0xF5).expect("auth tag");
-    assert_eq!(&extra[f5 + 1..f5 + 9], &xfg_burned.to_le_bytes());
-    assert_eq!(&extra[f5 + 9..f5 + 17], &heat_minted.to_le_bytes());
+        // Auth extra: 0xF5 || xfgBurned LE || heatMinted LE.
+        let extra = &built.tx.prefix.extra;
+        let f5 = extra.iter().position(|b| *b == 0xF5).expect("auth tag");
+        assert_eq!(&extra[f5 + 1..f5 + 9], &xfg_burned.to_le_bytes());
+        assert_eq!(&extra[f5 + 9..f5 + 17], &heat_minted.to_le_bytes());
 
-    // Each HEAT output is owner-bound: derive_public_key(D, outIndex, B), D = 8*(r*V).
-    let pubkey_tag = extra[0];
-    assert_eq!(pubkey_tag, 0x01);
-    let r_bytes: [u8; 32] = extra[1..33].try_into().unwrap();
-    let derivation = fuego_crypto::generate_key_derivation(
-        &fuego_crypto::PublicKey(r_bytes),
-        &view_sec,
-    )
-    .unwrap();
-    let mut heat_index = 0u32;
-    for output in &built.tx.prefix.outputs {
-        if let OutputTarget::Commitment(c) = &output.target {
-            assert_eq!(c.term, HEAT_TERM);
-            assert_owner_bound(&c.commit_key, &derivation, heat_index, &spend_pub, &spend_sec);
-            heat_index += 1;
+        // Each HEAT output is owner-bound: derive_public_key(D, outIndex, B), D = 8*(r*V).
+        let pubkey_tag = extra[0];
+        assert_eq!(pubkey_tag, 0x01);
+        let r_bytes: [u8; 32] = extra[1..33].try_into().unwrap();
+        let derivation = fuego_crypto::generate_key_derivation(
+            &fuego_crypto::PublicKey(r_bytes),
+            &view_sec,
+        )
+        .unwrap();
+        let mut heat_index = 0u32;
+        for output in &built.tx.prefix.outputs {
+            if let OutputTarget::Commitment(c) = &output.target {
+                assert_eq!(c.term, HEAT_TERM);
+                assert_owner_bound(&c.commit_key, &derivation, heat_index, &spend_pub, &spend_sec);
+                heat_index += 1;
+            }
         }
-    }
 
-    // Ring sigs self-verify.
-    assert_eq!(built.tx.signatures.len(), inputs.len());
-    assert_eq!(
-        built.serialized,
-        serialize_tx(&built.tx),
-        "serialize roundtrip"
-    );
+        // Ring sigs self-verify.
+        assert_eq!(built.tx.signatures.len(), inputs.len());
+        assert_eq!(
+            built.serialized,
+            serialize_tx(&built.tx),
+            "serialize roundtrip"
+        );
+    })
+
 }
 
 // ---------------------------------------------------------------- CDs
@@ -391,113 +428,116 @@ fn commitment_key_derivation_vectors() {
 
 #[test]
 fn print_cross_language_artifacts() {
-    // Deterministic AFK pre-sig + a mint tx + a commitment-spend tx for the
-    // C++ harness (checkadapt / parsetx).
-    let mut rng = StdRng::seed_from_u64(0xDEAD_BEEF_1234_5678);
-    let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
-    let prefix = [0u8; 32];
-    let (secret, point, presig) =
-        generate_afk_lock_data(&prefix, &spend_pub, &spend_sec, &mut rng).unwrap();
-    println!("AFK_PREFIX {}", hex::encode(prefix));
-    println!("AFK_PUB {}", hex::encode(spend_pub));
-    println!("AFK_POINT {}", hex::encode(point));
-    println!("AFK_PRESIG {}", hex::encode(presig));
-    println!("AFK_SECRET {}", hex::encode(secret));
+    with_owner_bound(|| {
+        // Deterministic AFK pre-sig + a mint tx + a commitment-spend tx for the
+        // C++ harness (checkadapt / parsetx).
+        let mut rng = StdRng::seed_from_u64(0xDEAD_BEEF_1234_5678);
+        let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
+        let prefix = [0u8; 32];
+        let (secret, point, presig) =
+            generate_afk_lock_data(&prefix, &spend_pub, &spend_sec, &mut rng).unwrap();
+        println!("AFK_PREFIX {}", hex::encode(prefix));
+        println!("AFK_PUB {}", hex::encode(spend_pub));
+        println!("AFK_POINT {}", hex::encode(point));
+        println!("AFK_PRESIG {}", hex::encode(presig));
+        println!("AFK_SECRET {}", hex::encode(secret));
 
-    let inputs = vec![
-        make_output(5_000_000, random_scalar(&mut rng), 100),
-        make_output(2_000_000, random_scalar(&mut rng), 101),
-    ];
-    let mixin = 2;
-    let decoys: Vec<Vec<DecoyEntry>> = inputs
-        .iter()
-        .map(|i| {
-            (0..mixin)
-                .map(|k| make_decoy(i.global_index + 1 + k as u32, (i.global_index % 200) as u8 + k as u8))
-                .collect()
-        })
-        .collect();
-    let built = build_mint_transaction(
-        &inputs,
-        &decoys,
-        mixin,
-        3_000_000,
-        1_500_000_000,
-        7_000_000 - 3_000_000 - MINIMUM_FEE,
-        &view_sec,
-        (&spend_pub, &view_pub),
-        MINIMUM_FEE,
-        &mut rng,
-    )
-    .unwrap();
-    println!("MINT_TX {}", hex::encode(&built.serialized));
-    // Verified by the C++ production parser (parseAndValidateTransactionFromBinaryArray):
-    // roundtrip byte-identical, hash matches. Pinned for CI.
-    assert_eq!(
-        hex::encode(built.tx_hash),
-        "7006fa3931990d39a51b988f7dec35b70e1e1a631405e351469cfe11e2d076fb"
-    );
+        let inputs = vec![
+            make_output(5_000_000, random_scalar(&mut rng), 100),
+            make_output(2_000_000, random_scalar(&mut rng), 101),
+        ];
+        let mixin = 2;
+        let decoys: Vec<Vec<DecoyEntry>> = inputs
+            .iter()
+            .map(|i| {
+                (0..mixin)
+                    .map(|k| make_decoy(i.global_index + 1 + k as u32, (i.global_index % 200) as u8 + k as u8))
+                    .collect()
+            })
+            .collect();
+        let built = build_mint_transaction(
+            &inputs,
+            &decoys,
+            mixin,
+            3_000_000,
+            1_500_000_000,
+            7_000_000 - 3_000_000 - MINIMUM_FEE,
+            &view_sec,
+            (&spend_pub, &view_pub),
+            MINIMUM_FEE,
+            &mut rng,
+        )
+        .unwrap();
+        println!("MINT_TX {}", hex::encode(&built.serialized));
+        // Verified by the C++ production parser (parseAndValidateTransactionFromBinaryArray):
+        // roundtrip byte-identical, hash matches. Pinned for CI.
+        assert_eq!(
+            hex::encode(built.tx_hash),
+            "7006fa3931990d39a51b988f7dec35b70e1e1a631405e351469cfe11e2d076fb"
+        );
 
-    // Commitment-spend artifact.
-    let mut deposits = Vec::new();
-    for i in 0..2u32 {
-        let sec = random_scalar(&mut rng);
-        let mut p = GeP3::default();
-        ge_scalarmult_base(&mut p, &sec);
-        let mut commit_key = [0u8; 32];
-        ge_p3_tobytes(&mut commit_key, &p);
-        let key_image =
-            fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
-        deposits.push(CommitmentDeposit {
-            amount: 5_000_000 + i as u64 * 1_000_000,
-            commit_key,
-            key_scalar: sec,
-            key_image: key_image.0,
-            global_index: 500 + i,
-            claimed_interest: 0,
-        });
-    }
-    let cdecoys: Vec<Vec<(u32, [u8; 32])>> = deposits
-        .iter()
-        .map(|d| {
-            (0..mixin)
-                .map(|k| {
-                    let mut s = [0u8; 32];
-                    s[0] = (d.global_index % 200) as u8 + k as u8;
-                    s[31] = 3;
-                    let mut p = GeP3::default();
-                    ge_scalarmult_base(&mut p, &s);
-                    let mut key = [0u8; 32];
-                    ge_p3_tobytes(&mut key, &p);
-                    (d.global_index + 1 + k as u32, key)
-                })
-                .collect()
-        })
-        .collect();
-    let total: u64 = deposits.iter().map(|d| d.amount).sum();
-    let cs = build_commitment_spend_transaction(
-        &deposits,
-        &cdecoys,
-        mixin,
-        &[BuildDestination {
-            amount: total - MINIMUM_FEE,
-            spend_pub,
-            view_pub,
-        }],
-        &[],
-        &view_sec,
-        MINIMUM_FEE,
-        &[],
-        &mut rng,
-    )
-    .unwrap();
-    println!("SPEND_TX {}", hex::encode(&cs.serialized));
-    // Verified by the C++ production parser: roundtrip byte-identical.
-    assert_eq!(
-        hex::encode(cs.tx_hash),
-        "c378b4976fcc2c2cc1f9e0e0c7dbdb2a3ee04bc77589497fe188568481dc826d"
-    );
-    let _ = view_sec;
+        // Commitment-spend artifact.
+        let mut deposits = Vec::new();
+        for i in 0..2u32 {
+            let sec = random_scalar(&mut rng);
+            let mut p = GeP3::default();
+            ge_scalarmult_base(&mut p, &sec);
+            let mut commit_key = [0u8; 32];
+            ge_p3_tobytes(&mut commit_key, &p);
+            let key_image =
+                fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
+            deposits.push(CommitmentDeposit {
+                amount: 5_000_000 + i as u64 * 1_000_000,
+                commit_key,
+                key_scalar: sec,
+                key_image: key_image.0,
+                global_index: 500 + i,
+                claimed_interest: 0,
+            });
+        }
+        let cdecoys: Vec<Vec<(u32, [u8; 32])>> = deposits
+            .iter()
+            .map(|d| {
+                (0..mixin)
+                    .map(|k| {
+                        let mut s = [0u8; 32];
+                        s[0] = (d.global_index % 200) as u8 + k as u8;
+                        s[31] = 3;
+                        let mut p = GeP3::default();
+                        ge_scalarmult_base(&mut p, &s);
+                        let mut key = [0u8; 32];
+                        ge_p3_tobytes(&mut key, &p);
+                        (d.global_index + 1 + k as u32, key)
+                    })
+                    .collect()
+            })
+            .collect();
+        let total: u64 = deposits.iter().map(|d| d.amount).sum();
+        let cs = build_commitment_spend_transaction(
+            &deposits,
+            &cdecoys,
+            mixin,
+            &[BuildDestination {
+                amount: total - MINIMUM_FEE,
+                spend_pub,
+                view_pub,
+            }],
+            &[],
+            &view_sec,
+            MINIMUM_FEE,
+            &[],
+            &mut rng,
+        )
+        .unwrap();
+        println!("SPEND_TX {}", hex::encode(&cs.serialized));
+        // Verified by the C++ production parser: roundtrip byte-identical.
+        assert_eq!(
+            hex::encode(cs.tx_hash),
+            "c378b4976fcc2c2cc1f9e0e0c7dbdb2a3ee04bc77589497fe188568481dc826d"
+        );
+        let _ = view_sec;
+    })
+
 }
 
 #[test]
@@ -673,194 +713,329 @@ fn tx_proof_roundtrip() {
 
 #[test]
 fn heat_send_recipient_view_key() {
-    // send_heat: the recipient's commitment is bound to the RECIPIENT's spend key
-    // (found with their view key); neither the sender nor a view key opens it.
-    let mut rng = StdRng::seed_from_u64(0x5EED_5EED_5EED_5EED);
-    let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
-    let ((recv_spend_sec, recv_spend), (recv_view_sec, recv_view)) = wallet_keys(&mut rng);
+    with_owner_bound(|| {
+        // send_heat: the recipient's commitment is bound to the RECIPIENT's spend key
+        // (found with their view key); neither the sender nor a view key opens it.
+        let mut rng = StdRng::seed_from_u64(0x5EED_5EED_5EED_5EED);
+        let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
+        let ((recv_spend_sec, recv_spend), (recv_view_sec, recv_view)) = wallet_keys(&mut rng);
 
-    let sec = random_scalar(&mut rng);
-    let mut p = GeP3::default();
-    ge_scalarmult_base(&mut p, &sec);
-    let mut commit_key = [0u8; 32];
-    ge_p3_tobytes(&mut commit_key, &p);
-    let key_image = fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
-    let deposits = vec![CommitmentDeposit {
-        amount: 100_000_000,
-        commit_key,
-        key_scalar: sec,
-        key_image: key_image.0,
-        global_index: 800,
-        claimed_interest: 0,
-    }];
+        let sec = random_scalar(&mut rng);
+        let mut p = GeP3::default();
+        ge_scalarmult_base(&mut p, &sec);
+        let mut commit_key = [0u8; 32];
+        ge_p3_tobytes(&mut commit_key, &p);
+        let key_image = fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
+        let deposits = vec![CommitmentDeposit {
+            amount: 100_000_000,
+            commit_key,
+            key_scalar: sec,
+            key_image: key_image.0,
+            global_index: 800,
+            claimed_interest: 0,
+        }];
 
-    let amount = 40_000_000u64;
-    let change = deposits[0].amount - amount - MINIMUM_FEE;
-    let mixin = 2;
-    let decoys: Vec<Vec<(u32, [u8; 32])>> = vec![(0..mixin)
-        .map(|k| {
-            let mut s = [0u8; 32];
-            s[0] = 0x40 + k as u8;
-            s[31] = 5;
-            let mut p = GeP3::default();
-            ge_scalarmult_base(&mut p, &s);
-            let mut key = [0u8; 32];
-            ge_p3_tobytes(&mut key, &p);
-            (801 + k as u32, key)
-        })
-        .collect()];
+        let amount = 40_000_000u64;
+        let change = deposits[0].amount - amount - MINIMUM_FEE;
+        let mixin = 2;
+        let decoys: Vec<Vec<(u32, [u8; 32])>> = vec![(0..mixin)
+            .map(|k| {
+                let mut s = [0u8; 32];
+                s[0] = 0x40 + k as u8;
+                s[31] = 5;
+                let mut p = GeP3::default();
+                ge_scalarmult_base(&mut p, &s);
+                let mut key = [0u8; 32];
+                ge_p3_tobytes(&mut key, &p);
+                (801 + k as u32, key)
+            })
+            .collect()];
 
-    let mut extra = Vec::new();
-    fuego_sdk::serialization::add_heat_send_auth_extra(&mut extra, amount);
+        let mut extra = Vec::new();
+        fuego_sdk::serialization::add_heat_send_auth_extra(&mut extra, amount);
 
-    let built = build_commitment_spend_transaction(
-        &deposits,
-        &decoys,
-        mixin,
-        &[],
-        &[
-            BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
-            BuildCommitmentDestination { amount: change, term: HEAT_TERM, spend_pub, view_pub },
-        ],
-        &view_sec,
-        MINIMUM_FEE,
-        &extra,
-        &mut rng,
-    )
-    .unwrap();
+        let built = build_commitment_spend_transaction(
+            &deposits,
+            &decoys,
+            mixin,
+            &[],
+            &[
+                BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
+                BuildCommitmentDestination { amount: change, term: HEAT_TERM, spend_pub, view_pub },
+            ],
+            &view_sec,
+            MINIMUM_FEE,
+            &extra,
+            &mut rng,
+        )
+        .unwrap();
 
-    // 0xF9 auth: heatAmount LE64.
-    let pos = built.tx.prefix.extra.iter().position(|b| *b == 0xF9).expect("send auth");
-    assert_eq!(&built.tx.prefix.extra[pos + 1..pos + 9], &amount.to_le_bytes());
+        // 0xF9 auth: heatAmount LE64.
+        let pos = built.tx.prefix.extra.iter().position(|b| *b == 0xF9).expect("send auth");
+        assert_eq!(&built.tx.prefix.extra[pos + 1..pos + 9], &amount.to_le_bytes());
 
-    // Recipient output (index 0): owner-bound to the recipient, D = 8*(r*V_recv).
-    let r_bytes: [u8; 32] = built.tx.prefix.extra[1..33].try_into().unwrap();
-    let d_recv = fuego_crypto::generate_key_derivation(
-        &fuego_crypto::PublicKey(r_bytes),
-        &recv_view_sec,
-    )
-    .unwrap();
-    match &built.tx.prefix.outputs[0].target {
-        OutputTarget::Commitment(c) => {
-            assert_owner_bound(&c.commit_key, &d_recv, 0, &recv_spend, &recv_spend_sec);
-            assert_eq!(c.term, HEAT_TERM);
+        // Recipient output (index 0): owner-bound to the recipient, D = 8*(r*V_recv).
+        let r_bytes: [u8; 32] = built.tx.prefix.extra[1..33].try_into().unwrap();
+        let d_recv = fuego_crypto::generate_key_derivation(
+            &fuego_crypto::PublicKey(r_bytes),
+            &recv_view_sec,
+        )
+        .unwrap();
+        match &built.tx.prefix.outputs[0].target {
+            OutputTarget::Commitment(c) => {
+                assert_owner_bound(&c.commit_key, &d_recv, 0, &recv_spend, &recv_spend_sec);
+                assert_eq!(c.term, HEAT_TERM);
+            }
+            _ => panic!("expected commitment output"),
         }
-        _ => panic!("expected commitment output"),
-    }
 
-    println!("HEAT_SEND_TX {}", hex::encode(&built.serialized));
-    assert_eq!(
-        hex::encode(fuego_crypto::cn_fast_hash(&fuego_sdk::serialization::serialize_tx(&built.tx))),
-        "e39df4767d0709eeccec6cf5b556b0478f9e3d066429f5521121b6cd04f7729d",
-        "heat-send tx hash must match C++ parseAndValidate roundtrip"
-    );
+        println!("HEAT_SEND_TX {}", hex::encode(&built.serialized));
+        assert_eq!(
+            hex::encode(fuego_crypto::cn_fast_hash(&fuego_sdk::serialization::serialize_tx(&built.tx))),
+            "e39df4767d0709eeccec6cf5b556b0478f9e3d066429f5521121b6cd04f7729d",
+            "heat-send tx hash must match C++ parseAndValidate roundtrip"
+        );
 
-    // Change output (index 1) recovers with OUR view key.
-    let d_own = fuego_crypto::generate_key_derivation(
-        &fuego_crypto::PublicKey(r_bytes),
-        &view_sec,
-    )
-    .unwrap();
-    match &built.tx.prefix.outputs[1].target {
-        OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d_own, 1, &spend_pub, &spend_sec),
-        _ => panic!("expected commitment output"),
-    }
+        // Change output (index 1) recovers with OUR view key.
+        let d_own = fuego_crypto::generate_key_derivation(
+            &fuego_crypto::PublicKey(r_bytes),
+            &view_sec,
+        )
+        .unwrap();
+        match &built.tx.prefix.outputs[1].target {
+            OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d_own, 1, &spend_pub, &spend_sec),
+            _ => panic!("expected commitment output"),
+        }
+    })
+
 }
 
 #[test]
 fn heat_send_pays_fee_in_xfg() {
-    // suite's block validation conserves HEAT exactly in a HEAT send; only
-    // XFG may leave as the fee. Key inputs (XFG) come first, then the HEAT
-    // commitment spends; every ring signature verifies.
-    let mut rng = StdRng::seed_from_u64(0xFEE_0F_8EA7);
-    let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
-    let ((recv_spend_sec, recv_spend), (recv_view_sec, recv_view)) = wallet_keys(&mut rng);
+    with_owner_bound(|| {
+        // suite's block validation conserves HEAT exactly in a HEAT send; only
+        // XFG may leave as the fee. Key inputs (XFG) come first, then the HEAT
+        // commitment spends; every ring signature verifies.
+        let mut rng = StdRng::seed_from_u64(0xFEE_0F_8EA7);
+        let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
+        let ((recv_spend_sec, recv_spend), (recv_view_sec, recv_view)) = wallet_keys(&mut rng);
 
-    let sec = random_scalar(&mut rng);
-    let commit_key = fuego_crypto::ring::secret_key_to_public_key(&sec);
-    let key_image = fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
-    let deposits = vec![CommitmentDeposit {
-        amount: 100_000_000,
-        commit_key,
-        key_scalar: sec,
-        key_image: key_image.0,
-        global_index: 800,
-        claimed_interest: 0,
-    }];
-    let heat_decoys: Vec<Vec<(u32, [u8; 32])>> = vec![(0..2u8)
-        .map(|k| (801 + k as u32, make_decoy(0, 0x40 + k).out_key))
-        .collect()];
+        let sec = random_scalar(&mut rng);
+        let commit_key = fuego_crypto::ring::secret_key_to_public_key(&sec);
+        let key_image = fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
+        let deposits = vec![CommitmentDeposit {
+            amount: 100_000_000,
+            commit_key,
+            key_scalar: sec,
+            key_image: key_image.0,
+            global_index: 800,
+            claimed_interest: 0,
+        }];
+        let heat_decoys: Vec<Vec<(u32, [u8; 32])>> = vec![(0..2u8)
+            .map(|k| (801 + k as u32, make_decoy(0, 0x40 + k).out_key))
+            .collect()];
 
-    let fee_input = make_output(30_000, random_scalar(&mut rng), 500);
-    let fee_decoys = vec![vec![make_decoy(498, 1), make_decoy(499, 2)]];
+        let fee_input = make_output(30_000, random_scalar(&mut rng), 500);
+        let fee_decoys = vec![vec![make_decoy(498, 1), make_decoy(499, 2)]];
 
-    let amount = 40_000_000u64;
-    let mut extra = Vec::new();
-    fuego_sdk::serialization::add_heat_send_auth_extra(&mut extra, amount);
-    let built = build_commitment_spend_xfg_fee_transaction(
-        &deposits,
-        &heat_decoys,
-        std::slice::from_ref(&fee_input),
-        &fee_decoys,
-        &[
-            BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
-            BuildCommitmentDestination { amount: 60_000_000, term: HEAT_TERM, spend_pub, view_pub },
-        ],
-        (&spend_pub, &view_pub),
-        &view_sec,
-        MINIMUM_FEE,
-        &extra,
-        &mut rng,
-    )
-    .unwrap();
-    let prefix = &built.tx.prefix;
+        let amount = 40_000_000u64;
+        let mut extra = Vec::new();
+        fuego_sdk::serialization::add_heat_send_auth_extra(&mut extra, amount);
+        let built = build_commitment_spend_xfg_fee_transaction(
+            &deposits,
+            &heat_decoys,
+            std::slice::from_ref(&fee_input),
+            &fee_decoys,
+            &[
+                BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
+                BuildCommitmentDestination { amount: 60_000_000, term: HEAT_TERM, spend_pub, view_pub },
+            ],
+            (&spend_pub, &view_pub),
+            &view_sec,
+            MINIMUM_FEE,
+            &extra,
+            &mut rng,
+        )
+        .unwrap();
+        let prefix = &built.tx.prefix;
 
-    // Per-asset conservation as suite's pushBlock checks it.
-    assert!(matches!(prefix.inputs[0], TxInput::Key(_)));
-    assert!(matches!(prefix.inputs[1], TxInput::CommitmentSpend(_)));
-    let heat_in: u64 = deposits.iter().map(|d| d.amount).sum();
-    let heat_out: u64 = prefix.outputs.iter().filter(|o| matches!(o.target, OutputTarget::Commitment(_))).map(|o| o.amount).sum();
-    let xfg_out: u64 = prefix.outputs.iter().filter(|o| matches!(o.target, OutputTarget::Key(_))).map(|o| o.amount).sum();
-    assert_eq!(heat_in, heat_out);
-    assert_eq!(fee_input.amount - xfg_out, MINIMUM_FEE);
+        // Per-asset conservation as suite's pushBlock checks it.
+        assert!(matches!(prefix.inputs[0], TxInput::Key(_)));
+        assert!(matches!(prefix.inputs[1], TxInput::CommitmentSpend(_)));
+        let heat_in: u64 = deposits.iter().map(|d| d.amount).sum();
+        let heat_out: u64 = prefix.outputs.iter().filter(|o| matches!(o.target, OutputTarget::Commitment(_))).map(|o| o.amount).sum();
+        let xfg_out: u64 = prefix.outputs.iter().filter(|o| matches!(o.target, OutputTarget::Key(_))).map(|o| o.amount).sum();
+        assert_eq!(heat_in, heat_out);
+        assert_eq!(fee_input.amount - xfg_out, MINIMUM_FEE);
 
-    // Every ring signature verifies against its ring.
-    let rings: Vec<Vec<[u8; 32]>> = vec![
-        {
-            let mut r: Vec<(u32, [u8; 32])> = fee_decoys[0].iter().map(|d| (d.global_index, d.out_key)).collect();
-            r.push((fee_input.global_index, fee_input.output_key));
-            r.sort_by_key(|(i, _)| *i);
-            r.into_iter().map(|(_, k)| k).collect()
-        },
-        {
-            let mut r = heat_decoys[0].clone();
-            r.push((800, commit_key));
-            r.sort_by_key(|(i, _)| *i);
-            r.into_iter().map(|(_, k)| k).collect()
-        },
-    ];
-    let images = [fee_input.key_image, key_image.0];
-    for i in 0..2 {
-        assert!(fuego_crypto::ring::check_ring_signature(&built.prefix_hash, &images[i], &rings[i], &built.tx.signatures[i]));
-    }
-
-    // Recipient output (index 0) is owner-bound to the recipient; the change
-    // (index 1) to us. XFG change follows the commitment outputs.
-    let r_pub = fuego_sdk::serialization::parse_extra_pubkey(&prefix.extra).unwrap();
-    let d_recv = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_pub), &recv_view_sec).unwrap();
-    let d_own = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_pub), &view_sec).unwrap();
-    for (i, (d, spub, ssec)) in [(d_recv, recv_spend, recv_spend_sec), (d_own, spend_pub, spend_sec)].into_iter().enumerate() {
-        match &prefix.outputs[i].target {
-            OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d, i as u32, &spub, &ssec),
-            _ => panic!("expected commitment output at {i}"),
+        // Every ring signature verifies against its ring.
+        let rings: Vec<Vec<[u8; 32]>> = vec![
+            {
+                let mut r: Vec<(u32, [u8; 32])> = fee_decoys[0].iter().map(|d| (d.global_index, d.out_key)).collect();
+                r.push((fee_input.global_index, fee_input.output_key));
+                r.sort_by_key(|(i, _)| *i);
+                r.into_iter().map(|(_, k)| k).collect()
+            },
+            {
+                let mut r = heat_decoys[0].clone();
+                r.push((800, commit_key));
+                r.sort_by_key(|(i, _)| *i);
+                r.into_iter().map(|(_, k)| k).collect()
+            },
+        ];
+        let images = [fee_input.key_image, key_image.0];
+        for i in 0..2 {
+            assert!(fuego_crypto::ring::check_ring_signature(&built.prefix_hash, &images[i], &rings[i], &built.tx.signatures[i]));
         }
-    }
 
-    println!("XFG_FEE_HEAT_SEND_TX {}", hex::encode(&built.serialized));
-    // suite's parseAndValidateTransactionFromBinaryArray parses it, round-trips
-    // it byte for byte and gives this hash.
-    assert_eq!(
-        hex::encode(built.tx_hash),
-        "f374318536f4fcc391afba6af872817e2bf3308beb17d2993481a319401d094b"
+        // Recipient output (index 0) is owner-bound to the recipient; the change
+        // (index 1) to us. XFG change follows the commitment outputs.
+        let r_pub = fuego_sdk::serialization::parse_extra_pubkey(&prefix.extra).unwrap();
+        let d_recv = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_pub), &recv_view_sec).unwrap();
+        let d_own = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_pub), &view_sec).unwrap();
+        for (i, (d, spub, ssec)) in [(d_recv, recv_spend, recv_spend_sec), (d_own, spend_pub, spend_sec)].into_iter().enumerate() {
+            match &prefix.outputs[i].target {
+                OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d, i as u32, &spub, &ssec),
+                _ => panic!("expected commitment output at {i}"),
+            }
+        }
+
+        println!("XFG_FEE_HEAT_SEND_TX {}", hex::encode(&built.serialized));
+        // suite's parseAndValidateTransactionFromBinaryArray parses it, round-trips
+        // it byte for byte and gives this hash.
+        assert_eq!(
+            hex::encode(built.tx_hash),
+            "f374318536f4fcc391afba6af872817e2bf3308beb17d2993481a319401d094b"
+        );
+    })
+
+}
+
+/// The gate must default to OFF, and the default must be the form the pinned
+/// daemon can actually discover.
+///
+/// The pinned daemon (`fuego-suite @ 524454d`) has no owner-bound code: its only
+/// commitment derivation is `deriveCommitmentKeys` (`TransactionExtra.cpp:1750`)
+/// and its only discovery rule is `Transfers/TransfersConsumer.cpp:124`, which
+/// compares against exactly that. An owner-bound output therefore *parses* but is
+/// never *attributed* — so if this test ever fails with "expected owner-bound",
+/// the default has been flipped and counterparty HEAT/CD would become unfindable.
+#[test]
+fn commitment_creation_defaults_to_the_interoperable_derivation() {
+    assert!(
+        !fuego_sdk::transaction_builder::owner_bound_commitments_enabled(),
+        "the shipped default must be the interoperable legacy derivation"
     );
+
+    with_default_derivation(|| {
+        let mut rng = StdRng::seed_from_u64(0xDEFA017);
+        let ((spend_sec, spend_pub), (view_sec, view_pub)) = wallet_keys(&mut rng);
+        let ((_recv_sec, recv_spend), (_recv_vsec, recv_view)) = wallet_keys(&mut rng);
+
+        let sec = random_scalar(&mut rng);
+        let mut p = GeP3::default();
+        ge_scalarmult_base(&mut p, &sec);
+        let mut commit_key = [0u8; 32];
+        ge_p3_tobytes(&mut commit_key, &p);
+        let key_image = fuego_crypto::generate_key_image(&fuego_crypto::PublicKey(commit_key), &sec);
+        let deposits = vec![CommitmentDeposit {
+            amount: 100_000_000,
+            commit_key,
+            key_scalar: sec,
+            key_image: key_image.0,
+            global_index: 800,
+            claimed_interest: 0,
+        }];
+
+        let amount = 40_000_000u64;
+        let change = deposits[0].amount - amount - MINIMUM_FEE;
+        let mixin = 2;
+        let decoys: Vec<Vec<(u32, [u8; 32])>> = vec![(0..mixin)
+            .map(|k| {
+                let mut s = [0u8; 32];
+                s[0] = 0x40 + k as u8;
+                s[31] = 5;
+                let mut p = GeP3::default();
+                ge_scalarmult_base(&mut p, &s);
+                let mut key = [0u8; 32];
+                ge_p3_tobytes(&mut key, &p);
+                (801 + k as u32, key)
+            })
+            .collect()];
+
+        let built = build_commitment_spend_transaction(
+            &deposits,
+            &decoys,
+            mixin,
+            &[],
+            &[
+                BuildCommitmentDestination {
+                    amount,
+                    term: HEAT_TERM,
+                    spend_pub: recv_spend,
+                    view_pub: recv_view,
+                },
+                BuildCommitmentDestination {
+                    amount: change,
+                    term: HEAT_TERM,
+                    spend_pub,
+                    view_pub,
+                },
+            ],
+            &view_sec,
+            MINIMUM_FEE,
+            &[],
+            &mut rng,
+        )
+        .unwrap();
+
+        // The recipient output must be the legacy ECDH-only derivation, because
+        // that is the only form the pinned daemon looks for.
+        let r_bytes: [u8; 32] = built.tx.prefix.extra[1..33].try_into().unwrap();
+        let d_recv = fuego_crypto::generate_key_derivation(
+            &fuego_crypto::PublicKey(r_bytes),
+            &_recv_vsec,
+        )
+        .unwrap();
+        let legacy = derive_commitment_keys(&derive_deposit_secret(&d_recv, 0));
+        let owner_bound = fuego_crypto::ring::derive_public_key(&d_recv, 0, &recv_spend).unwrap();
+
+        match &built.tx.prefix.outputs[0].target {
+            OutputTarget::Commitment(c) => {
+                assert_eq!(
+                    c.commit_key, legacy.commit_key,
+                    "default derivation must be the interoperable legacy form"
+                );
+                assert_ne!(
+                    c.commit_key, owner_bound,
+                    "default derivation must NOT be owner-bound while the pinned daemon \
+                     cannot discover owner-bound outputs"
+                );
+                // And the output must still be spendable by whoever holds the
+                // ECDH secret -- that is precisely the legacy weakness, recorded
+                // here so a future flip is a deliberate act, not a silent change.
+                assert_eq!(
+                    fuego_crypto::ring::secret_key_to_public_key(&legacy.key_scalar),
+                    c.commit_key
+                );
+            }
+            other => panic!("expected commitment output, got {other:?}"),
+        }
+
+        // The self-directed change output likewise.
+        let d_own =
+            fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r_bytes), &view_sec)
+                .unwrap();
+        match &built.tx.prefix.outputs[1].target {
+            OutputTarget::Commitment(c) => {
+                assert_eq!(
+                    c.commit_key,
+                    derive_commitment_keys(&derive_deposit_secret(&d_own, 1)).commit_key
+                );
+            }
+            other => panic!("expected commitment output, got {other:?}"),
+        }
+
+        let _ = (spend_sec, spend_pub);
+    });
 }

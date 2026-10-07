@@ -180,16 +180,23 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
 ## Commitment output keys (HEAT, LP, swap receipts, CDs)
 
-- They follow fuego-suite branch `keyderiv` (`90672944`). Its spec is `docs/developer/v11-p0-commitment-keys-and-asset-accounting-guide.md` in suite.
+- They follow fuego-suite branch `keyderiv`. Its spec is `docs/developer/v11-p0-commitment-keys-and-asset-accounting-guide.md` in suite.
   - **Owner-bound:** `P = derive_public_key(D, i, B)`, the same derivation as key outputs, with `B_sub` for a sub-address. Only `b` (or `b_sub`) gives the spend scalar `derive_secret_key(D, i, b)`.
   - **Legacy:** `keyScalar = Hs("fuego_commit_key" || cn_fast_hash(D || i_LE32))`. The sender and any view-key holder can spend these outputs.
-- `BuildCommitmentDestination` carries the owner's `spend_pub` and `view_pub`. Every builder emits owner-bound keys.
-- The scanner tries owner-bound first: underive, then look up the spend-key table (primary and sub-addresses), then check `x·G == P`. The legacy form is the fallback, so outputs from suite wallets without keyderiv still show up.
-- No HEAT, Hearth, CD or atomic-swap transaction has been made on the network yet. No legacy commitment outputs exist, so there is nothing to sweep.
+- `BuildCommitmentDestination` carries the owner's `spend_pub` and `view_pub`.
+- **Creation is gated and defaults to the legacy form — `FUEGO_OWNER_BOUND_COMMITMENTS=1` opts in.** This is not a style choice; it is what keeps the wallet interoperable.
+  - The pinned daemon has **no owner-bound code**. `fuego-suite @ 524454d` has zero occurrences of `owner_bound`; its only commitment derivation is `deriveCommitmentKeys` (`src/CryptoNoteCore/TransactionExtra.cpp:1750`) and its only discovery rule is `src/Transfers/TransfersConsumer.cpp:124`, which compares against exactly that.
+  - An owner-bound output therefore **parses** but is never **attributed**. Sending HEAT/CD to a counterparty running the pinned daemon produces funds that wallet cannot find.
+  - Owner-bound exists only on the unpinned `keyderiv` branch (`0925d64c` on the submodule origin). Enable the gate only against a daemon that ships a matching discovery rule.
+  - The legacy default is a known weakness, not a fix: the sender and any view-key holder can spend those outputs. That is why the gate exists rather than a deletion.
+  - walletd logs a `warn!` at startup when the gate is ON.
+- **The scanner matches both forms unconditionally** — owner-bound first (underive, spend-key table for primary and sub-addresses, then `x·G == P`), legacy as fallback, plus pre-suite-scheme legacy accounts under their own view-key derivation. Matching is free readiness and costs no compatibility, so flipping the gate on does not orphan our own outputs.
+- No HEAT, Hearth, CD or atomic-swap transaction has been made on the network yet. No commitment outputs of either form exist.
 - `fuego-sdk/tests/commitment_owner_bound_vectors.rs` holds byte-for-byte vectors from keyderiv's C++:
   - primary and sub-addresses (0,1) and (0,7);
   - indices 0, 1, 127, 128 and 1,000,000;
   - legacy forms.
+- `phase7_vectors.rs` splits by mode: `with_owner_bound(..)` wraps the four tests whose cross-language hashes were verified against the daemon's `parseAndValidate`, and `commitment_creation_defaults_to_the_interoperable_derivation` pins the default to the legacy form. The gate is process-global, so every gate-sensitive test takes a shared mutex.
 - Not compatible with `"fuego_commit_v2"` (suite `a0abbbeb`, valise `0b84fb5` on `claude/valise-sdk-suite-sync-9u8mdk`). Do not merge commitment-key code from those.
 
 ## Transaction keys and fees

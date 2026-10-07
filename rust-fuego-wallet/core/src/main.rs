@@ -105,6 +105,19 @@ fn load_or_create_seed(wallet_dir: &PathBuf) -> Result<[u8; 32], Box<dyn std::er
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    // Commitment-output derivation is gated and defaults OFF, which is what
+    // keeps us interoperable with the pinned daemon (it only discovers the
+    // legacy form). Log the resolved value so an operator who set the env var
+    // can confirm it took effect.
+    fuego_sdk::transaction_builder::init_owner_bound_commitments_from_env();
+    if fuego_sdk::transaction_builder::owner_bound_commitments_enabled() {
+        log::warn!(
+            "FUEGO_OWNER_BOUND_COMMITMENTS is ON: HEAT/CD outputs will use the owner-bound \
+             derivation, which the pinned daemon cannot discover. Only enable this against a \
+             daemon that ships a matching discovery rule (suite `keyderiv`)."
+        );
+    }
+
     let cli = Cli::parse();
     let wallet_dir = default_wallet_dir();
     std::fs::create_dir_all(&wallet_dir)?;
