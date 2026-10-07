@@ -20,7 +20,7 @@ Merge `origin/feat/owner-bound-commitment-keys` (`51598e6`) into `origin/claude/
 | Check | Result |
 |-------|--------|
 | `cargo build --workspace` | ✅ clean, no errors, no warnings |
-| `cargo test --workspace` | ✅ **114 passed, 0 failed** (fuego-crypto 20, fuego-ffi 6, fuego-sdk 64, walletd 24) |
+| `cargo test --workspace` | ✅ **115 passed, 0 failed** (fuego-crypto 20, fuego-ffi 6, fuego-sdk 65, walletd 24) |
 | Both vector suites coexist | ✅ `ownerbound_vectors` (Colin's, 70 vectors) **and** `commitment_owner_bound_vectors` (ours) both pass; `crosscheck_ownerbound_vectors` proves parity 70/70 |
 | `phase7_vectors` | ✅ 10/10; Colin's 2 failures cleared |
 | Regression test negative control | ✅ fails `0 vs 2` without the patch, passes with it |
@@ -509,3 +509,32 @@ build attempted. Recommended next step is a single-method spike (Phase
 - Migrate `AesCbc+HMAC` → `AesGcm`/`XChaCha20-Poly1305` (Crypto MEDIUM)
 - `cargo audit` + `flutter pub audit` + `actions/checkout@SHA` pin + `fuego-suite@tag` verify-commit (Supply Chain)
 - Raise `flutter test` coverage from 2% → 80% (see `PRODUCTION_AUDIT_REPORT.md` timeline)
+
+## [2026-10-04] Adversarial review pass on the merge — two test defects found and closed
+
+Self-review of the merge above using the adversarial-review personas (Saboteur / New Hire / Security Auditor) plus the fuego-guardian checklists (crypto, wallet, 007 fail-secure, code quality). Both findings were in **my own tests**, not the production logic.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 120 | `commitments_found_on_legacy_accounts` did not assert attribution | opencode | 2026-10-04 | **Real defect, fixed.** It asserted only `c.len() == 2`, spendability and amounts. Proven vacuous by mutation: rewriting attribution to `OutputOwner::Primary` still passed. Now asserts `OutputOwner::LegacySubaddress(1)` per entry and re-verified to fail under the same mutation (`Some(Primary)` vs `Some(LegacySubaddress(1))`) |
+| 121 | Malformed attacker-controlled `commit_key` was untested | opencode | 2026-10-04 | Gap closed. Added `malformed_commit_keys_are_skipped_not_panicked`: 5 malformed keys (non-point, identity, low-order-ish, partial flag byte, non-canonical sign bit) through the full scan path, asserting no panic and no credit — plus a positive control so it cannot pass by the scanner ignoring commitments wholesale |
+| 122 | Guardian checklist: key zeroization | opencode | 2026-10-04 | PASS. `ScanKeys::drop` zeroizes `view_secret`, `spend_secret`, every `by_spend_key` secret, and both `legacy` secrets (`view_secret`, `spend_secret`) |
+| 123 | Guardian checklist: fail-secure on trust boundary | opencode | 2026-10-04 | PASS. `match hit { None => continue }` fails closed — a non-matching output is skipped, never misattributed |
+| 124 | Guardian checklist: dead code after refactor | opencode | 2026-10-04 | PASS. `derive_public_key` is still live in 4 key-output call sites, so the import is not dead. Build is warning-free |
+| 125 | Guardian checklist: balance underflow / arithmetic | opencode | 2026-10-04 | PASS. The patch introduces no amount arithmetic |
+| 126 | Refuted hypothesis: silent fund stranding | opencode | 2026-10-04 | `sweep_legacy_subaddresses` walks only `state.utxos`, so it cannot reach legacy HEAT — **but `select_heat` uses `heat_outputs()` with no owner filter**, so the funds are spendable through a normal HEAT send. Not a stranding bug |
+| 127 | Known cost characteristic | opencode | 2026-10-04 | The loop costs ~2 EC derivations per legacy account per commitment output, so scan time is O(outputs × registered legacy accounts). `register_legacy_subaddresses` has no batch cap. Pre-existing shape from Colin's version; this patch adds the second (legacy-form) attempt. Loopback-only RPC, so not remotely triggerable. Left unchanged rather than reordered late |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test --workspace` | ✅ **115 passed, 0 failed** |
+| `flutter test` | ✅ 72 passed, 0 failed |
+| `flutter analyze --no-pub --fatal-warnings --no-fatal-infos` | ✅ exit 0 |
+| Mutation check (attribution) | ✅ test fails `Some(Primary)` vs `Some(LegacySubaddress(1))` when attribution is broken; passes when correct |
+| Mutation check (vector data) | ✅ flipping one expected byte fails `crosscheck_ownerbound_vectors` |
+| Mutation check (patch removal) | ✅ `commitments_found_on_legacy_accounts` fails `0 vs 2` without the legacy loop |
+| Personas run | ⚠️ All three sub-agents and the guardian run failed on an opencode `FileSystem.writeFile` snapshot error. Personas were executed inline with direct command evidence instead; guardian loaded on retry and its checklists were applied |
+| All tasks done | Two real test defects found and closed; five guardian checks passed; one hypothesis refuted with evidence; one cost characteristic documented |
+| Scope | Tests and changelog only. No production logic changed in this pass |

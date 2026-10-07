@@ -1015,6 +1015,82 @@ mod subaddress_tests {
         let heat = s.heat_outputs();
         assert_eq!(heat.len(), 2, "both legacy-account commitments must be spendable HEAT");
         assert_eq!(heat.iter().map(|e| e.amount).sum::<u64>(), 1000);
+
+        // Attribution is the half that must not silently regress: booking these
+        // to Primary would leave every assertion above still passing while
+        // losing the legacy-account identity the sweep logic depends on.
+        let owners = s.snapshot().owners;
+        let owner_of =
+            |e: &CommitmentEntry| owners.iter().find(|(k, _)| *k == e.key_image).map(|(_, o)| *o);
+        for e in &c {
+            assert_eq!(
+                owner_of(e),
+                Some(OutputOwner::LegacySubaddress(1)),
+                "commitment must be attributed to the legacy account, not Primary or a suite sub-address"
+            );
+        }
+        assert!(s.legacy_subaddresses().contains(&1), "account 1 stays registered");
+    }
+
+    /// `commit_key` is attacker-controlled: it arrives from a network transaction
+    /// and reaches curve math on every path. A non-point, all-zero or otherwise
+    /// malformed key must be skipped, never panic and never be attributed --
+    /// panicking here is a remote wallet DoS.
+    #[test]
+    fn malformed_commit_keys_are_skipped_not_panicked() {
+        let s = scanner();
+        assert!(s.set_legacy_subaddresses(&[1]));
+
+        let junk: [[u8; 32]; 5] = [
+            [0xFF; 32],                                    // not a curve point
+            [0x00; 32],                                    // identity / zero
+            [0x01; 32],                                    // low-order-ish
+            [0x40; 32],                                    // partial flag byte
+            [0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80], // non-canonical sign bit
+        ];
+
+        for (n, key) in junk.iter().enumerate() {
+            let mut extra = vec![0x01];
+            extra.extend_from_slice(&[7u8; 32]);
+            let prefix = TransactionPrefix {
+                version: 1,
+                unlock_time: 0,
+                inputs: Vec::new(),
+                outputs: vec![TxOutput {
+                    amount: 500,
+                    target: OutputTarget::Commitment(crate::serialization::CommitmentOutputTarget {
+                        commit_key: *key,
+                        term: crate::serialization::HEAT_TERM,
+                        amount_commitment: [0u8; 32],
+                        amount_proof: [0u8; crate::serialization::AMOUNT_PROOF_LEN],
+                    }),
+                }],
+                extra,
+            };
+            // Must not panic, and must not claim the output.
+            let (received, _) = s.scan_tx_prefix(&[n as u8; 32], &prefix, 10).unwrap();
+            assert_eq!(received, 0, "malformed commit_key {n} must not credit");
+        }
+
+        assert!(s.commitments().is_empty(), "no malformed key may be recorded");
+        assert_eq!(s.heat_outputs().len(), 0);
+
+        // Positive control: the same harness MUST still credit a well-formed
+        // commitment, otherwise this test would pass even if the scanner stopped
+        // recording commitments entirely.
+        let keys = s.wallet_keys();
+        let valid = commit_to(&keys.view_public, 11, |d| {
+            fuego_crypto::ring::derive_owner_bound_commit_key(
+                d,
+                0,
+                &s.wallet_keys().spend_public,
+            )
+            .unwrap()
+        });
+        assert_eq!(s.scan_tx_prefix(&[99u8; 32], &valid, 11).unwrap().0, 500);
+        assert_eq!(s.heat_outputs().len(), 1, "control: a valid commitment is credited");
     }
 
     #[test]
