@@ -292,7 +292,7 @@ const List<ChainEntry> kChains = [
     rpc: 'https://public-node.rsk.co',
     gasToken: 'RBTC',
     tier: 'wallet',
-    icon: 'assets/coin-icons/rsk.png',
+    icon: 'assets/coin-icons/rootstock.png',
     chainId: 30,
     confirmBlocks: 15,
     colorValue: 0xE9B64E,

@@ -3,6 +3,19 @@ import 'package:http/http.dart' as http;
 import '../models/chain_info.dart';
 import '../models/swap_models.dart';
 
+BigInt _atomicAmountToBigInt(dynamic value) {
+  if (value == null) return BigInt.zero;
+  if (value is BigInt) return value;
+  if (value is int) return BigInt.from(value);
+  if (value is num) return BigInt.from(value.toInt());
+  if (value is String) {
+    final text = value.trim();
+    if (text.isEmpty) return BigInt.zero;
+    return BigInt.parse(text);
+  }
+  throw FormatException('Invalid atomic amount: $value');
+}
+
 class SwapDaemonClient {
   final String host;
   final int port;
@@ -150,8 +163,8 @@ class SwapInfo {
   final String swapId;
   final String state;
   final int pair;
-  final int xfgAmount;
-  final int ctrAmount;
+  final BigInt xfgAmount;
+  final BigInt ctrAmount;
   final String peerEndpoint;
   final int createdAt;
   final int updatedAt;
@@ -296,14 +309,18 @@ class SwapInfo {
           (params['pair'] as num?)?.toInt() ??
           (j['pair'] as num?)?.toInt() ??
           0,
-      xfgAmount:
-          (params['xfgAmount'] as num?)?.toInt() ??
-          (j['xfgAmount'] as num?)?.toInt() ??
-          0,
-      ctrAmount:
-          (params['ctrAmount'] as num?)?.toInt() ??
-          (j['ctrAmount'] as num?)?.toInt() ??
-          0,
+      xfgAmount: _atomicAmountToBigInt(
+        params['xfgAmount'] ??
+            j['xfgAmount'] ??
+            params['xfg_amount'] ??
+            j['xfg_amount'],
+      ),
+      ctrAmount: _atomicAmountToBigInt(
+        params['ctrAmount'] ??
+            j['ctrAmount'] ??
+            params['ctr_amount'] ??
+            j['ctr_amount'],
+      ),
       peerEndpoint:
           params['peerEndpoint'] as String? ??
           j['peerEndpoint'] as String? ??

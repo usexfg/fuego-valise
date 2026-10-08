@@ -348,9 +348,17 @@ class ChainInfo {
     return tmpl.replaceAll('{txid}', txid);
   }
 
-  static double amountToDecimal(String ticker, int atomic) {
+  static double amountToDecimal(String ticker, dynamic atomic) {
     final d = decimals[ticker] ?? 7;
-    return atomic / _pow10(d);
+    final divisor = _pow10(d);
+    if (atomic is BigInt) return atomic.toDouble() / divisor;
+    if (atomic is num) return atomic.toDouble() / divisor;
+    if (atomic is String) {
+      final text = atomic.trim();
+      if (text.isEmpty) return 0;
+      return BigInt.parse(text).toDouble() / divisor;
+    }
+    throw ArgumentError.value(atomic, 'atomic', 'number or decimal string');
   }
 
   static double _pow10(int n) {
