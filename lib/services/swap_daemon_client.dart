@@ -58,8 +58,8 @@ class SwapDaemonClient {
 
   Future<String> initiateSwap({
     required String pair,
-    required int xfgAmount,
-    required int ctrAmount,
+    required String xfgAmount,
+    required String ctrAmount,
     required String peer,
     String role = 'alice',
     String? expectedPeerPubkey,
