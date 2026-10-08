@@ -308,6 +308,20 @@ jobs:
         uses: dtolnay/rust-toolchain@v1
         with: { toolchain: stable }
 
+      # ownerbound_vectors.txt is checked into the Rust SDK and compared there
+      # byte-for-byte, but nothing stopped it drifting away from the C++ it was
+      # derived from -- its producer was never committed. Regenerate from the
+      # pinned submodule and diff, so a change to the owner-bound commitment
+      # derivation in C++ that the SDK has not absorbed fails here.
+      # Not gated on the cache: the cache key includes the pinned submodule SHA, so
+      # the tool is present on a hit, and the build step below is a no-op when it
+      # is already current.
+      - name: Owner-bound commitment vectors match the pinned C++
+        run: |
+          cmake --build fuego-suite/build --target ownerbound_vectors -j"$(nproc)"
+          ./fuego-suite/build/src/ownerbound_vectors --check \
+            rust-fuego-wallet/fuego-sdk/fuego-crypto/tests/data/ownerbound_vectors.txt
+
       - name: FFI CryptoNight vectors
         run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi
 
