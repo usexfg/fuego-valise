@@ -76,7 +76,9 @@ pub const TX_EXTRA_AMM_LP_ADD_AUTH: u8 = 0xF7;
 pub const TX_EXTRA_AMM_LP_REM_AUTH: u8 = 0xF8;
 pub const TX_EXTRA_HEAT_SEND_AUTH: u8 = 0xF9;
 pub const TX_EXTRA_LIMIT_DEPOSIT: u8 = 0xFB;
+pub const TX_EXTRA_LIMIT_WITHDRAW: u8 = 0xFE;
 pub const TX_EXTRA_TREASURY_FUND: u8 = 0xFF;
+pub const TX_EXTRA_CD_BONUS_CLAIM: u8 = 0xD6;
 
 pub const TX_VERSION_1: u8 = 1;
 pub const TX_VERSION_2: u8 = 2;
@@ -93,6 +95,25 @@ pub const DEPOSIT_TERM_POOL_XFG: u32 = 0x504F_4C58;
 
 /// DEPOSIT_TERM_POOL_HEAT (CryptoNoteConfig.h): 'POLH' — pool receives HEAT.
 pub const DEPOSIT_TERM_POOL_HEAT: u32 = 0x504F_4C48;
+
+/// DEPOSIT_TERM_SWAP_RECEIVE_XFG (CryptoNoteConfig.h): 'SWRX'.
+pub const DEPOSIT_TERM_SWAP_RECEIVE_XFG: u32 = 0x5357_5258;
+
+/// DIGM_TERM (CryptoNoteConfig.h): 'DIMG' — refused until v12.
+pub const DIGM_TERM: u32 = 0x4449_4D47;
+
+/// Terms that mark an asset rather than a CD's lock (Currency::isMarkerTerm).
+pub fn is_marker_term(term: u32) -> bool {
+    matches!(
+        term,
+        HEAT_TERM
+            | DEPOSIT_TERM_LP
+            | DEPOSIT_TERM_POOL_XFG
+            | DEPOSIT_TERM_POOL_HEAT
+            | DEPOSIT_TERM_SWAP_RECEIVE_XFG
+            | DIGM_TERM
+    )
+}
 
 /// MembershipProof size: FUEGO_MEMBERSHIP_N(4) * 2 scalars * 32 bytes.
 pub const AMOUNT_PROOF_LEN: usize = 256;
@@ -574,6 +595,63 @@ pub fn add_limit_deposit_extra(
     extra.extend_from_slice(address_hash);
 }
 
+/// TransactionExtra.cpp getLimitWithdrawOutputHash: cn_fast_hash of a
+/// transaction prefix that holds only `outputs` (version 0, no unlock time,
+/// inputs or extra), so wallets and consensus hash the same bytes.
+pub fn limit_withdraw_output_hash(outputs: &[TxOutput]) -> [u8; 32] {
+    let prefix = TransactionPrefix {
+        version: 0,
+        unlock_time: 0,
+        inputs: Vec::new(),
+        outputs: outputs.to_vec(),
+        extra: Vec::new(),
+    };
+    fuego_crypto::cn_fast_hash(&serialize_prefix(&prefix))
+}
+
+/// TransactionExtra.cpp getLimitWithdrawAuthHash: what the owner's spend key
+/// signs — cn_fast_hash("FuegoLimitWithdrawV1" || orderId || addressHash ||
+/// outputsHash).
+pub fn limit_withdraw_auth_hash(
+    order_id: &[u8; 32],
+    address_hash: &[u8; 32],
+    outputs_hash: &[u8; 32],
+) -> [u8; 32] {
+    let mut data = Vec::with_capacity(20 + 96);
+    data.extend_from_slice(b"FuegoLimitWithdrawV1");
+    data.extend_from_slice(order_id);
+    data.extend_from_slice(address_hash);
+    data.extend_from_slice(outputs_hash);
+    fuego_crypto::cn_fast_hash(&data)
+}
+
+/// TransactionExtra.cpp addLimitWithdrawToExtra: 0xFE || orderId ||
+/// spendPublicKey || viewPublicKey || outputsHash || proof (64 bytes).
+pub fn add_limit_withdraw_extra(
+    extra: &mut Vec<u8>,
+    order_id: &[u8; 32],
+    spend_public: &[u8; 32],
+    view_public: &[u8; 32],
+    outputs_hash: &[u8; 32],
+    proof: &[u8; 64],
+) {
+    extra.push(TX_EXTRA_LIMIT_WITHDRAW);
+    extra.extend_from_slice(order_id);
+    extra.extend_from_slice(spend_public);
+    extra.extend_from_slice(view_public);
+    extra.extend_from_slice(outputs_hash);
+    extra.extend_from_slice(proof);
+}
+
+/// TransactionExtra.cpp addCdBonusClaimToExtra: 0xD6 || inputIndex u8 ||
+/// claimedBonus u64 LE — the Bonus-Vault-backed part of one CD input's
+/// claimed interest.
+pub fn add_cd_bonus_claim_extra(extra: &mut Vec<u8>, input_index: u8, claimed_bonus: u64) {
+    extra.push(TX_EXTRA_CD_BONUS_CLAIM);
+    extra.push(input_index);
+    extra.extend_from_slice(&claimed_bonus.to_le_bytes());
+}
+
 // ---------------------------------------------------------------- daemon RPC
 
 /// KVBinary document header: signature pair, version 1, root entry count.
@@ -660,14 +738,17 @@ pub fn parse_get_random_outs_response(
 }
 
 /// COMMAND_RPC_GET_RANDOM_COMMITMENT_OUTPUTS request (KV binary):
-/// amount uint64, outs_count uint64, max_height uint32.
+/// amount uint64, outs_count uint64, max_height uint32, term uint32. With a
+/// term the node returns only outputs that can share that output's ring:
+/// the same asset and spendable now (0 = any output of the amount).
 pub fn get_random_commitment_outs_request(
     amount: u64,
     outs_count: u64,
     max_height: u32,
+    term: u32,
 ) -> Vec<u8> {
     let mut out = Vec::new();
-    kv_document_header(3, &mut out);
+    kv_document_header(4, &mut out);
 
     write_kv_name(b"amount", &mut out);
     out.push(5);
@@ -680,6 +761,10 @@ pub fn get_random_commitment_outs_request(
     write_kv_name(b"max_height", &mut out);
     out.push(6);
     out.extend_from_slice(&max_height.to_le_bytes());
+
+    write_kv_name(b"term", &mut out);
+    out.push(6);
+    out.extend_from_slice(&term.to_le_bytes());
     out
 }
 

@@ -6,6 +6,9 @@
 ///      CoreRpcServerCommandsDefinitions.h lines 1047-1087 (OrderBookState),
 ///      CoreRpcServerCommandsDefinitions.h lines 2500+ (AmmQuote).
 
+const double heatPegUsd = 1.58;
+const int fuegoAtomicUnitsPerCoin = 10000000;
+
 /// Response to `/get_heat_metrics`
 /// C++: COMMAND_RPC_GET_HEAT_METRICS (CoreRpcServerCommandsDefinitions.h:2448-2497)
 class HeatMetrics {
@@ -256,8 +259,9 @@ class PoolInfo {
     );
   }
 
-  /// Spot price (HEAT per XFG, atomic units) as a display string.
-  String get price => spotPrice.toString();
+  double get heatPerXfg => spotPrice / fuegoAtomicUnitsPerCoin;
+
+  String get price => heatPerXfg.toStringAsFixed(8);
 
   /// XFG reserve (atomic units) as a display string.
   String get xfgBalance => reserveXfg.toString();

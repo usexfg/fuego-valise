@@ -31,6 +31,7 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
+pub mod amm;
 pub mod builder;
 pub mod crypto;
 pub mod error;

@@ -53,7 +53,7 @@ void main() {
       );
 
       expect(config['monad_chain_id'], 143);
-      expect(config['monad_chain_id'], isNot(185));
+      expect(config['monad_chain_id'], isNot(185)); // regression: daemon default was wrong at one point
     });
 
     test('keeps daemon-native prefixes and includes metadata chain ID', () {

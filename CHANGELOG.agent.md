@@ -1,5 +1,67 @@
 # CHANGELOG.agent.md
 
+## [2026-10-04] Owner-bound commitment keys: parity check across `b8b0e93` and Colin's `88909b4`
+
+Fork point `75034c0`. Ours `b8b0e93` (+ `ddb7d12` private-view-key, `82a89ee` XFG-fee, `3206cf4` auto-roll); Colin's `88909b4` + `cad36f1`. Read-only comparison; no merge performed.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 106 | Establish what each branch actually implements, rather than assuming the approach matches | opencode | 2026-10-04 | Done; both derive `P = derive_public_key(D, i, B)` via the same `fuego-crypto` primitives, but they put the code in different files and duplicate it |
+| 107 | Settle the byte-vector question that had not been run across both branches | opencode | 2026-10-04 | Done; **70/70 vectors pass**. Colin's 70 C++-generated vectors reproduce exactly through our primitives, so the divergence is structural, not cryptographic. Locked in by `fuego-crypto/tests/crosscheck_ownerbound_vectors.rs` |
+| 108 | Run both suites on clean worktrees | opencode | 2026-10-04 | Keep-branch **79 passed / 0 failed**. Colin's branch **2 failed** (`heat_send_recipient_view_key`, `print_cross_language_artifacts`) — he documents these as deliberately unpinned pending a C++ parser round-trip he has not run |
+| 109 | Quantify the merge | opencode | 2026-10-04 | 4 files / 25 hunks: `transaction_builder.rs` 11, `phase7_vectors.rs` 7, `wallet_service.rs` 5, `scanner.rs` 2. `fuego-crypto/src/ring.rs` **auto-merges** — Colin's four wrappers survive. Both vector suites coexist after merge |
+| 110 | Correct `b8b0e93`'s own commit message, which overclaims | opencode | 2026-10-04 | `CommitmentEntry.exposed` and `SCAN_VERSION 3` are named in the message but exist in neither branch; `CommitmentEntry` is byte-identical on both. No stored-state migration exists |
+| 111 | Record a real gap on our side | opencode | 2026-10-04 | Our commitment path never loops `table.legacy`, so HEAT/CD held by a pre-suite-scheme legacy sub-address (its own view key → its own derivation) is **not attributed**. Colin's `cad36f1` closes it. Pre-existing, not introduced by the owner-bound work |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test -p fuego-crypto -p fuego-sdk` (keep-branch `5f32382`, clean worktree) | ✅ 79 passed, 0 failed |
+| `cargo test -p fuego-crypto -p fuego-sdk` (Colin's `51598e6`, clean worktree) | ⚠️ 2 failed, unpinned cross-language hashes — consistent with his commit message |
+| Cross-branch byte vectors | ✅ 70/70 — our primitives reproduce his independently C++-generated set |
+| Merge dry run | 4 conflicts / 25 hunks; `ring.rs`, `AGENTS.md`, `CHANGELOG.agent.md` auto-merge |
+| All tasks done | Comparison complete. **No merge, no rebase, no commit, no push.** Temporary worktrees created and removed; merge dry run aborted |
+| Scope | Read-only analysis plus one new test file. The pre-existing uncommitted working-tree changes were left untouched |
+
+## [2026-10-04] DeXFG XFG/USD archive and separate Hearth pool chart
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 102 | Show every supplied XFG/USD close on the DeXFG chart, with full-history, 5Y, 1Y, 3M and 1M ranges plus drag, pinch, wheel zoom, date stamps and price axis | Codex | 2026-10-04 | Done; 2,630 archive rows from 2019-02-07 through 2026-04-21 |
+| 103 | Remove the fabricated current-price candle and label the DeXFG chart as archived XFG/USD rather than the selected swap-pair rate | Codex | 2026-10-04 | Done; the bundled archive has no newer prices or live continuation |
+| 104 | Keep Hearth's chart separate from XFG/USD, using only valid local daily observations of the XFG/HΞΔŦ pool spot with network partitioning and no backfilled gaps | Codex | 2026-10-04 | Done; these are pool observations, not executed trade fills, and sampling runs only while the Hearth view is open |
+| 105 | Correct fixed-point pool spot display, remove placeholder rate/24h change labels, and cover archive, chart interactions, storage and network switching in tests | Codex | 2026-10-04 | Done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `flutter test --no-pub` | 83 passed; live daemon stack test skipped because binaries are absent |
+| `flutter analyze --no-pub --fatal-warnings --no-fatal-infos` | Exit 0; no errors or warnings, 783 info-level lints |
+| Archive integrity | 2,630 strictly increasing valid OHLCV rows; no synthesized current candle |
+| Live trade-history proof | Not claimed: the daemon does not expose past Hearth fills through the wallet's RPC path, and no funded live-node chart run was performed |
+| All tasks done | Requested DeXFG archive chart and separate honest Hearth chart implemented locally; no commit, push, merge or file deletion |
+
+## [2026-10-03] EVM onboarding skill and local suite-pin compatibility review
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 98 | Check the wallet's suite checkout against the merged catalog/uint256 implementation | Codex | 2026-10-03 | Local checkout is `a36eccb5b246e2a9dbdcc9285ae35ac6a4012b98`; gitlink change remains uncommitted, unstaged and unpushed |
+| 99 | Check the separate `keyderiv` baseline and record discovered bugs without unrelated repairs | Codex | 2026-10-03 | Findings checkpointed in `graphify-out/guardian/checkpoints/keyderiv-audit-2026-10-03.json` and the skill's dated compatibility notes; release sign-off remains blocked |
+| 100 | Rename both installed skills to `fuego-add-swap-evm-chain`, replace obsolete subclass/table guidance and update the two build-skill references | Codex | 2026-10-03 | Done; covers catalog-driven native EVM adapters, strict config, exact atomics, registries, timelocks, oracle identity, every consumer and funded recovery gates |
+| 101 | Qualify Pythnet, PYTH token swaps and Pyth oracle integration using current primary sources | Codex | 2026-10-03 | Research kept outside the EVM skill in [the standalone assessment](docs/research/pyth-swap-compatibility.md); no new pair, token escrow, provider account, deployment or funding |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| Installed skill validators | Both copies pass `skill-creator/scripts/quick_validate.py`; installed files match the reviewed draft and each other |
+| Independent skill behavior check | Completed read-only; existing peaq/Beam rows and Pyth scope classified correctly. Corrected root-path/contiguous-ID instructions; recorded Beam's fee-cap incompatibility and allowed `RATE_NO_DATA` behavior without changing either policy |
+| Build/test results | Fresh isolated C++ wallet build and helper tests pass; focused C++/Rust/Flutter regression probes reproduce unresolved failures. Full release, wire and funded two-leg recovery gates are not passed by those helper tests |
+| All tasks done | Skill update and research complete; production swap compatibility is not signed off |
+| Scope | Documentation, read-only review/test artifacts and local suite checkout only; existing wallet changes preserved; no unrelated fixes, deletion, merge, commit or push |
+
 ## [2026-10-01] Swap-pair drift: 10 DeXFG pairs rendered as `PAIR_<n>`
 
 | # | Task | Owner | Date | Status |

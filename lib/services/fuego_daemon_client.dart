@@ -21,7 +21,8 @@ class FuegoDaemonClient {
 
   NetworkConfig get networkConfig => _networkConfig;
 
-  void updateNode(String host, {int? port}) {
+  void updateNode(String host, {int? port, NetworkConfig? networkConfig}) {
+    if (networkConfig != null) _networkConfig = networkConfig;
     _baseUrl = 'http://$host:${port ?? _networkConfig.daemonRpcPort}';
   }
 

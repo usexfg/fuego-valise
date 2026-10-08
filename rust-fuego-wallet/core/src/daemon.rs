@@ -24,6 +24,47 @@ pub struct DaemonInfo {
     pub version: String,
 }
 
+/// The Hearth pool as /amm_pool_info reports it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PoolInfo {
+    pub reserve_xfg: u64,
+    pub reserve_heat: u64,
+    pub total_lp_shares: u64,
+    /// HEAT atomics per XFG atomic × COIN.
+    pub spot_price: u64,
+    /// The 8-block TWAP consensus prices HEAT mints at (0 = none yet).
+    pub hearth_twap: u64,
+    pub height: u64,
+}
+
+/// What a CD has accrued (COMMAND_RPC_ESTIMATE_CD_YIELD).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CdClaimInfo {
+    pub formula_interest: u64,
+    pub base_interest: u64,
+    pub bonus_interest: u64,
+    pub claimable_bonus: u64,
+    pub fee_pool_balance: u64,
+    pub vault_balance: u64,
+    pub bonus_vault_balance: u64,
+    pub pool_info_present: bool,
+}
+
+/// A Hearth limit order (COMMAND_RPC_GET_LIMIT_ORDERS::LimitOrderInfo).
+#[derive(Debug, Clone, Default)]
+pub struct LimitOrder {
+    pub order_id: String,
+    pub address_hash: String,
+    pub side: u8,
+    /// Remaining escrow.
+    pub amount: u64,
+    pub proceeds_xfg: u64,
+    pub proceeds_heat: u64,
+    pub target_price: u64,
+    pub expiration: u32,
+    pub withdrawn: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonRpcRequest {
     jsonrpc: String,
@@ -134,78 +175,142 @@ impl DaemonClient {
         parse_get_o_indexes_response(&resp).map_err(|e| e.to_string())
     }
 
-    /// /getrandom_commitment_outs.bin — decoy commitment outputs for a
-    /// single amount.
+    /// /getrandom_commitment_outs.bin — decoy commitment outputs for one
+    /// amount. With `term` the node returns only outputs that can share that
+    /// output's ring: the same asset, spendable now (0 = any).
     pub async fn get_random_commitment_outs(
         &self,
         amount: u64,
         outs_count: u64,
         max_height: u32,
+        term: u32,
     ) -> Result<Vec<fuego_sdk::serialization::RandomCommitmentOutEntry>, String> {
         use fuego_sdk::serialization::{
             get_random_commitment_outs_request, parse_get_random_commitment_outs_response,
         };
-        let body = get_random_commitment_outs_request(amount, outs_count, max_height);
+        let body = get_random_commitment_outs_request(amount, outs_count, max_height, term);
         let resp = self.post_bin("/getrandom_commitment_outs.bin", body).await?;
         parse_get_random_commitment_outs_response(&resp).map_err(|e| e.to_string())
     }
 
-    /// /amm_pool_info — Hearth pool reserves and spot price.
-    pub async fn amm_pool_info(&self) -> Result<(u64, u64, u64), String> {
-        let val = self
-            .json_rpc::<serde_json::Value>("amm_pool_info", serde_json::json!({}))
-            .await?;
-        let reserve_xfg = val.get("reserve_xfg").and_then(|v| v.as_u64()).unwrap_or(0);
-        let reserve_heat = val.get("reserve_heat").and_then(|v| v.as_u64()).unwrap_or(0);
-        let spot_price = val.get("spot_price").and_then(|v| v.as_u64()).unwrap_or(0);
-        Ok((reserve_xfg, reserve_heat, spot_price))
+    /// /amm_pool_info — the Hearth pool. fuegod serves it at its own path; it
+    /// is not a /json_rpc method.
+    pub async fn amm_pool(&self) -> Result<PoolInfo, String> {
+        let val = self.json_path("/amm_pool_info", serde_json::json!({})).await?;
+        let get = |k: &str| val.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+        Ok(PoolInfo {
+            reserve_xfg: get("reserve_xfg"),
+            reserve_heat: get("reserve_heat"),
+            total_lp_shares: get("total_lp_shares"),
+            spot_price: get("spot_price"),
+            hearth_twap: get("hearth_twap"),
+            height: get("height"),
+        })
     }
 
-    /// /amm_pool_info — full Hearth pool state including LP share supply.
-    pub async fn amm_pool_full(&self) -> Result<(u64, u64, u64, u64), String> {
+    /// /estimate_cd_yield — what a CD has accrued and what consensus would
+    /// pay out of it now (NodeRpcProxy::getCdClaimInfo).
+    pub async fn cd_claim_info(
+        &self,
+        amount: u64,
+        creation_height: u32,
+        current_height: u32,
+        term: u32,
+    ) -> Result<CdClaimInfo, String> {
         let val = self
-            .json_rpc::<serde_json::Value>("amm_pool_info", serde_json::json!({}))
+            .json_path(
+                "/estimate_cd_yield",
+                serde_json::json!({
+                    "amount": amount,
+                    "creation_height": creation_height,
+                    "current_height": current_height,
+                    "term": term,
+                }),
+            )
             .await?;
-        let reserve_xfg = val.get("reserve_xfg").and_then(|v| v.as_u64()).unwrap_or(0);
-        let reserve_heat = val.get("reserve_heat").and_then(|v| v.as_u64()).unwrap_or(0);
-        let total_lp_shares = val.get("total_lp_shares").and_then(|v| v.as_u64()).unwrap_or(0);
-        let spot_price = val.get("spot_price").and_then(|v| v.as_u64()).unwrap_or(0);
-        Ok((reserve_xfg, reserve_heat, total_lp_shares, spot_price))
+        let get = |k: &str| val.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+        if val.get("estimated_interest").and_then(|v| v.as_u64()).is_none() {
+            return Err(format!("bad estimate_cd_yield response: {}", val));
+        }
+        Ok(CdClaimInfo {
+            formula_interest: get("estimated_interest"),
+            base_interest: get("base_interest"),
+            bonus_interest: get("bonus_interest"),
+            claimable_bonus: get("claimable_bonus"),
+            fee_pool_balance: get("fee_pool_balance"),
+            vault_balance: get("cd_apy_vault_balance"),
+            bonus_vault_balance: get("bonus_vault_balance"),
+            pool_info_present: val.get("pool_info_present").and_then(|v| v.as_bool()).unwrap_or(false),
+        })
     }
 
-    /// /estimate_cd_yield — interest a CD would pay today.
+    /// /estimate_cd_yield — the interest a CD would pay today.
     pub async fn estimate_cd_yield(
         &self,
         amount: u64,
         creation_height: u32,
     ) -> Result<u64, String> {
-        let val = self
-            .json_rpc::<serde_json::Value>(
-                "estimate_cd_yield",
-                serde_json::json!({
-                    "amount": amount,
-                    "creation_height": creation_height,
-                }),
-            )
-            .await?;
-        val.get("estimated_interest")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| format!("bad estimate_cd_yield response: {}", val))
+        self.cd_claim_info(amount, creation_height, 0, 0)
+            .await
+            .map(|info| info.formula_interest)
     }
 
-    /// /is_key_image_spent (JSON-RPC). Returns an error if the daemon does
-    /// not provide the endpoint (older builds); callers fall back to
-    /// scan-based spent tracking.
+    /// /get_limit_orders — Hearth limit orders, withdrawn ones included.
+    pub async fn limit_orders(&self) -> Result<Vec<LimitOrder>, String> {
+        let val = self
+            .json_path(
+                "/get_limit_orders",
+                serde_json::json!({ "active_only": false, "limit": 0, "offset": 0 }),
+            )
+            .await?;
+        let orders = val
+            .get("orders")
+            .and_then(|o| o.as_array())
+            .ok_or_else(|| format!("bad get_limit_orders response: {}", val))?;
+        let mut out = Vec::with_capacity(orders.len());
+        for o in orders {
+            let get = |k: &str| o.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+            let text = |k: &str| o.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            out.push(LimitOrder {
+                order_id: text("order_id"),
+                address_hash: text("address_hash"),
+                side: get("side") as u8,
+                amount: get("amount"),
+                proceeds_xfg: get("proceeds_xfg"),
+                proceeds_heat: get("proceeds_heat"),
+                target_price: get("target_price"),
+                expiration: get("expiration") as u32,
+                withdrawn: o.get("withdrawn").and_then(|v| v.as_bool()).unwrap_or(false),
+            });
+        }
+        Ok(out)
+    }
+
+    /// /is_key_image_spent. Returns an error if the daemon does not provide
+    /// the endpoint (older builds); callers fall back to scan-based spent
+    /// tracking.
     pub async fn is_key_image_spent(&self, key_image: &[u8; 32]) -> Result<bool, String> {
         let val = self
-            .json_rpc::<serde_json::Value>(
-                "is_key_image_spent",
+            .json_path(
+                "/is_key_image_spent",
                 serde_json::json!({ "key_image": hex::encode(key_image) }),
             )
             .await?;
         val.get("spent")
             .and_then(|v| v.as_bool())
             .ok_or_else(|| format!("bad is_key_image_spent response: {}", val))
+    }
+
+    /// POST a JSON body to one of fuegod's own paths (jsonMethod handlers).
+    async fn json_path(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self.client.post(&url)
+            .json(&body).send().await
+            .map_err(|e| format!("HTTP: {}", e))?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {} from {}", resp.status(), path));
+        }
+        resp.json().await.map_err(|e| format!("JSON from {}: {}", path, e))
     }
 
     async fn json_rpc<T: serde::de::DeserializeOwned>(

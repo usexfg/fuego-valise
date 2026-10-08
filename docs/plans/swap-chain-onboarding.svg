@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" role="img" aria-labelledby="title description">
+  <title id="title">Swap chain onboarding architecture</title>
+  <desc id="description">A candidate chain branches into SVM, TON, or ZANO implementation paths. All paths converge on network identity, pair catalog, swap protocol, prices and product surfaces, then require funded end-to-end testing and a security release gate.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#96a8cc"/>
+    </marker>
+    <style>
+      .bg { fill: #0b1222; }
+      .title { fill: #f1f5ff; font: 700 34px system-ui, -apple-system, sans-serif; }
+      .subtitle { fill: #a6b7d4; font: 16px system-ui, -apple-system, sans-serif; }
+      .label { fill: #f4f7ff; font: 700 20px system-ui, -apple-system, sans-serif; }
+      .detail { fill: #c7d5ee; font: 15px system-ui, -apple-system, sans-serif; }
+      .step { fill: #f4f7ff; font: 700 16px system-ui, -apple-system, sans-serif; }
+      .small { fill: #b8c9e5; font: 14px system-ui, -apple-system, sans-serif; }
+      .tag { fill: #6ee7d5; font: 700 13px system-ui, -apple-system, sans-serif; letter-spacing: 1.5px; }
+      .line { fill: none; stroke: #96a8cc; stroke-width: 2.5; marker-end: url(#arrow); }
+      .linePlain { fill: none; stroke: #96a8cc; stroke-width: 2.5; }
+      .dashed { fill: none; stroke: #64ddc7; stroke-width: 2; stroke-dasharray: 7 7; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1440" height="960"/>
+  <text class="title" x="72" y="68">Adding an executable swap chain</text>
+  <text class="subtitle" x="72" y="100">One admission and recovery contract; distinct custody and transaction implementations</text>
+
+  <rect x="530" y="140" width="380" height="66" rx="18" fill="#20304f" stroke="#7295dc" stroke-width="2"/>
+  <text class="label" x="720" y="181" text-anchor="middle">Candidate chain and native asset</text>
+  <path class="line" d="M 720 206 V 244"/>
+  <rect x="548" y="245" width="344" height="52" rx="15" fill="#4b382a" stroke="#f1ae67" stroke-width="2"/>
+  <text class="label" x="720" y="278" text-anchor="middle">Classify execution and custody</text>
+
+  <path class="line" d="M 650 297 V 323 H 248 V 340"/>
+  <path class="line" d="M 720 297 V 340"/>
+  <path class="line" d="M 790 297 V 323 H 1192 V 340"/>
+
+  <rect x="64" y="340" width="368" height="176" rx="18" fill="#123c4b" stroke="#3fc6d7" stroke-width="2"/>
+  <text class="tag" x="90" y="373">FAMILY ADAPTER</text>
+  <text class="label" x="90" y="406">SVM</text>
+  <text class="detail" x="90" y="437">RPC + Ed25519 signer + transaction builder</text>
+  <text class="detail" x="90" y="465">HTLC program + PDA/state verifier</text>
+  <text class="detail" x="90" y="493">Native currency and chain finality policy</text>
+
+  <rect x="536" y="340" width="368" height="176" rx="18" fill="#123c4b" stroke="#3fc6d7" stroke-width="2"/>
+  <text class="tag" x="562" y="373">DEDICATED ADAPTER</text>
+  <text class="label" x="562" y="406">TON / TVM</text>
+  <text class="detail" x="562" y="437">Wallet seqno + signed value-bearing BOC</text>
+  <text class="detail" x="562" y="465">HTLC contract and shard finality</text>
+  <text class="detail" x="562" y="493">Claim discovery and unilateral refund</text>
+
+  <rect x="1008" y="340" width="368" height="176" rx="18" fill="#123c4b" stroke="#3fc6d7" stroke-width="2"/>
+  <text class="tag" x="1034" y="373">DEDICATED ADAPTER</text>
+  <text class="label" x="1034" y="406">ZANO / privacy chain</text>
+  <text class="detail" x="1034" y="437">Shared keys + watch-only scanning</text>
+  <text class="detail" x="1034" y="465">Adaptor and reserve proofs</text>
+  <text class="detail" x="1034" y="493">Proven independent timeout recovery</text>
+
+  <path class="linePlain" d="M 248 516 V 545 H 720"/>
+  <path class="linePlain" d="M 720 516 V 545"/>
+  <path class="linePlain" d="M 1192 516 V 545 H 720"/>
+  <path class="line" d="M 720 545 V 568"/>
+
+  <text class="tag" x="72" y="595">SHARED ONBOARDING CONTRACT</text>
+  <rect x="68" y="614" width="248" height="110" rx="14" fill="#253455" stroke="#829ce8" stroke-width="2"/>
+  <text class="step" x="88" y="647">1  Network identity</text>
+  <text class="small" x="88" y="678">Genesis / global ID, signer,</text>
+  <text class="small" x="88" y="701">deployed code, fees, finality</text>
+  <path class="line" d="M 316 669 H 340"/>
+
+  <rect x="342" y="614" width="248" height="110" rx="14" fill="#253455" stroke="#829ce8" stroke-width="2"/>
+  <text class="step" x="362" y="647">2  Pair catalog</text>
+  <text class="small" x="362" y="678">Append-only ID, native asset,</text>
+  <text class="small" x="362" y="701">decimals, timeouts, STAGED</text>
+  <path class="line" d="M 590 669 H 614"/>
+
+  <rect x="616" y="614" width="248" height="110" rx="14" fill="#253455" stroke="#829ce8" stroke-width="2"/>
+  <text class="step" x="636" y="647">3  Swap protocol</text>
+  <text class="small" x="636" y="678">Lock, verify, claim, refund,</text>
+  <text class="small" x="636" y="701">secret proof and recovery</text>
+  <path class="line" d="M 864 669 H 888"/>
+
+  <rect x="890" y="614" width="248" height="110" rx="14" fill="#253455" stroke="#829ce8" stroke-width="2"/>
+  <text class="step" x="910" y="647">4  Admission + pricing</text>
+  <text class="small" x="910" y="678">Readiness, reserve proof,</text>
+  <text class="small" x="910" y="701">oracle and amount limits</text>
+  <path class="line" d="M 1138 669 H 1162"/>
+
+  <rect x="1164" y="614" width="208" height="110" rx="14" fill="#253455" stroke="#829ce8" stroke-width="2"/>
+  <text class="step" x="1184" y="647">5  Product surfaces</text>
+  <text class="small" x="1184" y="678">Wallet, Rust SDK, Go,</text>
+  <text class="small" x="1184" y="701">dashboard and settings</text>
+
+  <path class="line" d="M 1268 724 V 765 H 980 V 789"/>
+  <rect x="726" y="790" width="508" height="84" rx="17" fill="#523728" stroke="#f3ad61" stroke-width="2"/>
+  <text class="label" x="980" y="825" text-anchor="middle">Funded two-daemon E2E + security review</text>
+  <text class="detail" x="980" y="853" text-anchor="middle">Both roles · claim · refund · restart · outage · wrong network</text>
+  <path class="line" d="M 726 832 H 682"/>
+  <rect x="480" y="793" width="200" height="78" rx="17" fill="#513826" stroke="#efb568" stroke-width="2"/>
+  <text class="label" x="580" y="826" text-anchor="middle">Release gate</text>
+  <text class="small" x="580" y="852" text-anchor="middle">Evidence reviewed?</text>
+  <path class="line" d="M 480 819 H 423"/>
+  <rect x="69" y="784" width="352" height="72" rx="17" fill="#194b3b" stroke="#64d99c" stroke-width="2"/>
+  <text class="label" x="245" y="826" text-anchor="middle">Pass: enable new swaps</text>
+  <path class="dashed" d="M 580 871 V 924 H 1170 V 874"/>
+  <text class="small" x="896" y="911" text-anchor="middle">Fail: remain STAGED, repair, rerun evidence</text>
+
+  <text class="subtitle" x="69" y="924">Readiness pauses new offers; existing swaps retain claim and refund access.</text>
+</svg>

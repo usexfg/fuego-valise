@@ -1,9 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../bloc/hearth/hearth_cubit.dart';
-import '../../../models/candlestick.dart';
 import '../../../models/heat_amm.dart';
-import '../../../services/price_history_service.dart';
 import '../../../utils/hearth_theme.dart';
 import '../../../widgets/fuego_chart.dart';
 import 'liquidity_dialogs.dart';
@@ -22,12 +22,10 @@ class _HearthScreenState extends State<HearthScreen>
   final _amountController = TextEditingController();
   final _priceController = TextEditingController();
   bool _sellXfg = true;
-  List<Candlestick>? _candles;
+  Timer? _poolRefreshTimer;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnim;
-  bool _priceUp = true;
-  double _lastXfgUsd = 0;
 
   @override
   void initState() {
@@ -41,13 +39,10 @@ class _HearthScreenState extends State<HearthScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     context.read<HearthCubit>().loadPool();
+    _poolRefreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (mounted) unawaited(context.read<HearthCubit>().loadPool());
+    });
     _amountController.addListener(_updateUsd);
-    _loadPriceData();
-  }
-
-  Future<void> _loadPriceData() async {
-    final candles = await PriceHistoryService().loadAll();
-    if (mounted) setState(() => _candles = candles);
   }
 
   String _amountUsd = '';
@@ -58,7 +53,6 @@ class _HearthScreenState extends State<HearthScreen>
       if (_amountUsd.isNotEmpty) setState(() => _amountUsd = '');
       return;
     }
-    const heatPegUsd = 1.58;
     if (_sellXfg) {
       final spot =
           double.tryParse(
@@ -75,6 +69,7 @@ class _HearthScreenState extends State<HearthScreen>
 
   @override
   void dispose() {
+    _poolRefreshTimer?.cancel();
     _tabController.dispose();
     _pulseController.dispose();
     _amountController.removeListener(_updateUsd);
@@ -90,74 +85,59 @@ class _HearthScreenState extends State<HearthScreen>
       builder: (context, state) {
         return Scaffold(
           backgroundColor: HearthTheme.bgPure,
-          body: state.isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(
-                    color: HearthTheme.askPrimary,
-                  ),
-                )
-              : Column(
-                  children: [
-                    _buildHeader(state),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-children: [
-                    if (_candles != null && _candles!.isNotEmpty)
+          body: Column(
+            children: [
+              if (state.pool != null && state.pool!.heatPerXfg > 0)
+                _buildHeader(state),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
                       SizedBox(
                         height: screenH * 0.30,
-                        child: FuegoChart(
-                          candles: _candles!,
-                          pair: 'XFG/ΗΞΔŦ',
+                        child: XfgHistoryPanel(
+                          contextNote: 'Pool spots sampled only while Hearth is open',
                           lineColor: HearthTheme.chartLine,
                           bgColor: HearthTheme.bgPure,
+                          quote: XfgHistoryQuote.heat,
+                          observedSpots: state.spotObservations,
                         ),
                       ),
-                    if (_candles == null || _candles!.isEmpty)
-                      Container(
-                        height: screenH * 0.30,
-                        color: HearthTheme.bgPure,
-                        child: const Center(
-                          child: Text(
-                            'No chart data',
-                            style: TextStyle(
-                              color: HearthTheme.textMuted,
-                            ),
+                      if (state.isLoading)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(
+                            color: HearthTheme.askPrimary,
                           ),
                         ),
-                      ),
-                    if (state.pool != null)
-                      _buildPoolStats(state.pool!),
-                            if (state.pool != null) _buildHeatPriceBar(state),
-                            const SizedBox(height: 16),
-                            _buildTabSection(state),
-                          ],
+                      if (state.error != null)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            state.error!,
+                            style: const TextStyle(color: HearthTheme.textMuted),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                      if (state.pool != null) _buildPoolStats(state.pool!),
+                      if (state.pool != null && state.pool!.heatPerXfg > 0)
+                        _buildHeatPriceBar(state),
+                      const SizedBox(height: 16),
+                      _buildTabSection(state),
+                    ],
+                  ),
                 ),
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
   Widget _buildHeader(HearthState state) {
-    const heatPegUsd = 1.58;
-    const xfgHeatRatio = 0.1;
-    final heatUsd = heatPegUsd;
-    final spot = state.pool?.price;
-    final spotNum =
-        (spot != null &&
-            double.tryParse(spot) != null &&
-            double.parse(spot) > 0)
-        ? double.parse(spot)
-        : xfgHeatRatio;
+    const heatUsd = heatPegUsd;
+    final spotNum = state.pool!.heatPerXfg;
     final xfgUsd = spotNum * heatUsd;
-
-    if (xfgUsd > _lastXfgUsd && _lastXfgUsd > 0) _priceUp = true;
-    if (xfgUsd < _lastXfgUsd && _lastXfgUsd > 0) _priceUp = false;
-    _lastXfgUsd = xfgUsd;
 
     // Candle law: rising = Champagne Gold, falling = Midnight Blue.
     return Container(
@@ -181,7 +161,7 @@ children: [
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'XFG = \$${xfgUsd.toStringAsFixed(2)}',
+                    'XFG ≈ \$${xfgUsd.toStringAsFixed(4)}',
                     style: HearthTheme.mono(
                       size: 13,
                       weight: FontWeight.w700,
@@ -194,7 +174,9 @@ children: [
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(child: _metricChip('24h ${_priceUp ? '+' : ''}0.00%', _priceUp ? HearthTheme.askPrimary : HearthTheme.bidPrimary)),
+          Flexible(
+            child: _metricChip('24h n/a', HearthTheme.textSecondary),
+          ),
           const SizedBox(width: 6),
           // Center: XFG priced in ΗΞΔŦ — expanded but ellipsized
           Expanded(
@@ -202,7 +184,7 @@ children: [
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
-                '1 XFG ≈ ${spotNum.toStringAsFixed(1)} HΞ∆T',
+                '1 XFG ≈ ${spotNum.toStringAsFixed(6)} HΞ∆T',
                 style: HearthTheme.mono(
                   size: 13,
                   weight: FontWeight.w700,
@@ -294,25 +276,8 @@ children: [
   }
 
   Widget _buildHeatPriceBar(HearthState state) {
-    const xfgHeatRatio = 0.1;
-    final spot = state.pool?.price;
-    final spotNum =
-        (spot != null &&
-            double.tryParse(spot) != null &&
-            double.parse(spot) > 0)
-        ? double.parse(spot)
-        : xfgHeatRatio;
-
-    const heatPegUsd = 1.58;
-
-    final mintRate = (spotNum > 0) ? 1 / spotNum : 10.0;
-    final leftLabel = mintRate >= 1
-        ? '␉${mintRate.toStringAsFixed(2)}'
-        : '${mintRate.toStringAsFixed(2)}𐅪';
+    final spotNum = state.pool!.heatPerXfg;
     final xfgUsd = spotNum * heatPegUsd;
-    final rightLabel = xfgUsd >= 1
-        ? '␉${xfgUsd.toStringAsFixed(2)}'
-        : '${xfgUsd.toStringAsFixed(2)}𐅪';
 
     return Container(
       color: HearthTheme.bgDeep,
@@ -324,7 +289,7 @@ children: [
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Current Mint Rate',
+                  'Hearth Pool Rate',
                   style: HearthTheme.label(
                     size: 10,
                     color: HearthTheme.textMuted,
@@ -332,7 +297,7 @@ children: [
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$leftLabel HΞ∆T / 1 XFG',
+                  '${spotNum.toStringAsFixed(6)} HΞ∆T / 1 XFG',
                   style: HearthTheme.mono(
                     size: 15,
                     weight: FontWeight.w700,
@@ -361,7 +326,7 @@ children: [
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$rightLabel ≋',
+                  '\$${xfgUsd.toStringAsFixed(4)} ≋',
                   style: HearthTheme.mono(
                     size: 15,
                     weight: FontWeight.w700,
@@ -924,7 +889,6 @@ children: [
   Widget _quoteDisplay(AmmQuote quote, HearthState state) {
     final heatAmount = _sellXfg ? quote.outputAmount : _amountController.text.trim();
     final heatVal = double.tryParse(heatAmount) ?? 0;
-    const heatPegUsd = 1.58;
     final usd = heatVal * heatPegUsd;
     return Container(
       padding: const EdgeInsets.all(10),

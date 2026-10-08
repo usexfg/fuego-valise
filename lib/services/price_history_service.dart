@@ -11,38 +11,40 @@ class PriceHistoryService {
 
   Future<List<Candlestick>> loadAll() async {
     if (_allCandles != null) return _allCandles!;
-    final jsonStr = await rootBundle.loadString('assets/data/xfg_historical_prices.json');
-    final List<dynamic> raw = jsonDecode(jsonStr) as List<dynamic>;
-    _allCandles = raw.map((e) => Candlestick.fromJson(e as Map<String, dynamic>)).toList();
-
-    // Append final launch-price candle: XFG=$0.15
-    if (_allCandles!.isNotEmpty) {
-      final last = _allCandles!.last;
-      final now = DateTime.now();
-      final launchTs = DateTime(now.year, now.month, now.day)
-              .millisecondsSinceEpoch ~/
-          1000;
-      if (last.time < launchTs) {
-        _allCandles!.add(Candlestick(
-          time: launchTs,
-          open: last.close,
-          high: 0.155,
-          low: 0.145,
-          close: 0.15,
-          volume: 0,
-        ));
-      }
+    final jsonStr = await rootBundle.loadString(
+      'assets/data/xfg_historical_prices.json',
+    );
+    final decoded = jsonDecode(jsonStr);
+    if (decoded is! List) {
+      throw const FormatException('XFG history must be an array');
     }
+
+    final candles = <Candlestick>[];
+    for (final (index, row) in decoded.indexed) {
+      if (row is! Map<String, dynamic>) {
+        throw FormatException('Invalid XFG history row $index');
+      }
+      final candle = Candlestick.fromJson(row);
+      if (candle.time <= 0 ||
+          (candles.isNotEmpty && candle.time <= candles.last.time) ||
+          !candle.open.isFinite ||
+          !candle.high.isFinite ||
+          !candle.low.isFinite ||
+          !candle.close.isFinite ||
+          !candle.volume.isFinite ||
+          candle.low <= 0 ||
+          candle.low > candle.open ||
+          candle.low > candle.close ||
+          candle.high < candle.open ||
+          candle.high < candle.close ||
+          candle.volume < 0) {
+        throw FormatException('Invalid XFG history candle $index');
+      }
+      candles.add(candle);
+    }
+
+    _allCandles = List.unmodifiable(candles);
     return _allCandles!;
-  }
-
-  List<Candlestick> aggregateDaily(List<Candlestick> daily) {
-    return daily;
-  }
-
-  double get currentPrice {
-    if (_allCandles == null || _allCandles!.isEmpty) return 0;
-    return _allCandles!.last.close;
   }
 
   double? priceAt(int timestamp) {

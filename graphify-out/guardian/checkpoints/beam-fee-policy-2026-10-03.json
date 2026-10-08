@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-03",
+  "updated": "2026-10-04",
+  "status": "COMPLETE_LOCAL_FEE_COMPATIBILITY",
+  "scope": "Beam native EVM fee compatibility only",
+  "native_root": "/Users/aejt/DEXFG/fuego-flutter-wallet/fuego-suite",
+  "base_commit": "a36eccb5b246e2a9dbdcc9285ae35ac6a4012b98",
+  "graph_available": false,
+  "navigation": "direct source tracing; graph report absent; AST refresh fails in hyppo/Numba cache locator",
+  "policy": {
+    "default_max_fee_per_gas_wei": "500000000000",
+    "beam_max_fee_per_gas_wei": "5000000000000",
+    "maximum_configured_fee_per_gas_wei": "10000000000000",
+    "configuration": "canonical decimal strings; immutable per RPC client"
+  },
+  "recovery": {
+    "clear": "definitely unsent result, no possible claim secret disclosure, exact record CAS only",
+    "retain": "ambiguous broadcast, claim calldata sent to RPC gas estimation, stale record or failed save",
+    "crash": "intent persisted before safe clear remains conservative and requires reconciliation"
+  },
+  "tests": {
+    "assertions_enabled": true,
+    "build": "PASS: xfg-swapd and six focused targets",
+    "eth_protocol": "88 passed",
+    "evm_fee_rpc_recovery": "290 passed; loopback transport and restart/CAS, not funded execution",
+    "config_wiring": "12 passed",
+    "catalog": "PASS",
+    "production_gates": "19 passed",
+    "state_machine_spv": "16 passed",
+    "beam_mainnet_read_only": "90 passed including offline protocol; chain 4337, priority/max fee 1/2001 gwei"
+  },
+  "review": "PASS: beam_final_guardian independent final source review found no introduced blocker; two initial recovery findings fixed and tested; source review does not establish funded activation",
+  "separate_existing_findings": ["claimPoint calldata interior 0x prefixes", "no live chain-id recheck on every recovery call", "common JSON parser overwrites duplicate keys"],
+  "unrelated_work": "preserve wallet dirty paths and xfgo/keyderiv; no unrelated fixes",
+  "unrun_release_gates": ["funded Beam lock/claim/refund", "both-leg swaps", "funded restart/reorg", "oracle/wallet readiness"],
+  "delivery": "no commit, push, deletion, deployment or funded broadcast authorized"
+}

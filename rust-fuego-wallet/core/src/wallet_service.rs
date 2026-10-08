@@ -1,10 +1,14 @@
 use crate::daemon::DaemonClient;
 
 use fuego_sdk::*;
-use fuego_sdk::serialization::{add_treasury_fund_extra, HEAT_TERM};
+use fuego_sdk::amm;
+use fuego_sdk::scanner::{CommitmentEntry, UtxoEntry};
+use fuego_sdk::serialization::{is_marker_term, DEPOSIT_TERM_LP, HEAT_TERM};
 use fuego_sdk::transaction_builder::{
-    build_commitment_spend_transaction, decompose_change, BuildCommitmentDestination,
-    BuildDestination, CommitmentDeposit, DecoyEntry, DEFAULT_DUST_THRESHOLD, MINIMUM_FEE,
+    address_hash, build_v11_transaction, layout_cancel_order, layout_cd_create,
+    layout_cd_rollover, layout_cd_withdraw, layout_heat_send, layout_lp_add, layout_lp_remove,
+    layout_mint, layout_place_order, layout_swap, AddressKeys, CommitmentDeposit, DecoyEntry,
+    V11Output, V11Spend, V11Tag, MINIMUM_FEE,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,24 +26,39 @@ const SWAP_FEE_RATE_BPS: u64 = 100;
 const SWAP_FEE_RATE_DIVISOR: u64 = 10000;
 /// Atomic units per coin (CryptoNoteConfig.h COIN).
 const COIN: u64 = 10_000_000;
-/// CryptoNoteConfig.h DEPOSIT_MIN_TERM / DEPOSIT_MAX_TERM (blocks).
+/// CryptoNoteConfig.h DEPOSIT_MIN_TERM / DEPOSIT_MAX_TERM and their testnet
+/// counterparts: the CD terms (blocks) consensus admits.
 const DEPOSIT_MIN_TERM: u32 = 5400;
 const DEPOSIT_MAX_TERM: u32 = 64800;
-/// CryptoNoteConfig.h HEAT_MINT_MIN_HEAT (0.1 HEAT).
-const HEAT_MINT_MIN_HEAT: u64 = 1_000_000;
+const TESTNET_DEPOSIT_MIN_TERM: u32 = 10;
+const TESTNET_DEPOSIT_MAX_TERM: u32 = 720;
+/// CryptoNoteConfig.h ORDERBOOK_MAX_ENDURANCE: the longest a limit order lives.
+const ORDERBOOK_MAX_ENDURANCE: u32 = 20160;
 
-/// Integer square root (AmmPool.cpp isqrt128).
-fn isqrt128(n: u128) -> u64 {
-    if n <= 1 {
-        return n as u64;
+/// Scale claims down pro rata when `available` cannot back them all
+/// (makeWithdrawDepositRequest's scale).
+fn scale_claims(claims: &mut [u64], available: u64) {
+    let total: u128 = claims.iter().map(|c| *c as u128).sum();
+    if total == 0 || available as u128 >= total {
+        return;
     }
-    let mut x: u128 = n;
-    let mut y: u128 = (x + 1) >> 1;
-    while y < x {
-        x = y;
-        y = (x + n / x) >> 1;
+    for c in claims.iter_mut() {
+        *c = (*c as u128 * available as u128 / total) as u64;
     }
-    x as u64
+}
+
+/// CdBonusClaim entries (input index, bonus) for the CD inputs that follow
+/// `key_inputs` key inputs on the wire.
+fn bonus_claims_for(key_inputs: usize, bonus: &[u64]) -> std::result::Result<Vec<(u8, u64)>, String> {
+    let mut out = Vec::new();
+    for (i, b) in bonus.iter().enumerate() {
+        if *b == 0 {
+            continue;
+        }
+        let index = u8::try_from(key_inputs + i).map_err(|_| "too many inputs for a bonus claim".to_string())?;
+        out.push((index, *b));
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -809,32 +828,150 @@ impl WalletService {
         Ok(tx_hash_hex)
     }
 
-    /// Fetch decoy commitment outputs for one deposit.
+    /// Decoys for one commitment output: its amount, its asset (the node
+    /// filters by term) and never the output itself. A thin pool rings what
+    /// there is; consensus sets no floor for commitment rings
+    /// (WalletTransactionSender::addAndSignInputs).
     async fn commitment_decoys(
         &self,
-        deposit: &fuego_sdk::scanner::CommitmentEntry,
+        deposit: &CommitmentEntry,
         mixin: usize,
     ) -> std::result::Result<Vec<(u32, [u8; 32])>, String> {
         let entries = self
             .daemon
-            .get_random_commitment_outs(deposit.amount, (mixin + 1) as u64, 0)
+            .get_random_commitment_outs(deposit.amount, (mixin + 1) as u64, 0, deposit.term)
             .await?;
+        let mut seen = std::collections::BTreeSet::new();
+        seen.insert(deposit.global_index);
         let mut decoys: Vec<(u32, [u8; 32])> = entries
             .into_iter()
-            .filter(|e| e.global_amount_index != deposit.global_index)
+            .filter(|e| seen.insert(e.global_amount_index))
             .map(|e| (e.global_amount_index, e.commit_key))
             .collect();
         decoys.sort_by_key(|(idx, _)| *idx);
         decoys.truncate(mixin);
-        if decoys.len() < mixin {
-            return Err(format!(
-                "MIXIN_COUNT_TOO_BIG: only {} commitment decoys available for amount {} (requested {})",
-                decoys.len(),
-                deposit.amount,
-                mixin
-            ));
-        }
         Ok(decoys)
+    }
+
+    /// XFG key outputs covering `amount`: (selection, total).
+    fn select_xfg(&self, amount: u64) -> std::result::Result<(Vec<UtxoEntry>, u64), String> {
+        let selected = self
+            .wallet
+            .lock()
+            .unwrap()
+            .select_for_send(amount, &mut rand::thread_rng())
+            .map_err(|e| format!("coin selection: {e}"))?;
+        let found = selected.iter().map(|u| u.amount).sum();
+        Ok((selected, found))
+    }
+
+    /// Unspent commitment outputs of one asset covering `amount`: HEAT
+    /// (HEAT_TERM) or LP shares (DEPOSIT_TERM_LP).
+    fn select_commitments(
+        &self,
+        term: u32,
+        amount: u64,
+    ) -> std::result::Result<(Vec<CommitmentEntry>, u64), String> {
+        let candidates = {
+            let wallet = self.wallet.lock().unwrap();
+            if term == HEAT_TERM {
+                wallet.heat_outputs()
+            } else {
+                wallet.deposits()
+            }
+        };
+        let mut selected = Vec::new();
+        let mut found = 0u64;
+        for c in candidates.into_iter().filter(|c| c.term == term && c.global_index != 0) {
+            if found >= amount {
+                break;
+            }
+            found += c.amount;
+            selected.push(c);
+        }
+        if found < amount {
+            let asset = if term == HEAT_TERM { "HEAT" } else { "LP shares" };
+            return Err(format!("insufficient {asset}: need {amount}, have {found}"));
+        }
+        Ok((selected, found))
+    }
+
+    /// What a v11 transaction spends, with decoys: XFG key inputs (sorted by
+    /// amount, as the plain send path does), then commitment inputs with the
+    /// interest each claims.
+    async fn v11_spend(
+        &self,
+        mut xfg: Vec<UtxoEntry>,
+        commitments: Vec<(CommitmentEntry, u64)>,
+    ) -> std::result::Result<V11Spend, String> {
+        xfg.sort_by_key(|u| u.amount);
+        let key_decoys = if xfg.is_empty() {
+            Vec::new()
+        } else {
+            self.fetch_decoys(&xfg, DEFAULT_MIXIN).await?
+        };
+        let mut commitment_decoys = Vec::with_capacity(commitments.len());
+        for (c, _) in &commitments {
+            commitment_decoys.push(self.commitment_decoys(c, DEFAULT_MIXIN).await?);
+        }
+        Ok(V11Spend {
+            key_inputs: xfg.iter().map(|u| u.into()).collect(),
+            key_decoys,
+            commitment_inputs: commitments
+                .iter()
+                .map(|(c, interest)| CommitmentDeposit {
+                    amount: c.amount,
+                    commit_key: c.commit_key,
+                    key_scalar: c.key_scalar,
+                    key_image: c.key_image,
+                    global_index: c.global_index,
+                    claimed_interest: *interest,
+                })
+                .collect(),
+            commitment_decoys,
+        })
+    }
+
+    /// Build, sign and broadcast a v11 transaction. Every spent key image
+    /// stays reserved until the transaction confirms.
+    async fn send_v11(
+        &self,
+        spend: V11Spend,
+        outputs: Vec<V11Output>,
+        tag: V11Tag,
+        bonus_claims: &[(u8, u64)],
+    ) -> std::result::Result<String, String> {
+        let keys = self.wallet.lock().unwrap().wallet_keys();
+        let built = build_v11_transaction(
+            &spend,
+            &outputs,
+            &tag,
+            bonus_claims,
+            &keys.view_secret,
+            &mut rand::thread_rng(),
+        )
+        .map_err(|e| format!("build: {e}"))?;
+        let mut key_images: Vec<[u8; 32]> = spend.key_inputs.iter().map(|u| u.key_image).collect();
+        key_images.extend(spend.commitment_inputs.iter().map(|c| c.key_image));
+        self.broadcast_built(built, key_images).await
+    }
+
+    /// This wallet's primary address keys.
+    fn own_address(&self) -> AddressKeys {
+        let keys = self.wallet.lock().unwrap().wallet_keys();
+        AddressKeys {
+            spend_public: keys.spend_public,
+            view_public: keys.view_public,
+        }
+    }
+
+    /// The CD term range consensus admits (Currency::depositMinTerm/MaxTerm).
+    fn deposit_term_range(&self) -> (u32, u32) {
+        if self.testnet {
+            (TESTNET_DEPOSIT_MIN_TERM, TESTNET_DEPOSIT_MAX_TERM)
+        } else {
+            (DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM)
+        }
     }
 
     /// create_afk_lock (WalletLegacy.cpp:2016): a self-transfer locked by
@@ -935,87 +1072,38 @@ impl WalletService {
         ))
     }
 
-    /// mint_heat: burn XFG, mint HEAT at the Hearth pool spot price.
+    /// mint_heat: burn XFG for HEAT (makeHeatMintV10Request). Consensus prices
+    /// a mint at the 8-block TWAP; it is built WALLET_MINT_TWAP_MARGIN_BPS
+    /// under it so a TWAP that moves before inclusion does not invalidate it.
     pub async fn mint_heat(&self, xfg_burned: u64) -> std::result::Result<String, String> {
         if xfg_burned == 0 {
             return Err("xfg_burned must be > 0".into());
         }
-        let (_rx, _rh, spot_price) = self.daemon.amm_pool_info().await?;
-        if spot_price == 0 {
-            return Err("no pool price available".into());
+        let pool = self.daemon.amm_pool().await?;
+        if pool.hearth_twap == 0 {
+            return Err("no Hearth TWAP yet — HEAT mints open two blocks into v11".into());
         }
-        let heat_minted = (xfg_burned as u128 * spot_price as u128 / COIN as u128) as u64;
-        if heat_minted < HEAT_MINT_MIN_HEAT {
-            return Err(format!(
-                "minted HEAT {} below minimum {}",
-                heat_minted, HEAT_MINT_MIN_HEAT
-            ));
-        }
-
-        let fee = MINIMUM_FEE;
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-        let selected = {
-            let wallet = self.wallet.lock().unwrap();
-            wallet
-                .select_for_send(xfg_burned + fee, &mut rand::thread_rng())
-                .map_err(|e| format!("coin selection: {e}"))?
+        let heat_minted = amm::quote_mint(xfg_burned, pool.hearth_twap);
+        let min_heat = if self.testnet {
+            amm::TESTNET_HEAT_MINT_MIN_HEAT
+        } else {
+            amm::HEAT_MINT_MIN_HEAT
         };
-        let found: u64 = selected.iter().map(|u| u.amount).sum();
-        let change = found - xfg_burned - fee;
-
-        let mixin = DEFAULT_MIXIN;
-        let amounts: Vec<u64> = selected.iter().map(|u| u.amount).collect();
-        let groups = self.daemon.get_random_outs(&amounts, (mixin + 1) as u64).await?;
-        let mut decoys: Vec<Vec<DecoyEntry>> = Vec::with_capacity(selected.len());
-        for utxo in selected.iter() {
-            let group = groups
-                .iter()
-                .find(|g| g.amount == utxo.amount)
-                .ok_or_else(|| format!("daemon returned no decoys for amount {}", utxo.amount))?;
-            let mut entries: Vec<DecoyEntry> = group
-                .outs
-                .iter()
-                .filter(|o| o.global_amount_index != utxo.global_index as u64)
-                .map(|o| DecoyEntry {
-                    global_index: o.global_amount_index as u32,
-                    out_key: o.out_key,
-                })
-                .collect();
-            entries.sort_by_key(|e| e.global_index);
-            entries.truncate(mixin);
-            if entries.len() < mixin {
-                return Err(format!(
-                    "MIXIN_COUNT_TOO_BIG: only {} decoys available for amount {}",
-                    entries.len(),
-                    utxo.amount
-                ));
-            }
-            decoys.push(entries);
+        if heat_minted < min_heat {
+            return Err(format!("minted HEAT {heat_minted} below minimum {min_heat}"));
         }
-
-        let inputs: Vec<fuego_sdk::transaction_builder::SpendableOutput> =
-            selected.iter().map(|u| u.into()).collect();
-        let built = fuego_sdk::transaction_builder::build_mint_transaction(
-            &inputs,
-            &decoys,
-            mixin,
-            xfg_burned,
-            heat_minted,
-            change,
-            &keys.view_public,
-            (&keys.spend_public, &keys.view_public),
-            fee,
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images = selected.iter().map(|u| u.key_image).collect();
-        self.broadcast_built(built, key_images).await
+        let fee = MINIMUM_FEE;
+        let needed = xfg_burned.checked_add(fee).ok_or("amount overflow")?;
+        let (xfg, found) = self.select_xfg(needed)?;
+        let (outputs, tag) = layout_mint(self.own_address(), xfg_burned, heat_minted, found - needed);
+        let spend = self.v11_spend(xfg, Vec::new()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
     }
 
-    /// Hearth AMM swap (XFG↔HEAT) against the pool at spot rate, 1% fee.
-    /// direction: 0 = XFG→HEAT, 1 = HEAT→XFG. Validation/settlement follow
-    /// the v11 delta model (Blockchain.cpp TX_EXTRA_AMM_SWAP_AUTH).
+    /// Hearth AMM swap on the constant-product curve (makeAmmSwapV10Request).
+    /// direction 0 sells XFG for HEAT, 1 sells HEAT for XFG. The output is
+    /// declared WALLET_SWAP_SLIPPAGE_BPS under the curve's net output;
+    /// consensus refuses more than the curve allows or less than `min_output`.
     pub async fn amm_swap(
         &self,
         direction: u8,
@@ -1028,161 +1116,45 @@ impl WalletService {
         if direction > 1 {
             return Err("direction must be 0 (XFG->HEAT) or 1 (HEAT->XFG)".into());
         }
-        let (_rx, _rh, spot_price) = self.daemon.amm_pool_info().await?;
-        if spot_price == 0 {
-            return Err("no pool price available".into());
+        let pool = self.daemon.amm_pool().await?;
+        if pool.reserve_xfg == 0 || pool.reserve_heat == 0 {
+            return Err("the Hearth pool has no reserves".into());
         }
-
+        let output = amm::quote_swap(direction, input_amount, pool.reserve_xfg, pool.reserve_heat);
+        if output == 0 {
+            return Err("swap too small for the pool to price".into());
+        }
+        if output < min_output {
+            return Err(format!("expected output {output} is below min_output {min_output}"));
+        }
         let fee = MINIMUM_FEE;
-        let mixin = DEFAULT_MIXIN;
+        let own = self.own_address();
 
         if direction == 0 {
-            // XFG→HEAT: expected = gross * (1 - 1%) where
-            // gross = input * spot / COIN.
-            let gross = (input_amount as u128 * spot_price as u128 / COIN as u128) as u64;
-            let expected_heat = (gross as u128 * 9900 / 10000) as u64;
-            if expected_heat == 0 {
-                return Err("swap output below 1 HEAT atomic".into());
-            }
-            if min_output > expected_heat {
-                return Err(format!(
-                    "min_output {} exceeds expected output {}",
-                    min_output, expected_heat
-                ));
-            }
-
-            let keys = self.wallet.lock().unwrap().wallet_keys();
-            let selected = {
-                let wallet = self.wallet.lock().unwrap();
-                wallet
-                    .select_for_send(input_amount + fee, &mut rand::thread_rng())
-                    .map_err(|e| format!("coin selection: {e}"))?
-            };
-
-            let amounts: Vec<u64> = selected.iter().map(|u| u.amount).collect();
-            let groups = self.daemon.get_random_outs(&amounts, (mixin + 1) as u64).await?;
-            let mut decoys: Vec<Vec<DecoyEntry>> = Vec::with_capacity(selected.len());
-            for utxo in selected.iter() {
-                let group = groups
-                    .iter()
-                    .find(|g| g.amount == utxo.amount)
-                    .ok_or_else(|| format!("daemon returned no decoys for amount {}", utxo.amount))?;
-                let mut entries: Vec<DecoyEntry> = group
-                    .outs
-                    .iter()
-                    .filter(|o| o.global_amount_index != utxo.global_index as u64)
-                    .map(|o| DecoyEntry {
-                        global_index: o.global_amount_index as u32,
-                        out_key: o.out_key,
-                    })
-                    .collect();
-                entries.sort_by_key(|e| e.global_index);
-                entries.truncate(mixin);
-                if entries.len() < mixin {
-                    return Err(format!(
-                        "MIXIN_COUNT_TOO_BIG: only {} decoys available for amount {}",
-                        entries.len(),
-                        utxo.amount
-                    ));
-                }
-                decoys.push(entries);
-            }
-
-            let inputs: Vec<fuego_sdk::transaction_builder::SpendableOutput> =
-                selected.iter().map(|u| u.into()).collect();
-            let built = fuego_sdk::transaction_builder::build_swap_xfg_to_heat_transaction(
-                &inputs,
-                &decoys,
-                mixin,
-                input_amount,
-                expected_heat,
-                min_output,
-                (&keys.spend_public, &keys.view_public),
-                &keys.view_public,
-                fee,
-                &mut rand::thread_rng(),
-            )
-            .map_err(|e| format!("build: {e}"))?;
-
-            let key_images = selected.iter().map(|u| u.key_image).collect();
-            return self.broadcast_built(built, key_images).await;
+            let needed = input_amount.checked_add(fee).ok_or("amount overflow")?;
+            let (xfg, found) = self.select_xfg(needed)?;
+            let (outputs, tag) =
+                layout_swap(own, 0, input_amount, output, min_output, fee, found - needed)
+                    .map_err(|e| e.to_string())?;
+            let spend = self.v11_spend(xfg, Vec::new()).await?;
+            return self.send_v11(spend, outputs, tag, &[]).await;
         }
 
-        // HEAT→XFG: expected = gross * 99% where gross = input * COIN / spot.
-        let gross = (input_amount as u128 * COIN as u128 / spot_price as u128) as u64;
-        let expected_xfg = (gross as u128 * 9900 / 10000) as u64;
-        if expected_xfg == 0 {
-            return Err("swap output below 1 XFG atomic".into());
+        // HEAT in, XFG out: the fee comes out of the XFG received.
+        if output <= fee {
+            return Err(format!("swap output {output} does not cover the fee {fee}"));
         }
-        if min_output > expected_xfg {
-            return Err(format!(
-                "min_output {} exceeds expected output {}",
-                min_output, expected_xfg
-            ));
-        }
-
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-        let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
-            .wallet
-            .lock()
-            .unwrap()
-            .heat_outputs()
-            .into_iter()
-            .filter(|d| d.global_index != 0)
-            .collect();
-        let needed = input_amount + MINIMUM_FEE;
-        let mut selected = Vec::new();
-        let mut found = 0u64;
-        for entry in heat {
-            found += entry.amount;
-            selected.push(entry);
-            if found >= needed {
-                break;
-            }
-        }
-        if found < needed {
-            return Err(format!("insufficient HEAT: need {}, have {}", needed, found));
-        }
-
-        let heat_change = found - input_amount;
-        let mut decoys = Vec::with_capacity(selected.len());
-        for deposit in &selected {
-            decoys.push(self.commitment_decoys(deposit, mixin).await?);
-        }
-        let spends: Vec<CommitmentDeposit> = selected
-            .iter()
-            .map(|d| CommitmentDeposit {
-                amount: d.amount,
-                commit_key: d.commit_key,
-                key_scalar: d.key_scalar,
-                key_image: d.key_image,
-                global_index: d.global_index,
-                claimed_interest: 0,
-            })
-            .collect();
-
-        let built = fuego_sdk::transaction_builder::build_swap_heat_to_xfg_transaction(
-            &spends,
-            &decoys,
-            mixin,
-            input_amount,
-            expected_xfg,
-            min_output,
-            (&keys.spend_public, &keys.view_public),
-            heat_change,
-            &keys.view_public,
-            fee,
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images: Vec<[u8; 32]> = selected.iter().map(|d| d.key_image).collect();
-        self.broadcast_built(built, key_images).await
+        let (heat, found) = self.select_commitments(HEAT_TERM, input_amount)?;
+        let (outputs, tag) =
+            layout_swap(own, 1, input_amount, output, min_output, fee, found - input_amount)
+                .map_err(|e| e.to_string())?;
+        let spend = self.v11_spend(Vec::new(), heat.into_iter().map(|c| (c, 0)).collect()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
     }
 
-    /// Hearth LP add: deposit XFG + HEAT at the pool ratio, mint LP shares
-    /// (ammMintLpShares, AmmPool.cpp). Requires BOTH assets (no single-sided
-    /// mints).
+    /// Hearth LP add (makeLpAddV10Request): a balanced deposit within 1% of
+    /// the pool ratio. The shares are declared WALLET_SWAP_SLIPPAGE_BPS under
+    /// what the deposit earns; consensus mints exactly what is declared.
     pub async fn lp_add(
         &self,
         amount_xfg: u64,
@@ -1191,136 +1163,52 @@ impl WalletService {
         if amount_xfg == 0 || amount_heat == 0 {
             return Err("both xfg_amount and heat_amount must be > 0".into());
         }
-        let (reserve_xfg, reserve_heat, total_lp_shares, _spot) =
-            self.daemon.amm_pool_full().await?;
-        if total_lp_shares > 0 && (reserve_xfg == 0 || reserve_heat == 0) {
-            return Err("pool has shares but empty reserves — invalid state".into());
+        let pool = self.daemon.amm_pool().await?;
+        if pool.reserve_xfg == 0 || pool.reserve_heat == 0 {
+            return Err("the Hearth pool has no reserves".into());
         }
-
-        let shares = if total_lp_shares == 0 {
-            // First deposit: isqrt(amountXfg * amountHeat) - MIN_LIQUIDITY.
-            let product = amount_xfg as u128 * amount_heat as u128;
-            let root = isqrt128(product);
-            root.saturating_sub(1000)
-        } else {
-            let sa = (amount_xfg as u128 * total_lp_shares as u128 / reserve_xfg as u128) as u64;
-            let sb = (amount_heat as u128 * total_lp_shares as u128 / reserve_heat as u128) as u64;
-            sa.min(sb)
-        };
+        if !amm::deposit_ratio_ok(
+            amount_xfg,
+            amount_heat,
+            pool.reserve_xfg,
+            pool.reserve_heat,
+            amm::LP_DEPOSIT_RATIO_TOLERANCE_BPS,
+        ) {
+            return Err(format!(
+                "deposit must be within 1% of the pool ratio ({} XFG : {} HEAT atomic)",
+                pool.reserve_xfg, pool.reserve_heat
+            ));
+        }
+        let shares = amm::quote_lp_add(
+            amount_xfg,
+            amount_heat,
+            pool.total_lp_shares,
+            pool.reserve_xfg,
+            pool.reserve_heat,
+        );
         if shares == 0 {
-            return Err("computed LP shares are zero — amounts below pool ratio tick".into());
+            return Err("the deposit earns no LP shares".into());
         }
-
         let fee = MINIMUM_FEE;
-        let mixin = DEFAULT_MIXIN;
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-
-        // XFG side: select key inputs for amount_xfg + fee.
-        let selected_xfg = {
-            let wallet = self.wallet.lock().unwrap();
-            wallet
-                .select_for_send(amount_xfg + fee, &mut rand::thread_rng())
-                .map_err(|e| format!("coin selection: {e}"))?
-        };
-        let found_xfg: u64 = selected_xfg.iter().map(|u| u.amount).sum();
-        let xfg_change = found_xfg - amount_xfg - fee;
-
-        // HEAT side: select HEAT commitments for amount_heat.
-        let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
-            .wallet
-            .lock()
-            .unwrap()
-            .heat_outputs()
-            .into_iter()
-            .filter(|d| d.global_index != 0)
-            .collect();
-        let mut selected_heat = Vec::new();
-        let mut found_heat = 0u64;
-        for entry in heat {
-            found_heat += entry.amount;
-            selected_heat.push(entry);
-            if found_heat >= amount_heat {
-                break;
-            }
-        }
-        if found_heat < amount_heat {
-            return Err(format!("insufficient HEAT: need {}, have {}", amount_heat, found_heat));
-        }
-        let heat_change = found_heat - amount_heat;
-
-        // Decoys for both input classes.
-        let mut xfg_decoys: Vec<Vec<DecoyEntry>> = Vec::with_capacity(selected_xfg.len());
-        let amounts: Vec<u64> = selected_xfg.iter().map(|u| u.amount).collect();
-        let groups = self.daemon.get_random_outs(&amounts, (mixin + 1) as u64).await?;
-        for utxo in selected_xfg.iter() {
-            let group = groups
-                .iter()
-                .find(|g| g.amount == utxo.amount)
-                .ok_or_else(|| format!("daemon returned no decoys for amount {}", utxo.amount))?;
-            let mut entries: Vec<DecoyEntry> = group
-                .outs
-                .iter()
-                .filter(|o| o.global_amount_index != utxo.global_index as u64)
-                .map(|o| DecoyEntry {
-                    global_index: o.global_amount_index as u32,
-                    out_key: o.out_key,
-                })
-                .collect();
-            entries.sort_by_key(|e| e.global_index);
-            entries.truncate(mixin);
-            if entries.len() < mixin {
-                return Err(format!(
-                    "MIXIN_COUNT_TOO_BIG: only {} decoys available for amount {}",
-                    entries.len(),
-                    utxo.amount
-                ));
-            }
-            xfg_decoys.push(entries);
-        }
-        let mut heat_decoys = Vec::with_capacity(selected_heat.len());
-        for deposit in &selected_heat {
-            heat_decoys.push(self.commitment_decoys(deposit, mixin).await?);
-        }
-
-        let xfg_inputs: Vec<fuego_sdk::transaction_builder::SpendableOutput> =
-            selected_xfg.iter().map(|u| u.into()).collect();
-        let heat_deposits: Vec<CommitmentDeposit> = selected_heat
-            .iter()
-            .map(|d| CommitmentDeposit {
-                amount: d.amount,
-                commit_key: d.commit_key,
-                key_scalar: d.key_scalar,
-                key_image: d.key_image,
-                global_index: d.global_index,
-                claimed_interest: 0,
-            })
-            .collect();
-
-        let built = fuego_sdk::transaction_builder::build_lp_add_transaction(
-            &xfg_inputs,
-            &xfg_decoys,
-            &heat_deposits,
-            &heat_decoys,
-            mixin,
+        let needed_xfg = amount_xfg.checked_add(fee).ok_or("amount overflow")?;
+        let (xfg, found_xfg) = self.select_xfg(needed_xfg)?;
+        let (heat, found_heat) = self.select_commitments(HEAT_TERM, amount_heat)?;
+        let (outputs, tag) = layout_lp_add(
+            self.own_address(),
             amount_xfg,
             amount_heat,
             shares,
-            xfg_change,
-            heat_change,
-            &keys.view_public,
-            (&keys.spend_public, &keys.view_public),
-            fee,
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let mut key_images: Vec<[u8; 32]> = selected_xfg.iter().map(|u| u.key_image).collect();
-        key_images.extend(selected_heat.iter().map(|d| d.key_image));
-        self.broadcast_built(built, key_images).await
+            found_heat - amount_heat,
+            found_xfg - needed_xfg,
+        );
+        let spend = self.v11_spend(xfg, heat.into_iter().map(|c| (c, 0)).collect()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
     }
 
-    /// Hearth LP remove: burn LP shares, withdraw proportional reserves
-    /// (ammGetWithdrawalAmounts, AmmPool.cpp).
+    /// Hearth LP removal (makeLpRemoveV10Request). The pool pays exactly what
+    /// the transaction declares: the shares' pro-rata claim,
+    /// WALLET_SWAP_SLIPPAGE_BPS under it. The XFG payout carries the fee;
+    /// shares selected beyond those burned come back as a smaller position.
     pub async fn lp_remove(
         &self,
         lp_shares: u64,
@@ -1330,198 +1218,139 @@ impl WalletService {
         if lp_shares == 0 {
             return Err("shares must be > 0".into());
         }
-        let (reserve_xfg, reserve_heat, total_lp_shares, _spot) =
-            self.daemon.amm_pool_full().await?;
-        if total_lp_shares == 0 {
-            return Err("pool has no LP shares".into());
-        }
-        let amount_xfg = (lp_shares as u128 * reserve_xfg as u128 / total_lp_shares as u128) as u64;
-        let amount_heat = (lp_shares as u128 * reserve_heat as u128 / total_lp_shares as u128) as u64;
-        if amount_xfg < min_xfg || amount_heat < min_heat {
+        let pool = self.daemon.amm_pool().await?;
+        if pool.total_lp_shares < lp_shares {
             return Err(format!(
-                "withdrawal below minimum: {} XFG / {} HEAT",
-                amount_xfg, amount_heat
+                "the pool has {} LP shares in all, fewer than {lp_shares}",
+                pool.total_lp_shares
             ));
         }
-
-        let fee = MINIMUM_FEE;
-        let mixin = DEFAULT_MIXIN;
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-
-        let lp: Vec<fuego_sdk::scanner::CommitmentEntry> = self
-            .wallet
-            .lock()
-            .unwrap()
-            .deposits()
-            .into_iter()
-            .filter(|d| {
-                d.term == fuego_sdk::serialization::DEPOSIT_TERM_LP && d.global_index != 0
-            })
-            .collect();
-        let mut selected = Vec::new();
-        let mut found = 0u64;
-        for entry in lp {
-            found += entry.amount;
-            selected.push(entry);
-            if found >= lp_shares {
-                break;
-            }
-        }
-        if found < lp_shares {
-            return Err(format!("insufficient LP shares: need {}, have {}", lp_shares, found));
-        }
-        // Burn the exact share count: withdraw (lp_shares) of the selected
-        // deposits; the remainder of the last deposit is returned as change
-        // below via heat/xfg outputs only when it is a whole commitment —
-        // LP change is not representable, so require exact coverage.
-        let selected_total: u64 = selected.iter().map(|d| d.amount).sum();
-        if selected_total != lp_shares {
-            return Err(format!(
-                "LP deposit selection {} does not exactly match shares {} (LP change unsupported)",
-                selected_total, lp_shares
-            ));
-        }
-
-        let mut decoys = Vec::with_capacity(selected.len());
-        for deposit in &selected {
-            decoys.push(self.commitment_decoys(deposit, mixin).await?);
-        }
-        let spends: Vec<CommitmentDeposit> = selected
-            .iter()
-            .map(|d| CommitmentDeposit {
-                amount: d.amount,
-                commit_key: d.commit_key,
-                key_scalar: d.key_scalar,
-                key_image: d.key_image,
-                global_index: d.global_index,
-                claimed_interest: 0,
-            })
-            .collect();
-
-        let built = fuego_sdk::transaction_builder::build_lp_remove_transaction(
-            &spends,
-            &decoys,
-            mixin,
+        let (pay_xfg, pay_heat) = amm::quote_lp_remove(
             lp_shares,
-            min_xfg,
-            min_heat,
-            amount_xfg,
-            amount_heat,
-            &keys.view_public,
-            (&keys.spend_public, &keys.view_public),
-            fee,
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images: Vec<[u8; 32]> = selected.iter().map(|d| d.key_image).collect();
-        self.broadcast_built(built, key_images).await
+            pool.total_lp_shares,
+            pool.reserve_xfg,
+            pool.reserve_heat,
+        );
+        let fee = MINIMUM_FEE;
+        if pay_xfg <= fee {
+            return Err(format!("the XFG payout {pay_xfg} does not cover the fee {fee}"));
+        }
+        if pay_xfg < min_xfg || pay_heat < min_heat {
+            return Err(format!(
+                "payout {pay_xfg} XFG / {pay_heat} HEAT is below the minimum {min_xfg} / {min_heat}"
+            ));
+        }
+        let (lp, found) = self.select_commitments(DEPOSIT_TERM_LP, lp_shares)?;
+        let (outputs, tag) =
+            layout_lp_remove(self.own_address(), lp_shares, pay_xfg, pay_heat, fee, found - lp_shares)
+                .map_err(|e| e.to_string())?;
+        let spend = self.v11_spend(Vec::new(), lp.into_iter().map(|c| (c, 0)).collect()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
     }
 
-    /// Hearth limit order (place_order): deposit XFG (SELL) or HEAT (BUY)
-    /// into the pool commit key with a 0xFB limit-deposit extra.
+    /// Hearth limit order (makePlaceOrderV13Request). Side 1 sells XFG and
+    /// escrows XFG; side 0 buys XFG and escrows HEAT; XFG pays the fee. The
+    /// order lives `ttl_blocks` blocks — consensus reads the expiration as an
+    /// absolute height. Returns (tx hash, order id); the id withdraws it.
     pub async fn place_limit_order(
         &self,
         side: u8,
         amount: u64,
         target_price: u64,
-        expiration: u32,
-    ) -> std::result::Result<String, String> {
+        ttl_blocks: u32,
+    ) -> std::result::Result<(String, String), String> {
         if amount == 0 {
             return Err("amount must be > 0".into());
-        }
-        if target_price == 0 {
-            return Err("target_price must be > 0".into());
         }
         if side > 1 {
             return Err("side must be 0 (BUY) or 1 (SELL)".into());
         }
+        if target_price == 0 || target_price % amm::ORDER_PRICE_TICK != 0 {
+            return Err(format!(
+                "price must be a positive multiple of the price tick ({} atomic)",
+                amm::ORDER_PRICE_TICK
+            ));
+        }
+        if ttl_blocks == 0 || ttl_blocks > ORDERBOOK_MAX_ENDURANCE {
+            return Err(format!("an order lives 1..={ORDERBOOK_MAX_ENDURANCE} blocks"));
+        }
+        let height = self.daemon.get_height().await?;
+        let expiration = u32::try_from(height + ttl_blocks as u64)
+            .map_err(|_| "expiration height out of range".to_string())?;
 
         let fee = MINIMUM_FEE;
-        let mixin = DEFAULT_MIXIN;
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-
-        let selected = {
-            let wallet = self.wallet.lock().unwrap();
-            wallet
-                .select_for_send(amount + fee, &mut rand::thread_rng())
-                .map_err(|e| format!("coin selection: {e}"))?
+        let (heat, heat_change) = if side == 0 {
+            let (heat, found) = self.select_commitments(HEAT_TERM, amount)?;
+            (heat, found - amount)
+        } else {
+            (Vec::new(), 0)
         };
-        let found: u64 = selected.iter().map(|u| u.amount).sum();
-        if found < amount + fee {
-            return Err(format!("insufficient balance: need {}, have {}", amount + fee, found));
-        }
+        let xfg_needed = if side == 1 {
+            amount.checked_add(fee).ok_or("amount overflow")?
+        } else {
+            fee
+        };
+        let (xfg, found) = self.select_xfg(xfg_needed)?;
 
         let mut order_id = [0u8; 32];
         rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut order_id);
-
-        let mut key_data = [0u8; 64];
-        key_data[..32].copy_from_slice(&keys.spend_public);
-        key_data[32..].copy_from_slice(&keys.view_public);
-        let address_hash = fuego_crypto::ring::cn_fast_hash(&key_data);
-
-        let pool_seed = fuego_crypto::ring::cn_fast_hash(b"fuego.hearth.pool.commit.key.v1");
-        let pool_scalar = fuego_crypto::ring::hash_to_scalar(&pool_seed);
-        let pool_key = fuego_crypto::ring::secret_key_to_public_key(&pool_scalar);
-
-        let amounts: Vec<u64> = selected.iter().map(|u| u.amount).collect();
-        let groups = self.daemon.get_random_outs(&amounts, (mixin + 1) as u64).await?;
-        let mut decoys: Vec<Vec<DecoyEntry>> = Vec::with_capacity(selected.len());
-        for utxo in selected.iter() {
-            let group = groups
-                .iter()
-                .find(|g| g.amount == utxo.amount)
-                .ok_or_else(|| format!("daemon returned no decoys for amount {}", utxo.amount))?;
-            let mut entries: Vec<DecoyEntry> = group
-                .outs
-                .iter()
-                .filter(|o| o.global_amount_index != utxo.global_index as u64)
-                .map(|o| DecoyEntry {
-                    global_index: o.global_amount_index as u32,
-                    out_key: o.out_key,
-                })
-                .collect();
-            entries.sort_by_key(|e| e.global_index);
-            entries.truncate(mixin);
-            if entries.len() < mixin {
-                return Err(format!(
-                    "MIXIN_COUNT_TOO_BIG: only {} decoys available for amount {}",
-                    entries.len(),
-                    utxo.amount
-                ));
-            }
-            decoys.push(entries);
-        }
-
-        let inputs: Vec<fuego_sdk::transaction_builder::SpendableOutput> =
-            selected.iter().map(|u| u.into()).collect();
-        let built = fuego_sdk::transaction_builder::build_place_order_transaction(
-            &inputs,
-            &decoys,
-            mixin,
+        let (outputs, tag) = layout_place_order(
+            self.own_address(),
             side,
             amount,
             target_price,
             expiration,
-            &order_id,
-            &address_hash,
-            &pool_key,
-            (&keys.spend_public, &keys.view_public),
-            &keys.view_public,
-            fee,
-            &mut rand::thread_rng(),
+            order_id,
+            heat_change,
+            found - xfg_needed,
         )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images = selected.iter().map(|u| u.key_image).collect();
-        self.broadcast_built(built, key_images).await
+        .map_err(|e| e.to_string())?;
+        let spend = self.v11_spend(xfg, heat.into_iter().map(|c| (c, 0)).collect()).await?;
+        let tx = self.send_v11(spend, outputs, tag, &[]).await?;
+        Ok((tx, hex::encode(order_id)))
     }
 
-    /// create_cd / heat_cd: lock HEAT into a finite-term CD. The only CD
-    /// type on the chain is HEAT-denominated (DEPOSIT_ARCHITECTURE.md: the
-    /// legacy COLD/XFG system was removed); spending HEAT deposits builds a
-    /// CD commitment output with a finite block term plus a banking fee
-    /// burned to the treasury via the 0xFF extra.
+    /// Withdraw a limit order (makeCancelOrderV13Request): its remaining
+    /// escrow and every fill's proceeds leave together, proven by this
+    /// wallet's spend key over the outputs. An expired order is withdrawn the
+    /// same way.
+    pub async fn cancel_limit_order(&self, order_id_hex: &str) -> std::result::Result<String, String> {
+        let order_id: [u8; 32] = hex::decode(order_id_hex)
+            .map_err(|_| "invalid order_id".to_string())?
+            .try_into()
+            .map_err(|_| "invalid order_id length".to_string())?;
+        let orders = self.daemon.limit_orders().await?;
+        let order = orders
+            .iter()
+            .find(|o| o.order_id.eq_ignore_ascii_case(order_id_hex))
+            .ok_or("limit order does not exist")?;
+        if order.withdrawn {
+            return Err("limit order already withdrawn".into());
+        }
+        let own = self.own_address();
+        if !order.address_hash.eq_ignore_ascii_case(&hex::encode(address_hash(&own))) {
+            return Err("limit order belongs to another wallet".into());
+        }
+        let (pay_xfg, pay_heat) = if order.side == 1 {
+            (order.amount, order.proceeds_heat)
+        } else {
+            (order.proceeds_xfg, order.amount)
+        };
+        if pay_xfg == 0 && pay_heat == 0 {
+            return Err("limit order holds nothing to withdraw".into());
+        }
+        let fee = MINIMUM_FEE;
+        let (xfg, found) = self.select_xfg(fee)?;
+        let spend_secret = self.wallet.lock().unwrap().wallet_keys().spend_secret;
+        let (outputs, tag) =
+            layout_cancel_order(own, spend_secret, order_id, pay_xfg, pay_heat, found - fee);
+        let spend = self.v11_spend(xfg, Vec::new()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
+    }
+
+    /// A HEAT CD (makeHeatDepositV10Request): HEAT funds the CD and its 0.1%
+    /// banking fee, burned to the Treasury LP Manager (TreasuryFund, asset 1);
+    /// XFG pays the network fee.
     async fn heat_cd_core(
         &self,
         amount: u64,
@@ -1531,126 +1360,42 @@ impl WalletService {
         if amount == 0 {
             return Err("amount must be > 0".into());
         }
-        if term_blocks == 0 {
-            return Err("term must be > 0 blocks".into());
+        let (min_term, max_term) = self.deposit_term_range();
+        if term_blocks < min_term || term_blocks > max_term {
+            return Err(format!("term must be in {min_term}..={max_term} blocks"));
         }
         let banking_fee = if banking_fee == 0 {
             (amount / 1000).max(1)
         } else {
             banking_fee
         };
-
-        let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
-            .wallet
-            .lock()
-            .unwrap()
-            .heat_outputs()
-            .into_iter()
-            .filter(|d| d.global_index != 0)
-            .collect();
-        // The fee is the difference between inputs and outputs, so the
-        // selection must cover amount + banking_fee + fee.
-        let needed = amount + banking_fee + MINIMUM_FEE;
-        let mut selected = Vec::new();
-        let mut found = 0u64;
-        for entry in heat {
-            found += entry.amount;
-            selected.push(entry);
-            if found >= needed {
-                break;
-            }
-        }
-        if found < needed {
-            return Err(format!(
-                "insufficient HEAT: need {}, have {}",
-                needed, found
-            ));
-        }
-
+        let needed_heat = amount.checked_add(banking_fee).ok_or("amount overflow")?;
         let fee = MINIMUM_FEE;
-        let mixin = DEFAULT_MIXIN;
-        let mut decoys = Vec::with_capacity(selected.len());
-        for deposit in &selected {
-            decoys.push(self.commitment_decoys(deposit, mixin).await?);
-        }
-
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-        let heat_change = found - amount - banking_fee - fee;
-
-        let mut commitment_dests = vec![BuildCommitmentDestination {
+        let (heat, found_heat) = self.select_commitments(HEAT_TERM, needed_heat)?;
+        let (xfg, found_xfg) = self.select_xfg(fee)?;
+        let (outputs, tag) = layout_cd_create(
+            self.own_address(),
             amount,
-            term: term_blocks,
-            view_pub: None,
-            spend_pub: keys.spend_public,
-        }];
-        if heat_change > 0 {
-            commitment_dests.push(BuildCommitmentDestination {
-                amount: heat_change,
-                term: HEAT_TERM,
-                view_pub: None,
-                spend_pub: keys.spend_public,
-            });
-        }
-
-        let mut extra_extra = Vec::new();
-        add_treasury_fund_extra(&mut extra_extra, 1 /* HEAT */, banking_fee);
-
-        let spends: Vec<CommitmentDeposit> = selected
-            .iter()
-            .map(|d| CommitmentDeposit {
-                amount: d.amount,
-                commit_key: d.commit_key,
-                key_scalar: d.key_scalar,
-                key_image: d.key_image,
-                global_index: d.global_index,
-                claimed_interest: 0,
-            })
-            .collect();
-        let built = build_commitment_spend_transaction(
-            &spends,
-            &decoys,
-            mixin,
-            &[],
-            &commitment_dests,
-            &keys.view_public,
-            fee,
-            &extra_extra,
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images: Vec<[u8; 32]> = selected.iter().map(|d| d.key_image).collect();
-        self.broadcast_built(built, key_images).await
+            term_blocks,
+            banking_fee,
+            found_heat - needed_heat,
+            found_xfg - fee,
+        );
+        let spend = self.v11_spend(xfg, heat.into_iter().map(|c| (c, 0)).collect()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
     }
 
-    /// create_cd: HEAT CD with an explicit block term (the GUI passes
-    /// duration_blocks directly). The 8 HEAT tier (80,000,000 atomic) is
-    /// epoch-to-epoch only: a single 1-epoch (EPOCH_DURATION_BLOCKS) term
-    /// that auto-rolls at each epoch boundary until the user withdraws.
+    /// create_cd: a HEAT CD with its term in blocks (the GUI passes
+    /// duration_blocks), within the network's CD term range.
     pub async fn create_cd(
         &self,
         amount: u64,
         term_blocks: u32,
     ) -> std::result::Result<String, String> {
-        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
-        // 8 HEAT tier: epoch-to-epoch auto-rollover CD (1 epoch term).
-        if amount == 8 * COIN {
-            if term_blocks != epoch_blocks as u32 {
-                return Err(format!(
-                    "8 HEAT CDs are epoch-to-epoch only (term must be {} blocks)",
-                    epoch_blocks
-                ));
-            }
-        } else if term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM {
-            return Err(format!(
-                "term must be in {}..={} blocks",
-                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
-            ));
-        }
         self.heat_cd_core(amount, term_blocks, 0).await
     }
 
-    /// heat_cd: HEAT CD with the term expressed in epochs (CLI-style).
+    /// heat_cd: a HEAT CD with its term in epochs (CLI-style).
     pub async fn heat_cd(
         &self,
         amount: u64,
@@ -1661,206 +1406,134 @@ impl WalletService {
             return Err("epochs must be > 0".into());
         }
         let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
-        let term_blocks = (epochs as u64 * epoch_blocks) as u32;
-        if term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM {
-            return Err(format!(
-                "term must be in {}..={} blocks",
-                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
-            ));
-        }
+        let term_blocks = u32::try_from(epochs as u64 * epoch_blocks)
+            .map_err(|_| "term out of range".to_string())?;
         self.heat_cd_core(amount, term_blocks, banking_fee).await
     }
 
-    /// claim_cd: spend all mature finite-term deposits back to ourselves.
-    pub async fn claim_cd(&self) -> std::result::Result<String, String> {
-        let height = self.wallet.lock().unwrap().height();
-        let deposits: Vec<fuego_sdk::scanner::CommitmentEntry> = self
+    /// Per CD: (claimed interest = base + bonus, bonus), as
+    /// makeWithdrawDepositRequest computes them — what the node says has
+    /// accrued, scaled down when the CD yield pool or the Bonus Vault cannot
+    /// back it all. A node that cannot say stops the withdrawal: interest left
+    /// off is lost with the key image.
+    async fn cd_claims(
+        &self,
+        deposits: &[CommitmentEntry],
+        current_height: u32,
+    ) -> std::result::Result<(Vec<u64>, Vec<u64>), String> {
+        let mut base = vec![0u64; deposits.len()];
+        let mut bonus = vec![0u64; deposits.len()];
+        let (mut pool_available, mut bonus_available) = (u64::MAX, u64::MAX);
+        for (i, d) in deposits.iter().enumerate() {
+            let info = self
+                .daemon
+                .cd_claim_info(d.amount, d.block_height as u32, current_height, d.term)
+                .await
+                .map_err(|e| {
+                    format!(
+                        "cannot read a CD's accrued interest from the node ({e}); withdrawal \
+                         aborted so the interest is not forfeited"
+                    )
+                })?;
+            if info.formula_interest == 0 {
+                continue;
+            }
+            if info.pool_info_present {
+                pool_available = pool_available.min(info.fee_pool_balance.min(info.vault_balance));
+                bonus_available = bonus_available.min(info.bonus_vault_balance);
+            }
+            if info.base_interest > 0 || info.bonus_interest > 0 {
+                base[i] = info.base_interest;
+                bonus[i] = info.claimable_bonus;
+            } else {
+                base[i] = info.formula_interest;
+            }
+        }
+        scale_claims(&mut base, pool_available);
+        scale_claims(&mut bonus, bonus_available);
+        let claims = base.iter().zip(&bonus).map(|(b, x)| b + x).collect();
+        Ok((claims, bonus))
+    }
+
+    /// Matured CDs (not markers), by the chain tip.
+    async fn matured_cds(&self) -> std::result::Result<(Vec<CommitmentEntry>, u64), String> {
+        let tip = self.daemon.get_height().await?.saturating_sub(1);
+        let cds = self
             .wallet
             .lock()
             .unwrap()
             .deposits()
             .into_iter()
-            .filter(|d| d.block_height + d.term as u64 <= height && d.global_index != 0)
-            .collect();
-        if deposits.is_empty() {
-            return Err("no mature deposits to claim".into());
-        }
-
-        let fee = MINIMUM_FEE;
-
-        // Interest per deposit via /estimate_cd_yield (the daemon's
-        // calculateCdInterest). Fall back to 0 if the endpoint is
-        // unavailable; the daemon caps per-tx claims against the fee pool.
-        let mut interests = Vec::with_capacity(deposits.len());
-        for deposit in &deposits {
-            let interest = self
-                .daemon
-                .estimate_cd_yield(deposit.amount, deposit.block_height as u32)
-                .await
-                .unwrap_or(0);
-            interests.push(interest);
-        }
-
-        let total: u64 = deposits
-            .iter()
-            .zip(interests.iter())
-            .map(|(d, i)| d.amount + i)
-            .sum();
-        if total <= fee {
-            return Err("deposit total below fee".into());
-        }
-        let payout = total - fee;
-
-        let mixin = DEFAULT_MIXIN;
-        let mut decoys = Vec::with_capacity(deposits.len());
-        for deposit in &deposits {
-            decoys.push(self.commitment_decoys(deposit, mixin).await?);
-        }
-
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-        let (chunks, dust) = decompose_change(payout, DEFAULT_DUST_THRESHOLD);
-        let mut key_dests: Vec<BuildDestination> = Vec::with_capacity(chunks.len() + 1);
-        for chunk in chunks {
-            key_dests.push(BuildDestination {
-                amount: chunk,
-                spend_pub: keys.spend_public,
-                view_pub: keys.view_public,
-            });
-        }
-        if dust > 0 {
-            key_dests.push(BuildDestination {
-                amount: dust,
-                spend_pub: keys.spend_public,
-                view_pub: keys.view_public,
-            });
-        }
-
-        let spends: Vec<CommitmentDeposit> = deposits
-            .iter()
-            .zip(interests.iter())
-            .map(|(d, interest)| CommitmentDeposit {
-                amount: d.amount,
-                commit_key: d.commit_key,
-                key_scalar: d.key_scalar,
-                key_image: d.key_image,
-                global_index: d.global_index,
-                claimed_interest: *interest,
+            .filter(|d| {
+                !is_marker_term(d.term) && d.global_index != 0 && d.block_height + d.term as u64 <= tip
             })
             .collect();
-        let built = build_commitment_spend_transaction(
-            &spends,
-            &decoys,
-            mixin,
-            &key_dests,
-            &[],
-            &keys.view_public,
-            fee,
-            &[],
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images: Vec<[u8; 32]> = deposits.iter().map(|d| d.key_image).collect();
-        self.broadcast_built(built, key_images).await
+        Ok((cds, tip))
     }
 
-    /// rollover_cd: reinvest a single matured CD (principal + accrued
-    /// interest) into a new finite-term commitment. `new_term` is in blocks;
-    /// when 0 the original term is kept. For the 8 HEAT tier the term is
-    /// always one epoch (epoch-to-epoch auto-rollover).
+    /// claim_cd: withdraw every matured CD (makeWithdrawDepositRequest).
+    /// Principal and interest come back as HEAT; XFG pays the fee; each CD's
+    /// Bonus-Vault share is declared per input.
+    pub async fn claim_cd(&self) -> std::result::Result<String, String> {
+        let (deposits, tip) = self.matured_cds().await?;
+        if deposits.is_empty() {
+            return Err("no mature CDs to claim".into());
+        }
+        if deposits.len() > 200 {
+            return Err("too many CDs for one withdrawal; claim them in batches".into());
+        }
+        let (claims, bonus) = self.cd_claims(&deposits, tip as u32).await?;
+        let mut payout = 0u64;
+        for (d, claim) in deposits.iter().zip(&claims) {
+            payout = payout
+                .checked_add(d.amount)
+                .and_then(|p| p.checked_add(*claim))
+                .ok_or("payout overflow")?;
+        }
+        let fee = MINIMUM_FEE;
+        let (xfg, found) = self.select_xfg(fee)?;
+        let key_inputs = xfg.len();
+        let bonus_claims = bonus_claims_for(key_inputs, &bonus)?;
+        let (outputs, tag) = layout_cd_withdraw(self.own_address(), payout, found - fee);
+        let spend = self.v11_spend(xfg, deposits.into_iter().zip(claims).collect()).await?;
+        self.send_v11(spend, outputs, tag, &bonus_claims).await
+    }
+
+    /// rollover_cd: a matured CD, principal and interest, into a new CD.
+    /// `new_term` is in blocks; 0 keeps the original term. HEAT in (principal
+    /// plus claimed interest) equals HEAT out; XFG pays the fee.
     pub async fn rollover_cd(
         &self,
         cd_id: &str,
         new_term: u32,
     ) -> std::result::Result<String, String> {
-        let id_bytes = hex::decode(cd_id).map_err(|_| "invalid cd_id".to_string())?;
-        if id_bytes.len() != 32 {
-            return Err("invalid cd_id length".into());
-        }
-        let mut want = [0u8; 32];
-        want.copy_from_slice(&id_bytes);
-
-        let height = self.wallet.lock().unwrap().height();
-        let deposits: Vec<fuego_sdk::scanner::CommitmentEntry> = self
-            .wallet
-            .lock()
-            .unwrap()
-            .deposits()
+        let want: [u8; 32] = hex::decode(cd_id)
+            .map_err(|_| "invalid cd_id".to_string())?
+            .try_into()
+            .map_err(|_| "invalid cd_id length".to_string())?;
+        let (matured, tip) = self.matured_cds().await?;
+        let deposit = matured
             .into_iter()
-            .filter(|d| d.tx_hash == want && d.global_index != 0)
-            .collect();
-        let deposit = deposits
-            .first()
-            .ok_or("deposit not found or already spent")?;
-        if deposit.block_height + deposit.term as u64 > height {
-            return Err("deposit is not yet mature".into());
+            .find(|d| d.tx_hash == want)
+            .ok_or("CD not found, not yet mature, or already spent")?;
+        let term = if new_term == 0 { deposit.term } else { new_term };
+        let (min_term, max_term) = self.deposit_term_range();
+        if term < min_term || term > max_term {
+            return Err(format!("new term must be in {min_term}..={max_term} blocks"));
         }
-
-        let interest = self
-            .daemon
-            .estimate_cd_yield(deposit.amount, deposit.block_height as u32)
-            .await
-            .unwrap_or(0);
-        let rolled_amount = deposit.amount.saturating_add(interest);
-
-        let epoch_blocks: u64 = if self.testnet { 10 } else { 900 };
-        // 8 HEAT tier is epoch-to-epoch only; keep one epoch on rollover.
-        let term_blocks: u32 = if deposit.amount == 8 * COIN {
-            epoch_blocks as u32
-        } else if new_term == 0 {
-            deposit.term
-        } else {
-            new_term
-        };
-        if deposit.amount != 8 * COIN
-            && (term_blocks < DEPOSIT_MIN_TERM || term_blocks > DEPOSIT_MAX_TERM)
-        {
-            return Err(format!(
-                "new term must be in {}..={} blocks",
-                DEPOSIT_MIN_TERM, DEPOSIT_MAX_TERM
-            ));
-        }
-
+        let (claims, bonus) = self.cd_claims(std::slice::from_ref(&deposit), tip as u32).await?;
+        let rolled = deposit.amount.checked_add(claims[0]).ok_or("amount overflow")?;
         let fee = MINIMUM_FEE;
-        let mixin = DEFAULT_MIXIN;
-        let decoys = self.commitment_decoys(deposit, mixin).await?;
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-
-        let commitment_dests = vec![BuildCommitmentDestination {
-            amount: rolled_amount,
-            term: term_blocks,
-            view_pub: None,
-            spend_pub: keys.spend_public,
-        }];
-
-        let spends = vec![CommitmentDeposit {
-            amount: deposit.amount,
-            commit_key: deposit.commit_key,
-            key_scalar: deposit.key_scalar,
-            key_image: deposit.key_image,
-            global_index: deposit.global_index,
-            claimed_interest: interest,
-        }];
-        let built = build_commitment_spend_transaction(
-            &spends,
-            std::slice::from_ref(&decoys),
-            mixin,
-            &[],
-            &commitment_dests,
-            &keys.view_public,
-            fee,
-            &[],
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let key_images: Vec<[u8; 32]> = vec![deposit.key_image];
-        self.broadcast_built(built, key_images).await
+        let (xfg, found) = self.select_xfg(fee)?;
+        let bonus_claims = bonus_claims_for(xfg.len(), &bonus)?;
+        let (outputs, tag) = layout_cd_rollover(self.own_address(), rolled, term, found - fee);
+        let spend = self.v11_spend(xfg, vec![(deposit, claims[0])]).await?;
+        self.send_v11(spend, outputs, tag, &bonus_claims).await
     }
 
-    /// send_heat: transfer HEAT to another address. The recipient's
-    /// commitment output derives with THEIR view key; our HEAT change with
-    /// ours. Carries the 0xF9 heat-send auth extra.
+    /// send_heat (makeHeatTransferV10Request): HEAT owner-bound to the
+    /// recipient's spend key — only it can spend the output. HEAT balances
+    /// exactly; XFG pays the fee.
     pub async fn send_heat(
         &self,
         address: &str,
@@ -1871,86 +1544,22 @@ impl WalletService {
         }
         let (recv_spend, recv_view) = fuego_crypto::parse_address(address)
             .ok_or_else(|| format!("invalid destination address: {}", address))?;
-
-        let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
-            .wallet
-            .lock()
-            .unwrap()
-            .heat_outputs()
-            .into_iter()
-            .filter(|d| d.global_index != 0)
-            .collect();
-        let needed = amount + MINIMUM_FEE;
-        let mut selected = Vec::new();
-        let mut found = 0u64;
-        for entry in heat {
-            found += entry.amount;
-            selected.push(entry);
-            if found >= needed {
-                break;
-            }
-        }
-        if found < needed {
-            return Err(format!(
-                "insufficient HEAT: need {}, have {}",
-                needed, found
-            ));
-        }
-        let change = found - amount - MINIMUM_FEE;
-
-        let mixin = DEFAULT_MIXIN;
-        let mut decoys = Vec::with_capacity(selected.len());
-        for deposit in &selected {
-            decoys.push(self.commitment_decoys(deposit, mixin).await?);
-        }
-
-        let keys = self.wallet.lock().unwrap().wallet_keys();
-        let mut commitment_dests = vec![BuildCommitmentDestination {
+        let recipient = AddressKeys {
+            spend_public: recv_spend,
+            view_public: recv_view,
+        };
+        let fee = MINIMUM_FEE;
+        let (heat, found_heat) = self.select_commitments(HEAT_TERM, amount)?;
+        let (xfg, found_xfg) = self.select_xfg(fee)?;
+        let (outputs, tag) = layout_heat_send(
+            self.own_address(),
+            recipient,
             amount,
-            term: HEAT_TERM,
-            view_pub: Some(recv_view),
-            // Owner-bound: only the recipient's spend key can authorize this.
-            spend_pub: recv_spend,
-        }];
-        if change > 0 {
-            commitment_dests.push(BuildCommitmentDestination {
-                amount: change,
-                term: HEAT_TERM,
-                view_pub: None,
-                spend_pub: keys.spend_public,
-            });
-        }
-
-        let mut extra = Vec::new();
-        fuego_sdk::serialization::add_heat_send_auth_extra(&mut extra, amount);
-
-        let spends: Vec<CommitmentDeposit> = selected
-            .iter()
-            .map(|d| CommitmentDeposit {
-                amount: d.amount,
-                commit_key: d.commit_key,
-                key_scalar: d.key_scalar,
-                key_image: d.key_image,
-                global_index: d.global_index,
-                claimed_interest: 0,
-            })
-            .collect();
-        let built = build_commitment_spend_transaction(
-            &spends,
-            &decoys,
-            mixin,
-            &[],
-            &commitment_dests,
-            &keys.view_public,
-            MINIMUM_FEE,
-            &extra,
-            &mut rand::thread_rng(),
-        )
-        .map_err(|e| format!("build: {e}"))?;
-
-        let _ = &recv_spend;
-        let key_images: Vec<[u8; 32]> = selected.iter().map(|d| d.key_image).collect();
-        self.broadcast_built(built, key_images).await
+            found_heat - amount,
+            found_xfg - fee,
+        );
+        let spend = self.v11_spend(xfg, heat.into_iter().map(|c| (c, 0)).collect()).await?;
+        self.send_v11(spend, outputs, tag, &[]).await
     }
 
     /// get_tx_proof: a "ProofV1" payment proof for one of our outgoing

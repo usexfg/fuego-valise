@@ -1,0 +1,34 @@
+flowchart LR
+    candidate[Candidate chain] --> classify{Execution and custody model}
+
+    classify -->|Solana-compatible native asset| svm[SVM family kit<br/>RPC · Ed25519 · transaction builder<br/>HTLC program · PDA parser]
+    classify -->|TON / TVM| ton[TON adapter<br/>wallet seqno · signed BOC<br/>value transfer · HTLC contract]
+    classify -->|ZANO / privacy chain| zano[ZANO adapter<br/>shared keys · watch-only scan<br/>adaptor proof · unilateral refund]
+
+    svm --> identity[Network identity + deployed code<br/>genesis or global ID · signer · fees<br/>program version · finality]
+    ton --> identity
+    zano --> identity
+
+    identity --> catalog[Append-only pair catalog<br/>native asset · decimals · timing<br/>STAGED until release gate]
+    catalog --> protocol[Swap protocol<br/>lock · verify · claim · refund<br/>secret proof · crash recovery]
+    protocol --> admission[Offer admission + price/oracle<br/>amount limits · reserve proof<br/>readiness for new swaps]
+    admission --> surfaces[Wallet · Rust SDK · Go TUI<br/>dashboard · settings · explorers]
+    surfaces --> evidence[Funded two-daemon E2E<br/>both roles · claim · refund<br/>restart · outage · wrong network]
+    evidence --> gate{Security and release gate}
+    gate -->|Pass| active[Enable new swaps]
+    gate -->|Fail| staged[Keep STAGED<br/>repair and rerun]
+    staged --> evidence
+
+    identity -. Existing swaps remain recoverable .-> recovery[Claim and refund remain available<br/>even when new offers are paused]
+    recovery -.-> protocol
+
+    classDef start fill:#263552,stroke:#6c8edb,color:#fff
+    classDef family fill:#143f52,stroke:#45c8d9,color:#fff
+    classDef work fill:#283455,stroke:#91a8ef,color:#fff
+    classDef check fill:#5b3826,stroke:#f7bb62,color:#fff
+    classDef done fill:#18503d,stroke:#69d7a1,color:#fff
+    class candidate start
+    class svm,ton,zano family
+    class identity,catalog,protocol,admission,surfaces,recovery work
+    class classify,evidence,gate,staged check
+    class active done

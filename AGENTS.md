@@ -25,22 +25,103 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 - xfg-swapd handles actual cross-chain lock/claim/refund on BTC, ETH, SOL, etc.
 - They use **separate databases** (fuegod: `<configFolder>/swaps`, xfg-swapd: `~/.xfg-swapd`)
 
-## Supported Swap Chains (12 pairs)
+## Supported Swap Chains (46 `SwapPair` values)
 
-| ID | Chain | Adapter | Connection | HTLC Type |
-|----|-------|---------|-----------|-----------|
-| 0 | SOL | `SolChainClient` | Solana JSON-RPC | On-chain program |
-| 1 | ETH | `EthChainClient` | Ethereum JSON-RPC | HashedTimelock.sol |
-| 2 | XMR | `XmrChainClient` | monerod + monero-wallet-rpc | Ring sigs + adaptor sigs |
-| 3 | BCH | `BchChainClient` | Electrum SPV or bitcoind RPC | P2SH |
-| 4 | ARB | `EthChainClient` | Arbitrum JSON-RPC | HashedTimelock.sol |
-| 5 | BASE | `EthChainClient` | Base JSON-RPC | HashedTimelock.sol |
-| 6 | KMD | `KmdChainClient` | Electrum SPV or komodod RPC | P2SH |
-| 7 | BNB | `BscChainClient` | BSC JSON-RPC | HashedTimelock.sol |
-| 8 | DCR | `DcrChainClient` | Neutrino SPV (BIP-157/158) or dcrd RPC | P2SH |
-| 9 | BTC | `BtcChainClient` | Electrum SPV or bitcoind RPC | P2WSH SegWit |
-| 10 | LTC | `LtcChainClient` | Electrum SPV or litecoind RPC | P2WSH SegWit |
-| 11 | POLYGON | `PolygonChainClient` | Polygon JSON-RPC | HashedTimelock.sol |
+`SwapPair` is generated from the **X-macro catalog** `XFG_SWAP_PAIR_CATALOG` in
+fuego-suite `src/SwapDaemon/SwapPairCatalog.h` — **46 values**, append-only, and the single
+authoritative source for pair id, native asset, decimals, chain id, block times, support level
+and tx envelope. Ids are serialized in swap records, so **never renumber or reuse one**.
+
+One macro row now carries: name, id, config key, native asset, display name, family, chain id,
+min/max block ms, decimals, support, tx envelope, icon, colour. This exists because the enum
+used to be restated by hand in ~10 places and drifted silently.
+
+Support levels: **25 ACTIVE** (dedicated client + `registerChain`), **17 ADAPTER** (generic
+family adapter, live after RPC/signer/chain-id/HTLC-registry preflight), **4 STAGED**
+(SIA, ZANO, TON, DOT — id reserved for old records, new offers/swaps rejected).
+
+The Valise DeXFG screen exposes **22** pairs (`SwapPairSdk` in `lib/models/swap_models.dart`),
+a subset of the 46.
+
+**Settlement asset ≠ ticker.** `HashedTimelock.lock()` is `external payable` with no ERC20
+parameter and `SolRpcClient` moves lamports, so every EVM pair locks the chain's **native**
+currency. Consequences that look wrong but are not: 14 pairs settle in **ETH**; ARB/BASE/ROBINHOOD/
+BOB/UNICHAIN/OPTIMISM plus LINEA/ZKSYNC/INK/SCROLL/ABSTRACT/SONEIUM/DOMA all price off ETH;
+RSK settles in **RBTC** (not BTC); Gnosis in **xDAI** (not DAI); PulseChain in **PLS**. Pair 27
+prices in **GRAM**, because `coingecko:the-open-network` is the only feed that resolves and it
+reports GRAM (Pyth publishes a separate TONCOIN feed; the pair is STAGED either way).
+
+Audit of record: `xfgo/docs/developer/defillama-asset-matrix.md` + `.json` (46 rows), guarded by
+`xfgo/scripts/verify-defillama-assets.py` (live; exit 0). It cross-checks the catalog macro, the
+Dart enum, `registerChain` call sites, the C++ feed metadata, and every identifier live.
+Feed coverage: **31 distinct priced assets, 44 of 46 pairs**; unpriced are GLEEC and PEAQ.
+
+| ID | Chain | Settles in | Div | Feed | Support | Client |
+|----|-------|-----------|-----|------|---------|--------|
+| 0 | SOL | SOL | 1e9 | DeFiLlama + Pyth | `SolChainClient` | On-chain program |
+| 0 | SOL | SOL | 1e9 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 1 | ETH | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 2 | XMR | XMR | 1e12 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 3 | BCH | BCH | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 4 | ARB | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 5 | BASE | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 6 | KMD_SPV | KMD | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 7 | BNB | BNB | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 8 | DCR | DCR | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 9 | BTC | BTC | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 10 | LTC | LTC | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 11 | POLYGON | POL | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 12 | GLEEC | GLEEC | 1e18 | **unpriced** | ACTIVE | `X`ChainClient |
+| 13 | ROBINHOOD | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 14 | AVAX | AVAX | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 15 | CRO | CRO | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 16 | BOB | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 17 | SIA | SC | 1e24 | DeFiLlama only | **STAGED** | `SiaChainClient` (unwired) |
+| 18 | UNICHAIN | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 19 | PLASMA | XPL | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 20 | DOGE | DOGE | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 21 | DASH | DASH | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 22 | ZEC | ZEC | 1e8 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 23 | PULSECHAIN | PLS | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 24 | ZANO | ZANO | 1e12 | DeFiLlama only | **STAGED** | `ZanoChainClient` (unwired) |
+| 25 | MONAD | MON | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 26 | OPTIMISM | ETH | 1e18 | DeFiLlama only | ACTIVE | `X`ChainClient |
+| 27 | TON | **GRAM** | 1e9 | DeFiLlama only | **STAGED** | `TonChainClient` (unwired) |
+| 28 | DOT | DOT | 1e10 | DeFiLlama only | **STAGED** | `PolkadotChainClient` (unwired) |
+| 29 | LINEA | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 30 | ZKSYNC | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 31 | HYPEREVM | HYPE | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 32 | INK | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 33 | RSK | RBTC | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 34 | GNOSIS | XDAI | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 35 | FLARE | FLR | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 36 | KAIA | KAIA | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 37 | SCROLL | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 38 | ABSTRACT | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 39 | PLUME | PLUME | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 40 | SONEIUM | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 41 | DOMA | ETH | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 42 | BEAM | BEAM | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 43 | MOONRIVER | MOVR | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+| 44 | PEAQ | PEAQ | 1e18 | **unpriced** | ADAPTER | generic family adapter |
+| 45 | SEI | SEI | 1e18 | DeFiLlama only | ADAPTER | generic family adapter |
+
+**EVM chains are config-gated, not code-gated.** All 14 EVM pairs already have code and a
+`registerChain` call site; the per-chain classes (`BscChainClient`, `PolygonChainClient`,
+`BobChainClient`, `MonadChainClient`, `OptimismChainClient`, `PlasmaChainClient`,
+`PulseChainClient`) are 3-line headers that only pass a label to `EthChainClient`. Each block
+is `if (!chainCfg.<chain>Host.empty())`, so a pair goes live purely by supplying
+`<chain>_host/_port/_chain_id`, signer key, and an HTLC registry address **verified for that
+chain** — CREATE2 does not guarantee the same address across chains (GLEEC has its own for
+this reason). `EthRpcClient::deployHtlc` throws rather than falling back to a per-swap deploy,
+so the registry must exist on that chain.
+
+### Chain Client Coverage
+
+All 46 pairs are code-complete. **25** have a `registerChain` call site in
+`SwapDaemon.cpp`; **17 ADAPTER** pairs are served by the generic family adapter after RPC /
+signer / chain-id / HTLC-registry preflight; the **4 STAGED** pairs (SIA 17, ZANO 24, TON 27,
+DOT 28) have clients that are written but never registered.
 
 ### Chain Connection Modes
 - **SPV mode**: Read-only verification via Electrum protocol (BTC/LTC/BCH/KMD) or Neutrino (DCR). Cannot create lock transactions — claim/refund needs RPC mode.
@@ -66,23 +147,49 @@ The Fuego swap system uses **two daemons** that serve different purposes:
   in Dart. Adding a chain is a ~40-item cross-language checklist. The live landmines, all of
   which fail *silently* rather than at compile time:
   - `src/CryptoNoteCore/SwapOfferRelay.h` `MAX_PAIR_INDEX` is hand-synced across the module
-    boundary. Raising `SwapPair` without raising it drops every offer for the new pair in
-    `validateOffer`.
-  - `for (pair = 0; pair <= SwapPair::DOT; ++pair)` loop sentinels (`src/Rpc/RpcServer.cpp`,
-    `src/SwapDaemon/SwapDaemon.cpp`) compile fine and silently skip a newly appended pair.
+  - Loop sentinels bounded by a named pair rather than `SWAP_PAIR_COUNT` skip a newly appended
+    pair silently. Prefer iterating `SWAP_PAIR_CATALOG` / `SWAP_PAIR_COUNT`.
+  - `src/CryptoNoteCore/SwapOfferRelay.h` `MAX_PAIR_INDEX` is hand-synced; the catalog now exports
+    `MAX_SWAP_PAIR_INDEX`, and the two must not diverge.
   - `PriceOracle::ctrDivisor()` defaults to a *plausible-but-wrong* `1e8`, unlike
     `getEffectiveRate()` which returns an obvious `0.0`. A missing case corrupts
     `requiredCtrAmount` in integer math.
   - `swapPairFromString()` guards `s.size() > 12` before any comparison, so a chain name
     longer than 12 chars is unparseable.
-- `swapxfg/app/pairs.go` (`ActivePairs`) covers 7 of 29 pairs, and
-  `dashboard/static/js/swapxfg.js` `CHAIN_INFO` covers 10 of 29 — the Go CLI and the
+- `swapxfg/app/pairs.go` (`ActivePairs`) covers 7 of 46 pairs, and
+  `dashboard/static/js/swapxfg.js` `CHAIN_INFO` covers 10 of 46 — the Go CLI and the
   dashboard can only see a fraction of what the daemon supports.
 - `swap_config.example.json` uses key names `ChainClientConfig.cpp` never reads (`btc_host`
   vs `btc_rpc_host`, `eth_wif` vs `eth_priv_key`). Following it verbatim yields a silently
   unconfigured daemon.
 - `src/SwapDaemon/CLV/` is a fully-written `EthChainClient` subclass with no `SwapPair` value,
   config field, registration, or CMake entry — an orphan adapter.
+
+### Pricing landmines (confirmed by audit 2026-10-01)
+
+- `PriceOracle.cpp` seeds `OPTIMISM` from `SEED_OP_USD`. Optimism locks native ETH, so this is
+  a **wrong-settlement-asset price** in the live effective-rate path.
+- `OfferManager::compositeToRateNum` falls back to the static `PriceOracle::getSeedRate()` and
+  never reaches `getEffectiveRate()`, so managed offers never observe the live Hearth price.
+- `m_floorThreshold` is `0.80` in the constructor but `0.50` in its header comment and
+  `validateRate` prose. The effective band is `ref/0.8` up and `ref*0.20` down — asymmetric and
+  neither the documented value nor the intended symmetric ±20% guard.
+- **DeFiLlama stamps prices in 300-second buckets**, shared across all coins in a response.
+  Observed age ramps 0→300s, so the guide's proposed "no more than 120s old" provider-age gate
+  would reject ~80% of a 30s poll cycle. Gate fetch-freshness on our own receipt time and allow
+  ~600s provider age, or the oracle will flap.
+- **CoinGecko keyless returns `429` after ~3 requests/minute** (measured). The design polls
+  every 30s from xfg-swapd *and* Valise fetches its own batch — 4/min. A 429 is
+  indistinguishable from "oracle unavailable", which per policy cancels managed offers and
+  pauses swaps. Do not use keyless CoinGecko as a feed.
+- Pair 27 (`TON`) settles in **GRAM**, not the TON coin — `coingecko:the-open-network` is correct
+  and `Crypto.GRAM/USD` is a first-class Pyth feed. `TonChainClient` is implemented but never
+  registered, so it is priced but unexecutable.
+- Pair 17 (`SIA`) is priced via `coingecko:siacoin`, but 1 SC = 10^24 hastings exceeds
+  UINT64_MAX, so the `uint64` amount model blocks it. Amount-model bug, not a pricing one.
+- The Rust SDK's `SwapPair` has only **12** variants (0–11, stops at `POLYGON`) while the C++
+  enum has 29 — the SDK is a hand-maintained reimplementation and has fallen behind. Its
+  `ChainType` (13 incl. Fuego), `is_bitcoin_family()` and `is_evm()` are currently accurate.
 
 ## Dart Wallet Backend Architecture
 
@@ -114,7 +221,8 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 
 Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
-- `types.rs`: SwapPair enum (12 pairs), SwapOffer, SwapPrice, SwapTrade, SwapStatus
+- `types.rs`: SwapPair enum (**12 pairs, 0–11 only** — behind the C++ 29, stops at `POLYGON`),
+  SwapOffer, SwapPrice, SwapTrade, SwapStatus
 - `chain/mod.rs`: ChainType enum (13 chains including Fuego), ChainSpv trait
 - `chain/bitcoin.rs`: Bitcoin-family SPV adapter (BTC, LTC, BCH, KMD, DCR)
 - `chain/evm.rs`: EVM chain adapter (ETH, ARB, BASE, BNB, POLYGON)

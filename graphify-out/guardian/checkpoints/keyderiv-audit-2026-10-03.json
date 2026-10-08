@@ -1,0 +1,31 @@
+{
+  "verification_id": "keyderiv-audit-2026-10-03",
+  "status": "CHECKPOINTED_SCOPE_CHANGED",
+  "scope": {
+    "keyderiv_commit": "90672944058e2d298152a34de4cc46e42e02c140",
+    "merge_base": "ea6950d8f7e14daf8e6f07e7f77da8b5ee4621da",
+    "wallet_pin": "a36eccb5b246e2a9dbdcc9285ae35ac6a4012b98",
+    "depth": 2,
+    "domains": ["crypto", "wallet", "consensus", "security", "rpc", "build", "docs"]
+  },
+  "veredito": "BLOCKED",
+  "score": null,
+  "score_limit": "No full-node replay, funded acceptance, or complete domain scoring was performed.",
+  "validated_tests": {
+    "cpp_owner_bound": "16/16 passed; fresh assertion-enabled build",
+    "cpp_asset_helper": "17/17 passed; pure helpers only",
+    "cpp_wallet_compile": "passed",
+    "cpp_cache_regression": "failed as expected: published commitment key lost",
+    "cpp_unified_asset_regression": "failed as expected: HEAT credited as XFG",
+    "cpp_testnet_cd_bounds_regression": "failed as expected: runtime testnet CD minimum rejected by semantic output validation",
+    "flutter_uint256_decoder_regression": "failed as expected: String cannot cast to num",
+    "rust_commitment_owner_restart_regressions": "2 failures reproduced; key-output restart control passes",
+    "rust_serialization_vectors": "3/3 passed",
+    "rust_tx_builder_vectors": "1/1 passed",
+    "rust_sdk_tests": "40/41 passed; macOS system-configuration NULL object failure, not a demonstrated keyderiv defect"
+  },
+  "pending": ["Full consensus acceptance, replay and reorg evidence remain unrun; no unrelated repair authorized"],
+  "scope_change": "User requests skill update and bug notes; pursue only EVM chain swap compatibility. Branch-specific observations are retained in the renamed skill's references/compatibility-notes.md.",
+  "graphify": "No usable current index; source and caller traces used directly. Prior index generation failed in hyppo/numba.",
+  "authority": "Audit and local pin correction only; no keyderiv implementation, merge, commit, push, or deletion."
+}

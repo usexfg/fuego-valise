@@ -3,12 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../bloc/dex/dex_cubit.dart';
-import '../../models/candlestick.dart';
 import '../../models/swap_models.dart';
 import '../../models/chain_info.dart';
 import '../../models/erc20_token.dart';
 import 'peer_swap_screen.dart';
-import '../../services/price_history_service.dart';
 import '../../services/web3_multi_chain_service.dart';
 import '../../utils/theme.dart';
 import '../../widgets/fuego_chart.dart';
@@ -28,13 +26,11 @@ class _DexScreenState extends State<DexScreen>
   final _rateController = TextEditingController();
   final _takerKeyController = TextEditingController();
   final _xmrAddressController = TextEditingController();
-  List<Candlestick>? _candles;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _loadPriceData();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => context.read<DexCubit>().init(),
     );
@@ -44,11 +40,6 @@ class _DexScreenState extends State<DexScreen>
   void _onTakerKeyChanged() {
     // Rebuild ERC20 balance tiles when key changes; throttle via setState
     if (mounted) setState(() {});
-  }
-
-  Future<void> _loadPriceData() async {
-    final candles = await PriceHistoryService().loadAll();
-    if (mounted) setState(() => _candles = candles);
   }
 
   @override
@@ -69,25 +60,12 @@ class _DexScreenState extends State<DexScreen>
       builder: (context, state) => Column(
         children: [
           // Top: chart
-          if (_candles != null && _candles!.isNotEmpty)
-            SizedBox(
-              height: screenH * 0.35,
-              child: FuegoChart(
-                candles: _candles!,
-                pair: 'XFG/${state.selectedPair.ticker}',
-              ),
+          SizedBox(
+            height: screenH * 0.35,
+            child: XfgHistoryPanel(
+              contextNote: 'Not the ${state.selectedPair.ticker} pair rate',
             ),
-          if (_candles == null || _candles!.isEmpty)
-            Container(
-              height: screenH * 0.35,
-              color: AppTheme.surfaceColor,
-              child: const Center(
-                child: Text(
-                  'No chart data',
-                  style: TextStyle(color: AppTheme.textMuted),
-                ),
-              ),
-            ),
+          ),
           _buildPairBar(state),
           if (state.error != null)
             Padding(

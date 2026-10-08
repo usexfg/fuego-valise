@@ -111,7 +111,11 @@ Future<void> _startBackend() async {
     // Wallet calls always go to the local proxy; without one, ep.walletPort is the
     // remote chain port and must not replace it.
     if (ep.proxyRunning) daemon.walletPort = ep.walletPort;
-    hearthClient.updateNode(ep.chainHost, port: ep.chainPort);
+    hearthClient.updateNode(
+      ep.chainHost,
+      port: ep.chainPort,
+      networkConfig: nodeConnection.networkConfig,
+    );
   });
 
   ConnectionEndpoints endpoints;
