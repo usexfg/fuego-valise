@@ -17,7 +17,7 @@ use crate::serialization::{
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
 use fuego_crypto::ring::{
-    check_ring_signature, derive_commitment_keys, derive_deposit_secret, derive_public_key,
+    check_ring_signature, derive_commitment_output_key, derive_public_key,
     derive_secret_key, generate_key_derivation, generate_key_image, generate_ring_signature,
     hash_to_scalar,
 };
@@ -76,6 +76,10 @@ pub struct BuildCommitmentDestination {
     pub amount: u64,
     pub term: u32,
     pub view_pub: Option<[u8; 32]>,
+    /// Recipient spend public key B. Required: owner-bound commitment outputs
+    /// bind ownership to B, so without it only the legacy sender/view-key
+    /// -spendable form can be produced.
+    pub spend_pub: [u8; 32],
 }
 
 /// Deterministic tx secret key recovery: r = Hs(viewSecret || inputsHash),
@@ -531,13 +535,19 @@ pub fn build_mixed_output_transaction(
             generate_key_derivation(dest_view, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        // Owner-bound: bind ownership to the destination spend key so the sender
+        // and any view-key holder cannot derive this output's spend scalar.
+        let commit_key = derive_commitment_output_key(
+            &dest_derivation,
+            out_index as u64,
+            Some(&cdest.spend_pub),
+        )
+        .ok_or_else(|| SdkError::Crypto("owner-bound commitment key derivation failed".into()))?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -636,6 +646,7 @@ pub fn build_mint_transaction(
             amount: *b,
             term: crate::serialization::HEAT_TERM,
             view_pub: None,
+            spend_pub: *change_spend,
         })
         .collect();
 
@@ -747,13 +758,19 @@ pub fn build_commitment_spend_transaction(
             generate_key_derivation(dest_view, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        // Owner-bound: bind ownership to the destination spend key so the sender
+        // and any view-key holder cannot derive this output's spend scalar.
+        let commit_key = derive_commitment_output_key(
+            &dest_derivation,
+            out_index as u64,
+            Some(&cdest.spend_pub),
+        )
+        .ok_or_else(|| SdkError::Crypto("owner-bound commitment key derivation failed".into()))?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -853,13 +870,19 @@ fn assemble_outputs_and_sign(
             generate_key_derivation(dest_view, &txkey)
                 .ok_or_else(|| SdkError::Crypto("dest tx key derivation failed".into()))?
         };
-        let deposit_secret = derive_deposit_secret(&dest_derivation, out_index as u32);
-        let ck = derive_commitment_keys(&deposit_secret);
+        // Owner-bound: bind ownership to the destination spend key so the sender
+        // and any view-key holder cannot derive this output's spend scalar.
+        let commit_key = derive_commitment_output_key(
+            &dest_derivation,
+            out_index as u64,
+            Some(&cdest.spend_pub),
+        )
+        .ok_or_else(|| SdkError::Crypto("owner-bound commitment key derivation failed".into()))?;
         out_index += 1;
         outputs.push(TxOutput {
             amount: cdest.amount,
             target: OutputTarget::Commitment(CommitmentOutputTarget {
-                commit_key: ck.commit_key,
+                commit_key,
                 term: cdest.term,
                 amount_commitment: [0u8; 32],
                 amount_proof: [0u8; AMOUNT_PROOF_LEN],
@@ -965,6 +988,7 @@ pub fn build_swap_xfg_to_heat_transaction(
             amount: *b,
             term: HEAT_TERM,
             view_pub: None,
+            spend_pub: *change_keys.0,
         })
         .collect();
 
@@ -1043,6 +1067,7 @@ pub fn build_swap_heat_to_xfg_transaction(
                 amount: bill,
                 term: HEAT_TERM,
                 view_pub: None,
+                spend_pub: *spend_pub,
             });
         }
     }
@@ -1169,6 +1194,7 @@ pub fn build_lp_add_transaction(
         amount: lp_shares,
         term: crate::serialization::DEPOSIT_TERM_LP,
         view_pub: None,
+        spend_pub: *change_keys.0,
     }];
     let mut commitment_dests = commitment_dests;
     if heat_change > 0 {
@@ -1177,6 +1203,7 @@ pub fn build_lp_add_transaction(
                 amount: bill,
                 term: HEAT_TERM,
                 view_pub: None,
+                spend_pub: *change_keys.0,
             });
         }
     }
@@ -1255,6 +1282,7 @@ pub fn build_lp_remove_transaction(
             amount: bill,
             term: HEAT_TERM,
             view_pub: None,
+            spend_pub: *spend_pub,
         });
     }
 

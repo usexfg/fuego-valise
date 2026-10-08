@@ -1,5 +1,28 @@
 # CHANGELOG.agent.md
 
+## [2026-10-01] Swap-pair drift: 10 DeXFG pairs rendered as `PAIR_<n>`
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 90 | `SwapInfo.pairName` (`swap_daemon_client.dart`) carried a private 0-11 id table. Pairs with ids ≥ 12 — GLEEC(12), RHC(13), AVAX(14), CRO(15), BOB(16), UNI(18), XPL(19), PLS(23), MON(25), OP(26) — resolved to `PAIR_12`..`PAIR_26`, so **10 of the 22** DeXFG pairs lost name, colour, icon, decimals and explorer link, and their Direct-tab filter chips could never match. Now derived from `SwapPairSdk` | opencode | 2026-10-01 | ✅ done |
+| 91 | `POLYGON` vs `POLY` key mismatch: three emitters returned `'POLYGON'` (`swap_daemon_client.dart`, `daemon_event_bus.dart`, `dex_cubit._pairNameForChain`) while every `ChainInfo` map is keyed `'POLY'`. Dead explorer link, dead POLY filter chip, default 7-decimal formatting on Polygon. All three now emit `'POLY'` | opencode | 2026-10-01 | ✅ done |
+| 92 | `DaemonEventBus._extractPairName` had the same 0-11 table *and* a duplicate inline 12-entry `explorerTx` map. Now derives from `SwapPairSdk` and delegates to `ChainInfo.explorerTxUrl`, so there is one explorer map rather than two | opencode | 2026-10-01 | ✅ done |
+| 93 | `ChainInfo.explorerTx` was missing 7 wired swap chains. Added OP (`optimistic.etherscan.io`), PLS (`scan.pulsechain.com`), MON (`monadscan.com`), UNI (`uniscan.xyz`). **GLEEC, RHC and XPL deliberately left absent** — no authoritative explorer URL exists in-repo and a wrong one in a wallet is a phishing risk, so they are pinned as known gaps in the new test instead of guessed | opencode | 2026-10-01 | ✅ done (3 gaps tracked by test) |
+| 94 | `ChainInfo.ptlc` had no descriptor for KMD or DCR despite both being wired `SwapPairSdk` pairs; added. Also `gleec.png` was referenced but absent (sourced from the suite dashboard's copy) and `chains.yaml` pointed `rsk` at a non-existent `rsk.png` (corrected to `rootstock.png`); registry regenerated | opencode | 2026-10-01 | ✅ done |
+| 95 | `gen_chains.dart --check` existed but ran in **no** CI job — the manifest could drift from `chain_registry.g.dart` undetected. Added a "Chain registry is in sync with chains.yaml" step to the `analyze` job in `fuego-wallet-ci.yml` | opencode | 2026-10-01 | ✅ done |
+| 96 | New `test/swap_pair_drift_test.dart` (13 tests) locks the fix: ids match C++ `SwapTypes.h` verbatim, `pairName` never falls back to `PAIR_<n>`, the ten previously-broken ids are named individually, every swapable chain has colour/icon/decimals/PTLC, referenced icon assets exist on disk, explorer coverage matches the explicit known-gap set, and `ChainInfo.swapableChains == SwapPairSdk` tickers | opencode | 2026-10-01 | ✅ done |
+| 97 | `AGENTS.md` was stale: claimed 12 `SwapPair` values (29 — 25 registered, 4 staged) and listed POLYGON as missing from four C++ tables (it is present in all four upstream). Replaced the Known Issues list with the four *silent* failure modes (`MAX_PAIR_INDEX`, `DOT` loop sentinels, `ctrDivisor` defaulting to a plausible-wrong `1e8`, the 12-char parse guard) and the stale `swapxfg` / dashboard / `swap_config.example.json` / orphan `CLV/` facts. Left the Rust SDK's "12 pairs" line alone — verified accurate | opencode | 2026-10-01 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `flutter analyze --fatal-warnings --no-fatal-infos` | ✅ 0 errors, 0 warnings, exit 0 (781 infos, all pre-existing) |
+| `flutter test` | ✅ 72/72 (59 pre-existing + 13 new) |
+| `dart run tool/gen_chains.dart --check` | ✅ up to date (33 chains) |
+| Not touched | `rust-fuego-wallet/fuego-sdk/fuego-crypto/src/ring.rs` and the untracked `ownerbound_vectors*` are pre-existing unrelated working-tree changes — deliberately left alone |
+| Source changes in this entry | 6 files + 1 new test + 1 icon asset + CI step + AGENTS.md |
+
 ## [2026-10-01] OKOC valise-daemon audit continuation (local index, no source change)
 
 | # | Task | Owner | Date | Status |

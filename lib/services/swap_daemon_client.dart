@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/chain_info.dart';
+import '../models/swap_models.dart';
 
 class SwapDaemonClient {
   final String host;
@@ -346,23 +347,14 @@ class SwapInfo {
     );
   }
 
-  String get pairName {
-    const names = {
-      0: 'SOL',
-      1: 'ETH',
-      2: 'XMR',
-      3: 'BCH',
-      4: 'ARB',
-      5: 'BASE',
-      6: 'KMD',
-      7: 'BNB',
-      8: 'DCR',
-      9: 'BTC',
-      10: 'LTC',
-      11: 'POLYGON',
-    };
-    return names[pair] ?? 'PAIR_$pair';
-  }
+  /// Ticker for the wire `pair` id, keyed the same way as every [ChainInfo]
+  /// map so colour/icon/decimals/explorer lookups all resolve.
+  ///
+  /// Derived from [SwapPairSdk] rather than a local id table: a hardcoded
+  /// 0-11 map silently returned `PAIR_12`..`PAIR_26` for ten wired pairs
+  /// (GLEEC, RHC, AVAX, CRO, BOB, UNI, XPL, PLS, MON, OP) and returned
+  /// `POLYGON` for id 11, which no [ChainInfo] map is keyed by.
+  String get pairName => SwapPairSdk.tryFromId(pair)?.ticker ?? 'PAIR_$pair';
 
   String get lockTypeLabel => lockTypeName;
   bool get isPtlc => lockType == 1;

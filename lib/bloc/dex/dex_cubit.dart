@@ -835,9 +835,9 @@ class DexCubit extends Cubit<DexState> {
       // complete the maker's pre-sig after extracting t.
       final swapId = await _swapClient!.initiateSwap(
         pair: pair,
-        xfgAmount: amount,
+        xfgAmount: amount.toString(),
         ctrAmount:
-            amount, // approximate; the maker's offer terms govern the on-chain lock
+            amount.toString(), // approximate; the maker's offer terms govern the on-chain lock
         peer: makerEndpoint,
         role: 'alice',
         swapId: lockId,
@@ -890,7 +890,7 @@ class DexCubit extends Cubit<DexState> {
       case ChainTypeSdk.litecoin:
         return 'LTC';
       case ChainTypeSdk.polygon:
-        return 'POLYGON';
+        return 'POLY';
       default:
         return 'SOL';
     }
@@ -1200,8 +1200,8 @@ class DexCubit extends Cubit<DexState> {
     try {
       final swapId = await _swapClient!.initiateSwap(
         pair: pair,
-        xfgAmount: xfgAmount,
-        ctrAmount: ctrAmount,
+        xfgAmount: xfgAmount.toString(),
+        ctrAmount: ctrAmount.toString(),
         peer: peer,
         role: role,
         expectedPeerPubkey: expectedPeerPubkey,
