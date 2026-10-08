@@ -73,7 +73,9 @@ class TransactionModel {
   /// Get formatted timestamp for display
   String get formattedTimestamp {
     try {
-      final dateTime = DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp));
+      final dateTime = DateTime.fromMillisecondsSinceEpoch(
+        int.parse(timestamp),
+      );
       return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
     } catch (e) {
       return timestamp;

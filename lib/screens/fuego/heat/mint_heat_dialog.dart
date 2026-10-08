@@ -31,7 +31,10 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppTheme.cardColor,
-      title: const Text('Mint ΗΞΔŦ', style: TextStyle(color: AppTheme.textPrimary)),
+      title: const Text(
+        'Mint ΗΞΔŦ',
+        style: TextStyle(color: AppTheme.textPrimary),
+      ),
       content: _txHash != null ? _buildSuccess() : _buildForm(),
       actions: _txHash != null
           ? [
@@ -46,8 +49,13 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
             ]
           : [
               TextButton(
-                onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+                onPressed: _submitting
+                    ? null
+                    : () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
               ),
               ElevatedButton(
                 onPressed: _submitting ? null : _submit,
@@ -56,7 +64,11 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
                   foregroundColor: Colors.white,
                 ),
                 child: _submitting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Burn XFG → Mint ΗΞΔŦ'),
               ),
             ],
@@ -69,8 +81,10 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Burn XFG to mint ΗΞΔŦ at the PI redemption price.',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+          Text(
+            'Burn XFG to mint ΗΞΔŦ at the PI redemption price.',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _amountController,
@@ -81,7 +95,9 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
               hintText: '100.0',
               filled: true,
               fillColor: AppTheme.surfaceColor,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               suffixText: 'XFG',
             ),
             style: const TextStyle(color: AppTheme.textPrimary),
@@ -90,12 +106,20 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text('ΗΞΔŦ received depends on PI redemption price',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+          const Text(
+            'ΗΞΔŦ received depends on PI redemption price',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 12)),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppTheme.errorColor,
+                  fontSize: 12,
+                ),
+              ),
             ),
         ],
       ),
@@ -108,18 +132,33 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
       children: [
         const Icon(Icons.check_circle, color: AppTheme.successColor, size: 48),
         const SizedBox(height: 12),
-        const Text('ΗΞΔŦ Minted!', style: TextStyle(
-            color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'ΗΞΔŦ Minted!',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 8),
         if (_heatReceived != null)
-          Text('$_heatReceived ΗΞΔŦ received',
-              style: TextStyle(
-                  color: AppTheme.successColor,
-                  fontSize: 18,
-                  fontFamily: AppTheme.numberFontFamily)),
+          Text(
+            '$_heatReceived ΗΞΔŦ received',
+            style: TextStyle(
+              color: AppTheme.successColor,
+              fontSize: 18,
+              fontFamily: AppTheme.numberFontFamily,
+            ),
+          ),
         const SizedBox(height: 4),
-        Text('TX: ${_txHash!.substring(0, _txHash!.length > 16 ? 16 : _txHash!.length)}...',
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 11, fontFamily: 'IBMPlexMono')),
+        Text(
+          'TX: ${_txHash!.substring(0, _txHash!.length > 16 ? 16 : _txHash!.length)}...',
+          style: const TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 11,
+            fontFamily: 'IBMPlexMono',
+          ),
+        ),
       ],
     );
   }
@@ -135,7 +174,10 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
       setState(() => _error = 'Invalid amount');
       return;
     }
-    setState(() { _submitting = true; _error = null; });
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
       final rpc = context.read<FuegoRPCService>();
       final xfgAtomicAmt = (xfg * xfgAtomic).round();
@@ -152,7 +194,10 @@ class _MintHeatDialogState extends State<MintHeatDialog> {
         _submitting = false;
       });
     } catch (e) {
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() {
+        _submitting = false;
+        _error = e.toString();
+      });
     }
   }
 }

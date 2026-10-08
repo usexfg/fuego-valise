@@ -11,26 +11,31 @@ class PriceHistoryService {
 
   Future<List<Candlestick>> loadAll() async {
     if (_allCandles != null) return _allCandles!;
-    final jsonStr = await rootBundle.loadString('assets/data/xfg_historical_prices.json');
+    final jsonStr = await rootBundle.loadString(
+      'assets/data/xfg_historical_prices.json',
+    );
     final List<dynamic> raw = jsonDecode(jsonStr) as List<dynamic>;
-    _allCandles = raw.map((e) => Candlestick.fromJson(e as Map<String, dynamic>)).toList();
+    _allCandles = raw
+        .map((e) => Candlestick.fromJson(e as Map<String, dynamic>))
+        .toList();
 
     // Append final launch-price candle: XFG=$0.15
     if (_allCandles!.isNotEmpty) {
       final last = _allCandles!.last;
       final now = DateTime.now();
-      final launchTs = DateTime(now.year, now.month, now.day)
-              .millisecondsSinceEpoch ~/
-          1000;
+      final launchTs =
+          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch ~/ 1000;
       if (last.time < launchTs) {
-        _allCandles!.add(Candlestick(
-          time: launchTs,
-          open: last.close,
-          high: 0.155,
-          low: 0.145,
-          close: 0.15,
-          volume: 0,
-        ));
+        _allCandles!.add(
+          Candlestick(
+            time: launchTs,
+            open: last.close,
+            high: 0.155,
+            low: 0.145,
+            close: 0.15,
+            volume: 0,
+          ),
+        );
       }
     }
     return _allCandles!;

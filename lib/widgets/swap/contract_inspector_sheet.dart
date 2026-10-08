@@ -5,20 +5,17 @@ import '../../models/chain_info.dart';
 import '../../services/swap_daemon_client.dart';
 import '../../utils/theme.dart';
 
-Future<void> showContractInspectorSheet(
-  BuildContext context,
-  SwapInfo swap,
-) {
+Future<void> showContractInspectorSheet(BuildContext context, SwapInfo swap) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (BuildContext sheetContext) {
-      final double maxHeight =
-          MediaQuery.of(sheetContext).size.height * 0.85;
+      final double maxHeight = MediaQuery.of(sheetContext).size.height * 0.85;
       final String pairName = swap.pairName;
-      final String lockLabel =
-          swap.lockTypeLabel.isEmpty ? 'HTLC' : swap.lockTypeLabel;
+      final String lockLabel = swap.lockTypeLabel.isEmpty
+          ? 'HTLC'
+          : swap.lockTypeLabel;
       final Color lockColor = _lockColorFor(swap);
       final String? ptlcDesc = ChainInfo.ptlc[pairName];
       return Container(
@@ -296,7 +293,9 @@ Widget _copyableRow(
   final String display = value.length > 42
       ? '${value.substring(0, 20)}…${value.substring(value.length - 12)}'
       : value;
-  final String explorerUrl = isTxid ? ChainInfo.explorerTxUrl(chain, value) : '';
+  final String explorerUrl = isTxid
+      ? ChainInfo.explorerTxUrl(chain, value)
+      : '';
   final bool canOpen = explorerUrl.isNotEmpty;
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,

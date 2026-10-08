@@ -36,7 +36,11 @@ class _WalletsScreenState extends State<WalletsScreen> {
     });
   }
 
-  Future<String?> _promptSecret(String title, String subtitle, {bool numeric = false}) {
+  Future<String?> _promptSecret(
+    String title,
+    String subtitle, {
+    bool numeric = false,
+  }) {
     final controller = TextEditingController();
     return showDialog<String>(
       context: context,

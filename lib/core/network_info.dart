@@ -18,13 +18,14 @@ class NetworkInfo {
   });
 
   factory NetworkInfo.fromJson(Map<String, dynamic> json) => NetworkInfo(
-        height: json['height'] as int,
-        topBlockHash: json['top_block_hash'] as String? ?? '',
-        difficulty: json['difficulty'] as int? ?? 0,
-        hashrate: json['hashrate'] as int? ?? 0,
-        peerCount: (json['incoming_connections_count'] as int? ?? 0) +
-            (json['outgoing_connections_count'] as int? ?? 0),
-        txCount: json['tx_count'] as int? ?? 0,
-        txPoolSize: json['tx_pool_size'] as int? ?? 0,
-      );
+    height: json['height'] as int,
+    topBlockHash: json['top_block_hash'] as String? ?? '',
+    difficulty: json['difficulty'] as int? ?? 0,
+    hashrate: json['hashrate'] as int? ?? 0,
+    peerCount:
+        (json['incoming_connections_count'] as int? ?? 0) +
+        (json['outgoing_connections_count'] as int? ?? 0),
+    txCount: json['tx_count'] as int? ?? 0,
+    txPoolSize: json['tx_pool_size'] as int? ?? 0,
+  );
 }

@@ -46,7 +46,9 @@ class Erc20Service {
   }
 
   String rpcUrlFor(String chainKey) =>
-      _rpcUrls[chainKey.toLowerCase()] ?? _defaultRpcs[chainKey.toLowerCase()] ?? '';
+      _rpcUrls[chainKey.toLowerCase()] ??
+      _defaultRpcs[chainKey.toLowerCase()] ??
+      '';
 
   int chainIdFor(String chainKey) => _chainIds[chainKey.toLowerCase()] ?? 1;
 
@@ -193,21 +195,26 @@ class Erc20Service {
   Future<BigInt> balanceOfToken({
     required Erc20Token token,
     required String holderAddress,
-  }) =>
-      balanceOf(
-        chainKey: token.chainKey,
-        tokenAddress: token.address,
-        holderAddress: holderAddress,
-      );
+  }) => balanceOf(
+    chainKey: token.chainKey,
+    tokenAddress: token.address,
+    holderAddress: holderAddress,
+  );
 
   Future<double> balanceAsDouble({
     required Erc20Token token,
     required String holderAddress,
   }) async {
-    final raw = await balanceOfToken(token: token, holderAddress: holderAddress);
+    final raw = await balanceOfToken(
+      token: token,
+      holderAddress: holderAddress,
+    );
     int dec = token.decimals;
     try {
-      dec = await decimals(chainKey: token.chainKey, tokenAddress: token.address);
+      dec = await decimals(
+        chainKey: token.chainKey,
+        tokenAddress: token.address,
+      );
     } catch (_) {}
     final divisor = BigInt.from(10).pow(dec).toDouble();
     return divisor == 0 ? 0 : raw.toDouble() / divisor;
@@ -221,7 +228,10 @@ class Erc20Service {
   }) async {
     int dec = token.decimals;
     try {
-      dec = await decimals(chainKey: token.chainKey, tokenAddress: token.address);
+      dec = await decimals(
+        chainKey: token.chainKey,
+        tokenAddress: token.address,
+      );
     } catch (_) {}
     final baseUnits = Erc20Amount.toBaseUnits(amountDisplay, dec);
     if (baseUnits <= BigInt.zero) throw ArgumentError('amount must be > 0');
@@ -258,7 +268,9 @@ class Erc20Service {
       body: body,
     );
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw StateError('eth_call $chainKey failed HTTP ${resp.statusCode}: ${resp.body}');
+      throw StateError(
+        'eth_call $chainKey failed HTTP ${resp.statusCode}: ${resp.body}',
+      );
     }
     final json = jsonDecode(resp.body) as Map<String, dynamic>;
     if (json['error'] != null) {
@@ -272,31 +284,46 @@ class Erc20Service {
   // ── ABI encoders ─────────────────────────────────────────────────
 
   static List<int> _encodeBalanceOf(EthereumAddress holder) => [
-        0x70, 0xa0, 0x82, 0x31,
-        ..._pad32Address(holder),
-      ];
+    0x70,
+    0xa0,
+    0x82,
+    0x31,
+    ..._pad32Address(holder),
+  ];
 
   static List<int> _encodeDecimals() => [0x31, 0x3c, 0xe5, 0x67];
   static List<int> _encodeSymbol() => [0x95, 0xd8, 0x9b, 0x41];
   static List<int> _encodeName() => [0x06, 0xfd, 0xde, 0x03];
 
-  static List<int> _encodeAllowance(EthereumAddress owner, EthereumAddress spender) => [
-        0xdd, 0x62, 0xed, 0x3e,
-        ..._pad32Address(owner),
-        ..._pad32Address(spender),
-      ];
+  static List<int> _encodeAllowance(
+    EthereumAddress owner,
+    EthereumAddress spender,
+  ) => [
+    0xdd,
+    0x62,
+    0xed,
+    0x3e,
+    ..._pad32Address(owner),
+    ..._pad32Address(spender),
+  ];
 
   static List<int> _encodeTransfer(EthereumAddress to, BigInt amount) => [
-        0xa9, 0x05, 0x9c, 0xbb,
-        ..._pad32Address(to),
-        ..._pad32BigInt(amount),
-      ];
+    0xa9,
+    0x05,
+    0x9c,
+    0xbb,
+    ..._pad32Address(to),
+    ..._pad32BigInt(amount),
+  ];
 
   static List<int> _encodeApprove(EthereumAddress spender, BigInt amount) => [
-        0x09, 0x5e, 0xa7, 0xb3,
-        ..._pad32Address(spender),
-        ..._pad32BigInt(amount),
-      ];
+    0x09,
+    0x5e,
+    0xa7,
+    0xb3,
+    ..._pad32Address(spender),
+    ..._pad32BigInt(amount),
+  ];
 
   static List<int> _pad32Address(EthereumAddress addr) {
     final b = addr.addressBytes;

@@ -8,10 +8,7 @@ import '../models/chain_registry.g.dart';
 
 /// Manages xfg-swapd configuration and process lifecycle.
 class SwapConfigService {
-  static const _daemonConfigPrefixes = {
-    'xpl': 'plasma',
-    'pls': 'pulsex',
-  };
+  static const _daemonConfigPrefixes = {'xpl': 'plasma', 'pls': 'pulsex'};
 
   static final Set<String> _evmSwapChains = kChains
       .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
@@ -49,7 +46,8 @@ class SwapConfigService {
     final exe = File(Platform.resolvedExecutable);
     final candidates = [
       '${exe.parent.path}/xfg-swapd',
-      if (Platform.isMacOS) '${exe.parent.parent.parent.path}/Resources/bin/xfg-swapd',
+      if (Platform.isMacOS)
+        '${exe.parent.parent.parent.path}/Resources/bin/xfg-swapd',
       '${Directory.current.path}/build/release/src/xfg-swapd',
       '${Directory.current.path}/xfg-swapd',
     ];
@@ -67,17 +65,16 @@ class SwapConfigService {
     required Map<String, SwapChainConfig> chains,
     String? xfgSecretKey,
   }) async {
-    final config = buildConfig(
-      chains: chains,
-      xfgSecretKey: xfgSecretKey,
-    );
+    final config = buildConfig(chains: chains, xfgSecretKey: xfgSecretKey);
 
     final path = await configPath();
     // The config contains chain private keys + the XFG spend key. Restrict
     // to the owning user on POSIX platforms; never write to a shared temp
     // dir (configPathSync's /tmp fallback is dead code — do not use it).
     final file = File(path);
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(config));
+    await file.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(config),
+    );
     if (!kIsWeb && (Platform.isMacOS || Platform.isLinux)) {
       try {
         await Process.run('chmod', ['600', path]);
@@ -124,7 +121,8 @@ class SwapConfigService {
             config['${chain}_spv_server_$i'] = cfg.servers[i];
           }
         }
-        if (cfg.minServers != null) config['${chain}_spv_min_servers'] = cfg.minServers!;
+        if (cfg.minServers != null)
+          config['${chain}_spv_min_servers'] = cfg.minServers!;
         if (cfg.checkpointHeight != null && cfg.checkpointHeight! > 0) {
           config['${chain}_spv_checkpoint_height'] = cfg.checkpointHeight!;
         }
@@ -142,21 +140,29 @@ class SwapConfigService {
 
   static String? validateWif(String wif, String chain) {
     if (wif.isEmpty) return 'WIF is required';
-    if (wif.length == 64 && RegExp(r'^[0-9a-fA-F]+$').hasMatch(wif)) return null;
+    if (wif.length == 64 && RegExp(r'^[0-9a-fA-F]+$').hasMatch(wif))
+      return null;
     if (wif.length < 50 || wif.length > 60) return 'Invalid WIF length';
-    if (!RegExp(r'^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$').hasMatch(wif)) {
+    if (!RegExp(
+      r'^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$',
+    ).hasMatch(wif)) {
       return 'WIF contains invalid Base58 characters';
     }
     switch (chain.toLowerCase()) {
       case 'btc':
       case 'bch':
-        if (!wif.startsWith('5') && !wif.startsWith('K') && !wif.startsWith('L')) return 'Must start with 5, K, or L';
+        if (!wif.startsWith('5') &&
+            !wif.startsWith('K') &&
+            !wif.startsWith('L'))
+          return 'Must start with 5, K, or L';
         break;
       case 'ltc':
-        if (!wif.startsWith('6') && !wif.startsWith('T')) return 'Must start with 6 or T';
+        if (!wif.startsWith('6') && !wif.startsWith('T'))
+          return 'Must start with 6 or T';
         break;
       case 'kmd':
-        if (!wif.startsWith('7') && !wif.startsWith('U')) return 'Must start with 7 or U';
+        if (!wif.startsWith('7') && !wif.startsWith('U'))
+          return 'Must start with 7 or U';
         break;
     }
     return null;
@@ -168,7 +174,11 @@ class SwapConfigService {
     final cfgPath = configPath ?? await this.configPath();
     if (!File(cfgPath).existsSync()) return false;
     try {
-      _swapDaemon = await Process.start(binary, ['--swap-config', cfgPath, '--service']);
+      _swapDaemon = await Process.start(binary, [
+        '--swap-config',
+        cfgPath,
+        '--service',
+      ]);
       _swapDaemon!.stdout.drain<void>();
       _swapDaemon!.stderr.drain<void>();
       _swapDaemon!.exitCode.then((code) {
@@ -188,13 +198,20 @@ class SwapConfigService {
     if (p == null) return;
     try {
       p.kill(ProcessSignal.sigterm);
-      await p.exitCode.timeout(const Duration(seconds: 5), onTimeout: () { p.kill(ProcessSignal.sigkill); return -1; });
+      await p.exitCode.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          p.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
     } catch (_) {}
   }
 
   bool get isRunning => _swapDaemon != null && _swapDaemon!.pid > 0;
 
-  static String addressFromWif(String wif, String chain) => '(derive from $chain WIF)';
+  static String addressFromWif(String wif, String chain) =>
+      '(derive from $chain WIF)';
 }
 
 class SwapChainConfig {
@@ -215,20 +232,22 @@ class SwapChainConfig {
   });
 
   Map<String, dynamic> toJson() => {
-        'wif': wif,
-        if (servers.isNotEmpty) 'servers': servers,
-        if (minServers != null) 'minServers': minServers,
-        if (checkpointHeight != null) 'checkpointHeight': checkpointHeight,
-        if (checkpointHash != null) 'checkpointHash': checkpointHash,
-        if (rpcUrl != null) 'rpcUrl': rpcUrl,
-      };
+    'wif': wif,
+    if (servers.isNotEmpty) 'servers': servers,
+    if (minServers != null) 'minServers': minServers,
+    if (checkpointHeight != null) 'checkpointHeight': checkpointHeight,
+    if (checkpointHash != null) 'checkpointHash': checkpointHash,
+    if (rpcUrl != null) 'rpcUrl': rpcUrl,
+  };
 
   factory SwapChainConfig.fromJson(Map<String, dynamic> j) => SwapChainConfig(
-        wif: j['wif'] as String? ?? '',
-        servers: (j['servers'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-        minServers: j['minServers'] as int?,
-        checkpointHeight: j['checkpointHeight'] as int?,
-        checkpointHash: j['checkpointHash'] as String?,
-        rpcUrl: j['rpcUrl'] as String?,
-      );
+    wif: j['wif'] as String? ?? '',
+    servers:
+        (j['servers'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        [],
+    minServers: j['minServers'] as int?,
+    checkpointHeight: j['checkpointHeight'] as int?,
+    checkpointHash: j['checkpointHash'] as String?,
+    rpcUrl: j['rpcUrl'] as String?,
+  );
 }

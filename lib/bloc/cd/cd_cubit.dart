@@ -27,14 +27,13 @@ class CdState {
     List<CdMarketListing>? marketListings,
     CdApyResult? apy,
     String? error,
-  }) =>
-      CdState(
-        status: status ?? this.status,
-        myCds: myCds ?? this.myCds,
-        marketListings: marketListings ?? this.marketListings,
-        apy: apy ?? this.apy,
-        error: error,
-      );
+  }) => CdState(
+    status: status ?? this.status,
+    myCds: myCds ?? this.myCds,
+    marketListings: marketListings ?? this.marketListings,
+    apy: apy ?? this.apy,
+    error: error,
+  );
 }
 
 // ── Cubit ──
@@ -44,8 +43,8 @@ class CdCubit extends Cubit<CdState> {
   final Future<void>? _backendReady;
 
   CdCubit(this._rpc, {Future<void>? backendReady})
-      : _backendReady = backendReady,
-        super(const CdState()) {
+    : _backendReady = backendReady,
+      super(const CdState()) {
     _init();
   }
 
@@ -64,12 +63,14 @@ class CdCubit extends Cubit<CdState> {
         _rpc.cdMarketList(),
         _rpc.cdApy(),
       ]);
-      emit(CdState(
-        status: CdLoadStatus.loaded,
-        myCds: (results[0] as CdListResult).cds,
-        marketListings: (results[1] as CdMarketListResult).listings,
-        apy: results[2] as CdApyResult,
-      ));
+      emit(
+        CdState(
+          status: CdLoadStatus.loaded,
+          myCds: (results[0] as CdListResult).cds,
+          marketListings: (results[1] as CdMarketListResult).listings,
+          apy: results[2] as CdApyResult,
+        ),
+      );
     } catch (e) {
       emit(state.copyWith(status: CdLoadStatus.error, error: e.toString()));
     }
@@ -104,7 +105,10 @@ class CdCubit extends Cubit<CdState> {
     return result;
   }
 
-  Future<CdSellResult> sellCd({required String cdId, required String price}) async {
+  Future<CdSellResult> sellCd({
+    required String cdId,
+    required String price,
+  }) async {
     final result = await _rpc.cdSell(cdId: cdId, price: price);
     await loadAll();
     return result;

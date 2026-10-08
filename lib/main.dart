@@ -334,9 +334,7 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
               create: (_) =>
                   CdCubit(rpcService, backendReady: widget.backendReady),
             ),
-            BlocProvider<HearthCubit>(
-              create: (_) => HearthCubit(hearthClient),
-            ),
+            BlocProvider<HearthCubit>(create: (_) => HearthCubit(hearthClient)),
             BlocProvider<DexCubit>(
               create: (_) {
                 final dex = DexCubit();
@@ -351,7 +349,9 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
                 );
                 nodeConnection.addListener((ep) {
                   if (ep.proxyRunning) {
-                    unawaited(dex.init(host: ep.walletHost, port: ep.walletPort));
+                    unawaited(
+                      dex.init(host: ep.walletHost, port: ep.walletPort),
+                    );
                   }
                 });
                 return dex;

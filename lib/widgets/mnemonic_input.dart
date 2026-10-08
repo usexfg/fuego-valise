@@ -34,7 +34,7 @@ class _MnemonicInputState extends State<MnemonicInput> {
     for (int i = 0; i < widget.expectedWordCount; i++) {
       _controllers.add(TextEditingController());
       _focusNodes.add(FocusNode());
-      
+
       _controllers[i].addListener(() {
         _onWordChanged(i);
       });
@@ -43,7 +43,7 @@ class _MnemonicInputState extends State<MnemonicInput> {
 
   void _onWordChanged(int index) {
     final text = _controllers[index].text.trim().toLowerCase();
-    
+
     if (text.isEmpty) {
       setState(() {
         _isValid = false;
@@ -118,10 +118,7 @@ class _MnemonicInputState extends State<MnemonicInput> {
         const SizedBox(height: 8),
         Text(
           'Enter each word in order',
-          style: TextStyle(
-            fontSize: 12,
-            color: AppTheme.textSecondary,
-          ),
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
         const SizedBox(height: 16),
         Wrap(

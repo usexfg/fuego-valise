@@ -102,32 +102,32 @@ class _HearthScreenState extends State<HearthScreen>
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
-children: [
-                    if (_candles != null && _candles!.isNotEmpty)
-                      SizedBox(
-                        height: screenH * 0.30,
-                        child: FuegoChart(
-                          candles: _candles!,
-                          pair: 'XFG/ΗΞΔŦ',
-                          lineColor: HearthTheme.chartLine,
-                          bgColor: HearthTheme.bgPure,
-                        ),
-                      ),
-                    if (_candles == null || _candles!.isEmpty)
-                      Container(
-                        height: screenH * 0.30,
-                        color: HearthTheme.bgPure,
-                        child: const Center(
-                          child: Text(
-                            'No chart data',
-                            style: TextStyle(
-                              color: HearthTheme.textMuted,
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (state.pool != null)
-                      _buildPoolStats(state.pool!),
+                          children: [
+                            if (_candles != null && _candles!.isNotEmpty)
+                              SizedBox(
+                                height: screenH * 0.30,
+                                child: FuegoChart(
+                                  candles: _candles!,
+                                  pair: 'XFG/ΗΞΔŦ',
+                                  lineColor: HearthTheme.chartLine,
+                                  bgColor: HearthTheme.bgPure,
+                                ),
+                              ),
+                            if (_candles == null || _candles!.isEmpty)
+                              Container(
+                                height: screenH * 0.30,
+                                color: HearthTheme.bgPure,
+                                child: const Center(
+                                  child: Text(
+                                    'No chart data',
+                                    style: TextStyle(
+                                      color: HearthTheme.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (state.pool != null)
+                              _buildPoolStats(state.pool!),
                             if (state.pool != null) _buildHeatPriceBar(state),
                             const SizedBox(height: 16),
                             _buildTabSection(state),
@@ -186,7 +186,8 @@ children: [
                       size: 13,
                       weight: FontWeight.w700,
                       color: HearthTheme.xfgEmber.withValues(
-                          alpha: 0.4 + _pulseAnim.value * 0.6),
+                        alpha: 0.4 + _pulseAnim.value * 0.6,
+                      ),
                     ),
                   ),
                 );
@@ -194,7 +195,12 @@ children: [
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(child: _metricChip('24h ${_priceUp ? '+' : ''}0.00%', _priceUp ? HearthTheme.askPrimary : HearthTheme.bidPrimary)),
+          Flexible(
+            child: _metricChip(
+              '24h ${_priceUp ? '+' : ''}0.00%',
+              _priceUp ? HearthTheme.askPrimary : HearthTheme.bidPrimary,
+            ),
+          ),
           const SizedBox(width: 6),
           // Center: XFG priced in ΗΞΔŦ — expanded but ellipsized
           Expanded(
@@ -212,7 +218,12 @@ children: [
             ),
           ),
           const SizedBox(width: 6),
-          Flexible(child: _metricChip(_formatVol(state.pool?.epochSwapFees.toString()), HearthTheme.textSecondary)),
+          Flexible(
+            child: _metricChip(
+              _formatVol(state.pool?.epochSwapFees.toString()),
+              HearthTheme.textSecondary,
+            ),
+          ),
           const SizedBox(width: 6),
           Flexible(
             flex: 2,
@@ -447,10 +458,14 @@ children: [
     }
     final book = state.orderBookState!;
     final maxTotal = book.asks.isNotEmpty
-        ? book.asks.map((e) => double.tryParse(e.amount) ?? 0).reduce((a, b) => a > b ? a : b)
+        ? book.asks
+              .map((e) => double.tryParse(e.amount) ?? 0)
+              .reduce((a, b) => a > b ? a : b)
         : 1.0;
     final maxBidTotal = book.bids.isNotEmpty
-        ? book.bids.map((e) => double.tryParse(e.amount) ?? 0).reduce((a, b) => a > b ? a : b)
+        ? book.bids
+              .map((e) => double.tryParse(e.amount) ?? 0)
+              .reduce((a, b) => a > b ? a : b)
         : 1.0;
     final globalMax = maxTotal > maxBidTotal ? maxTotal : maxBidTotal;
 
@@ -922,7 +937,9 @@ children: [
   }
 
   Widget _quoteDisplay(AmmQuote quote, HearthState state) {
-    final heatAmount = _sellXfg ? quote.outputAmount : _amountController.text.trim();
+    final heatAmount = _sellXfg
+        ? quote.outputAmount
+        : _amountController.text.trim();
     final heatVal = double.tryParse(heatAmount) ?? 0;
     const heatPegUsd = 1.58;
     final usd = heatVal * heatPegUsd;
