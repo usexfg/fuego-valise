@@ -33,7 +33,11 @@ class PeerSwapScreen extends StatefulWidget {
 
 class _PeerSwapScreenState extends State<PeerSwapScreen> {
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _counterpartyAmountController =
+      TextEditingController();
   final TextEditingController _peerController = TextEditingController();
+  final TextEditingController _peerKeyController = TextEditingController();
+  String? _formError;
   String _activeFilter = 'All';
   String? _chainFilter;
   String _historyFilter = 'All';
@@ -59,36 +63,46 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
   void dispose() {
     SwapNotificationService.dispose();
     _amountController.dispose();
+    _counterpartyAmountController.dispose();
     _peerController.dispose();
+    _peerKeyController.dispose();
     super.dispose();
   }
 
-  void _initiateSwap(DexState state, String ticker) {
-    final String amountStr = _amountController.text.trim();
-    if (amountStr.isEmpty) {
+  void _initiateSwap(DexState state) {
+    final chain = state.selectedSwapChain;
+    if (chain == null || !chain.executable) {
+      setState(() => _formError = 'Select a ready swap chain');
       return;
     }
-    final double? amountXfg = double.tryParse(amountStr);
-    if (amountXfg == null || amountXfg <= 0) {
-      return;
+    try {
+      final xfgAmount = SwapDaemonClient.xfgToAtomic(
+        _amountController.text.trim(),
+      );
+      final counterpartyAmount = SwapDaemonClient.counterpartyToAtomic(
+        _counterpartyAmountController.text.trim(),
+        chain.decimals,
+      );
+      final peer = _peerController.text.trim();
+      final peerKey = _peerKeyController.text.trim();
+      setState(() => _formError = null);
+      context.read<DexCubit>().initiateCrossChainSwap(
+        pair: chain.key,
+        xfgAmount: xfgAmount,
+        ctrAmount: counterpartyAmount,
+        peer: peer,
+        expectedPeerPubkey: peerKey,
+      );
+    } catch (error) {
+      setState(() => _formError = error.toString());
     }
-    final String peer = _peerController.text.trim();
-    if (peer.isEmpty) {
-      return;
-    }
-    context.read<DexCubit>().initiateCrossChainSwap(
-      pair: ticker,
-      xfgAmount: (amountXfg * 1e7).toInt(),
-      ctrAmount: (amountXfg * 1e7).toInt(),
-      peer: peer,
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<DexCubit, DexState>(
       builder: (BuildContext context, DexState state) {
-        final String ticker = state.selectedPair.ticker;
+        final String ticker = state.selectedSwapChain?.ticker ?? 'asset';
         final List<SwapInfo> allActive = state.spvSwaps
             .where((SwapInfo s) => !s.isTerminal)
             .toList();
@@ -107,6 +121,10 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
               _chainSelector(state),
               const SizedBox(height: 16),
               _form(state, ticker, allActive),
+              if (_formError != null) ...[
+                const SizedBox(height: 12),
+                _statusCard(_formError!, true),
+              ],
               if (state.lastResult != null) ...[
                 const SizedBox(height: 12),
                 _statusCard(state.lastResult!, false),
@@ -117,7 +135,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
               ],
               if (allActive.isNotEmpty || allHistory.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                _filterBar(),
+                _filterBar(state),
               ],
               if (active.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -199,34 +217,54 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
   }
 
   Widget _chainSelector(DexState state) {
+    if (state.swapChains.isEmpty) {
+      return Text(
+        state.swapDaemonError ?? 'No protocol chains reported by xfg-swapd',
+        style: const TextStyle(color: AppTheme.errorColor, fontSize: 12),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) => Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: ChainInfo.swapableChains.map((String t) {
-          final bool selected = t == state.selectedPair.ticker;
-          final Color color = ChainInfo.colors[t] ?? AppTheme.primaryColor;
+        children: state.swapChains.map((SwapChain chain) {
+          final ticker = chain.ticker;
+          final bool selected = chain.id == state.selectedSwapChainId;
+          final Color color = ChainInfo.colors[ticker] ?? AppTheme.primaryColor;
           return GestureDetector(
-            onTap: () {
-              context.read<DexCubit>().selectPairById(t);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: selected
-                    ? color.withValues(alpha: 0.2)
-                    : AppTheme.cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: selected ? color : AppTheme.surfaceColor,
-                ),
-              ),
-              child: Text(
-                t,
-                style: TextStyle(
-                  color: selected ? color : AppTheme.textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+            onTap: chain.executable
+                ? () => context.read<DexCubit>().selectSwapChain(chain.id)
+                : null,
+            child: Tooltip(
+              message: chain.executable
+                  ? chain.name
+                  : (chain.readinessError.isEmpty
+                        ? '${chain.name} is not ready'
+                        : chain.readinessError),
+              child: Opacity(
+                opacity: chain.executable ? 1 : 0.45,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? color.withValues(alpha: 0.2)
+                        : AppTheme.cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: selected ? color : AppTheme.surfaceColor,
+                    ),
+                  ),
+                  child: Text(
+                    ticker,
+                    style: TextStyle(
+                      color: selected ? color : AppTheme.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -236,7 +274,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
     );
   }
 
-  Widget _filterBar() {
+  Widget _filterBar(DexState state) {
     const List<String> tabs = ['All', 'Active', 'Landed', 'History'];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,8 +323,8 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
           runSpacing: 6,
           children: [
             _chainFilterChip(null, 'All chains'),
-            for (final String t in ChainInfo.swapableChains)
-              _chainFilterChip(t, t),
+            for (final SwapChain chain in state.swapChains)
+              _chainFilterChip(chain.ticker, chain.ticker),
           ],
         ),
       ],
@@ -325,7 +363,9 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
   }
 
   Widget _form(DexState state, String ticker, List<SwapInfo> active) {
+    final chain = state.selectedSwapChain;
     final bool connected = state.isSwapDaemonConnected;
+    final bool ready = connected && chain != null && chain.executable;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -376,6 +416,28 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
         ),
         const SizedBox(height: 12),
         TextField(
+          controller: _counterpartyAmountController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: '$ticker Amount',
+            labelStyle: const TextStyle(color: AppTheme.textSecondary),
+            hintText: 'Exact amount agreed with the counterparty',
+            hintStyle: TextStyle(
+              color: AppTheme.textSecondary.withValues(alpha: 0.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: AppTheme.textSecondary.withValues(alpha: 0.3),
+              ),
+            ),
+            focusedBorder: const OutlineInputBorder(
+              borderSide: BorderSide(color: AppTheme.primaryColor),
+            ),
+          ),
+          style: const TextStyle(color: AppTheme.textPrimary),
+        ),
+        const SizedBox(height: 12),
+        TextField(
           controller: _peerController,
           decoration: InputDecoration(
             labelText: 'Peer Endpoint (from your counterparty)',
@@ -395,11 +457,43 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
           ),
           style: const TextStyle(color: AppTheme.textPrimary),
         ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _peerKeyController,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(
+            labelText: 'Counterparty Swap Public Key',
+            labelStyle: const TextStyle(color: AppTheme.textSecondary),
+            hintText: '64 hexadecimal characters',
+            hintStyle: TextStyle(
+              color: AppTheme.textSecondary.withValues(alpha: 0.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: AppTheme.textSecondary.withValues(alpha: 0.3),
+              ),
+            ),
+            focusedBorder: const OutlineInputBorder(
+              borderSide: BorderSide(color: AppTheme.primaryColor),
+            ),
+          ),
+          style: const TextStyle(color: AppTheme.textPrimary),
+        ),
+        if (chain != null && !chain.executable) ...[
+          const SizedBox(height: 10),
+          Text(
+            chain.readinessError.isEmpty
+                ? '${chain.name} is not ready'
+                : chain.readinessError,
+            style: const TextStyle(color: AppTheme.errorColor, fontSize: 11),
+          ),
+        ],
         const SizedBox(height: 16),
         ElevatedButton(
-          onPressed: (state.isSwapInitiating || !connected)
+          onPressed: (state.isSwapInitiating || !ready)
               ? null
-              : () => _initiateSwap(state, ticker),
+              : () => _initiateSwap(state),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
             padding: const EdgeInsets.symmetric(vertical: 14),

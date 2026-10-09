@@ -35,9 +35,6 @@ class _DexScreenState extends State<DexScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _loadPriceData();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => context.read<DexCubit>().init(),
-    );
     _takerKeyController.addListener(_onTakerKeyChanged);
   }
 

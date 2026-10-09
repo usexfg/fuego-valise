@@ -1,5 +1,32 @@
 # CHANGELOG.agent.md
 
+## [2026-10-08] DeXFG swap daemon execution contract
+
+DeXFG now consumes the daemon's runtime network and chain catalog, preserves
+amounts as decimal strings through JSON-RPC, requires configured and ready chain
+adapters plus a pinned counterparty key, and treats ambiguous mutation responses
+as unknown outcomes. AFK soft-order requests read the daemon capability and stop
+before key or reserve-proof work while the suite path remains disabled.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 1 | Add token-authenticated, no-redirect, bounded swap RPC transport | Codex | 2026-10-08 | DONE |
+| 2 | Enforce daemon network/profile and runtime chain readiness | Codex | 2026-10-08 | DONE |
+| 3 | Convert display amounts with `BigInt` and enforce protocol ranges | Codex | 2026-10-08 | DONE |
+| 4 | Require peer endpoint and nonzero 32-byte counterparty key | Codex | 2026-10-08 | DONE |
+| 5 | Mark initiate, accept, refund, and timeout checks as ambiguous on transport failure | Codex | 2026-10-08 | DONE |
+| 6 | Decode exact root atomic amounts, runtime pair names, and numeric status flags | Codex | 2026-10-08 | DONE |
+| 7 | Gate AFK soft orders on the daemon capability | Codex | 2026-10-08 | DONE |
+
+| Gate | Result | Agent | Date |
+|------|--------|-------|------|
+| Focused Flutter tests | PASS — 8 tests | Codex | 2026-10-08 |
+| Focused analyzer | PASS — no errors or warnings; informational lints remain | Codex | 2026-10-08 |
+| Diff whitespace check | PASS | Codex | 2026-10-08 |
+| All tasks done | PASS | Codex | 2026-10-08 |
+
+---
+
 ## [2026-10-01] Swap-pair drift: 10 DeXFG pairs rendered as `PAIR_<n>`
 
 | # | Task | Owner | Date | Status |
