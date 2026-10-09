@@ -15,11 +15,11 @@ import '../transactions/receive_screen.dart';
 import '../../utils/xfg_ticker.dart';
 
 // Shared prestige palette — Obsidian case + Champagne dial (Obsidian Reserve house)
-const Color _obsidian = Color(0xFF0D0B08);
+const Color _obsidian = Color(0xFF000000);
 const Color _champagne = Color(
   0xFFC5A059,
 ); // Champagne gold — muted, not peachy
-const Color _platinum = Color(0xFFF5F1E8); // Cream parchment
+const Color _platinum = Color(0xFFF5F5F5); // Cream parchment
 const List<Color> _fireStops = [
   Color(0xFF8C734B), // Muted gold
   Color(0xFFC5A059), // Champagne

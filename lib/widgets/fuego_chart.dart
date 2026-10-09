@@ -15,7 +15,7 @@ class FuegoChart extends StatelessWidget {
     required this.candles,
     this.pair = '',
     this.lineColor = const Color(0xFFC5A059),
-    this.bgColor = const Color(0xFF0D0B08),
+    this.bgColor = const Color(0xFF000000),
   });
 
   @override

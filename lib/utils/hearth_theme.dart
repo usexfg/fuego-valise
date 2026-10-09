@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 class HearthTheme {
   HearthTheme._();
 
-  static const Color bgPure = Color(0xFF0D0B08); // Obsidian — house base
-  static const Color bgDeep = Color(0xFF12100C);
-  static const Color bgCard = Color(0xFF25221A); // Brushed platinum dark
-  static const Color bgSurface = Color(0xFF181512);
-  static const Color bgElevated = Color(0xFF1E1B14);
-  static const Color bgInput = Color(0xFF1A1712);
+  static const Color bgPure = Color(0xFF000000); // Obsidian — house base
+  static const Color bgDeep = Color(0xFF0E0E0E);
+  static const Color bgCard = Color(0xFF1E1E1E); // Brushed platinum dark
+  static const Color bgSurface = Color(0xFF121212);
+  static const Color bgElevated = Color(0xFF2A2A2A);
+  static const Color bgInput = Color(0xFF1B1B1B);
 
   static const Color bidPrimary = Color(
     0xFF3D5A80,
@@ -24,13 +24,13 @@ class HearthTheme {
   static const Color askBg = Color(0x18C5A059);
   static const Color askDepth = Color(0x30C5A059);
 
-  static const Color textWhite = Color(0xFFF5F1E8); // Cream parchment
-  static const Color textPrimary = Color(0xFFC2B8A3);
-  static const Color textSecondary = Color(0xFF8A8278);
+  static const Color textWhite = Color(0xFFF5F5F5); // Cream parchment
+  static const Color textPrimary = Color(0xFFA3A3A3);
+  static const Color textSecondary = Color(0xFF808080);
   static const Color textMuted = Color(0xFF6B6560);
   static const Color textDim = Color(0xFF3A352F);
 
-  static const Color divider = Color(0xFF2A2418);
+  static const Color divider = Color(0xFF2C2C2C);
   static const Color border = Color(0xFF3A352F);
 
   static const Color chartLine = Color(0xFFC5A059);

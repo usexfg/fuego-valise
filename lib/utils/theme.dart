@@ -7,19 +7,19 @@ class AppTheme {
     0xFFC5A059,
   ); // Champagne gold (Swiss watch dial)
   static const Color secondaryColor = Color(
-    0xFF1A1814,
+    0xFF101010,
   ); // Midnight blue-black (depth)
   static const Color accentColor = Color(
     0xFF3D5A80,
   ); // Midnight Blue (Monaco sea / yacht canvas)
   static const Color backgroundColor = Color(
-    0xFF0D0B08,
+    0xFF000000,
   ); // Obsidian black (premium watch case back)
   static const Color surfaceColor = Color(
-    0xFF181512,
+    0xFF121212,
   ); // Warm obsidian (inside the case)
   static const Color cardColor = Color(
-    0xFF25221A,
+    0xFF1E1E1E,
   ); // Brushed platinum dark (card face)
 
   // Champagne gold scale — fire gold IS champagne, not peachy orange (per design-tokens.json)
@@ -54,17 +54,17 @@ class AppTheme {
   ); // Glacial Aqua — HEAT secondary
 
   // Enhanced surface variations — warm obsidian family
-  static const Color surfaceLight = Color(0xFF1E1B14); // Lighter warm obsidian
-  static const Color surfaceDark = Color(0xFF12100C); // Darker warm obsidian
+  static const Color surfaceLight = Color(0xFF2A2A2A); // Lighter warm obsidian
+  static const Color surfaceDark = Color(0xFF0E0E0E); // Darker warm obsidian
   static const Color cardLight = Color(
-    0xFF2A2418,
+    0xFF2C2C2C,
   ); // Lighter card — brushed platinum
-  static const Color cardDark = Color(0xFF1A1712); // Darker card
+  static const Color cardDark = Color(0xFF1B1B1B); // Darker card
 
   // Text colors — parchment on obsidian (cream, not cold white)
-  static const Color textPrimary = Color(0xFFF5F1E8); // Cream parchment
-  static const Color textSecondary = Color(0xFFC2B8A3); // Warm secondary
-  static const Color textMuted = Color(0xFF8A8278); // Muted
+  static const Color textPrimary = Color(0xFFF5F5F5); // Cream parchment
+  static const Color textSecondary = Color(0xFFA3A3A3); // Warm secondary
+  static const Color textMuted = Color(0xFF808080); // Muted
 
   // Status colors (moved above for organization)
 
@@ -201,7 +201,7 @@ class AppTheme {
         indicatorColor: primaryColor,
       ),
       dividerTheme: const DividerThemeData(
-        color: Color(0xFF2A2418), // Brushed platinum — warm, not blue-gray
+        color: Color(0xFF2C2C2C), // Brushed platinum — warm, not blue-gray
         thickness: 1,
         space: 1,
       ),
@@ -282,8 +282,8 @@ class AppTheme {
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: primaryColor, // Champagne
-        linearTrackColor: Color(0xFF1E1B14), // Warm obsidian light
-        circularTrackColor: Color(0xFF1E1B14),
+        linearTrackColor: Color(0xFF2A2A2A), // Warm obsidian light
+        circularTrackColor: Color(0xFF2A2A2A),
       ),
     );
   }
@@ -368,7 +368,7 @@ class AppTheme {
     end: Alignment.bottomCenter,
     colors: [
       backgroundColor, // Obsidian 0D0B08
-      Color(0xFF181512), // Warm obsidian
+      Color(0xFF121212), // Warm obsidian
     ],
   );
 
