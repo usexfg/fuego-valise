@@ -62,7 +62,11 @@ fn is_fuegod_method(method: &str) -> bool {
         "check_tx_proof" | "check_reserve_proof" |
         "start_mining" | "stop_mining" |
         "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
+        // cd::apy has a real fuegod endpoint (remapped to estimate_cd_yield).
+        // The other four cd::* market methods have none, so they are not
+        // allowlisted here: an unknown cd:: method must fail loudly rather
+        // than reach the daemon and render an empty CD screen.
+        "cd::apy" |
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_state" | "get_orderbook_info" | "get_orderbook_estimates" |
         "get_fuego_price" | "getswapoffers" | "getswapprice" | "getswaptrades" |
@@ -202,7 +206,6 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
                 .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
         }
         "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
         "getswapoffers" | "getswapprice" | "getswaptrades" |
         "submitswap" | "cancelswap" | "requestswap" |
         "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
@@ -212,6 +215,19 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
         "get_treasury_info" | "get_alias" | "get_alias_by_address" | "get_all_aliases" |
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_info" | "get_orderbook_estimates" |
+        // CD abstraction: the Dart layer speaks cd::*, fuegod speaks its own
+        // names. cd::apy is the only cd::* call with a real fuegod endpoint.
+        "cd::apy" => {
+            client.post(format!("{}/estimate_cd_yield", fuegod_url))
+                .json(&params).send().await
+                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
+        }
+        // cd::market_list / sell / buy / cancel_listing have no fuegod endpoint
+        // (no CD secondary market exists yet), so they are deliberately absent
+        // from every forward arm and fall through to "unknown fuegod method".
+        // They used to be forwarded verbatim, which posted the literal
+        // "cd::market_list" to the daemon and left the CD screen silently empty.
+        // Re-add them here once fuegod grows a CD market.
         "get_fuego_price" |
         "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit" => {
             client.post(format!("{}/{}", fuegod_url, method))

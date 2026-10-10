@@ -58,11 +58,22 @@ class CdCubit extends Cubit<CdState> {
   Future<void> loadAll() async {
     emit(state.copyWith(status: CdLoadStatus.loading));
     try {
-      final results = await Future.wait([
-        _rpc.cdList(),
-        _rpc.cdMarketList(),
-        _rpc.cdApy(),
-      ]);
+      // cdMarketList has no fuegod backend yet (the CD market does not exist in
+      // the daemon), so walletd rejects it. It is loaded independently: a
+      // Future.wait would let that one failure discard cdList — the deposits
+      // the user actually owns — and blank the whole screen. cdApy is a real
+      // endpoint and is loaded with the list; if it ever fails the screen falls
+      // back to defaults rather than erroring out the user's CDs.
+      final listFuture = _rpc.cdList();
+      final apyFuture = _rpc
+          .cdApy()
+          .catchError((Object _) => const CdApyResult.empty());
+      final marketFuture = _rpc.cdMarketList().then<CdMarketListResult>(
+        (v) => v,
+        onError: (Object _, StackTrace __) => const CdMarketListResult.empty(),
+      );
+
+      final results = await Future.wait([listFuture, marketFuture, apyFuture]);
       emit(
         CdState(
           status: CdLoadStatus.loaded,
