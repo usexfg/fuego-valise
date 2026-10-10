@@ -19,13 +19,13 @@ runs:
         set -euo pipefail
         test -d "$APP"
         if [ "$RUNNER_OS" = "macOS" ]; then
-          for b in fuego_walletd fuegod xfg-swapd unified; do
+          for b in fuego_walletd fuegod xfg-swapd unifyd; do
             install -m 755 "backends/$b" "$APP/Contents/MacOS/$b"
           done
           test -f "$APP/Contents/Frameworks/libfuego_ffi.dylib"
           ./scripts/bundle-macos-dylibs.sh "$APP"
         else
-          for b in fuego_walletd fuegod xfg-swapd unified; do
+          for b in fuego_walletd fuegod xfg-swapd unifyd; do
             install -m 755 "backends/$b" "$APP/$b"
           done
           install -m 644 backends/libfuego_ffi.so "$APP/lib/libfuego_ffi.so"

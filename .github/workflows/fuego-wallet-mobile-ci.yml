@@ -150,11 +150,11 @@ jobs:
           mkdir -p build/ios/iphoneos/Payload
           cp -R build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
-          zip -qr Fuego-Wallet-iOS.ipa Payload
+          zip -qr fuego-valise-iOS.ipa Payload
 
       - name: Upload iOS App
         uses: actions/upload-artifact@v4
         with:
           name: fuego-wallet-ios
-          path: build/ios/iphoneos/Fuego-Wallet-iOS.ipa
+          path: build/ios/iphoneos/fuego-valise-iOS.ipa
           retention-days: 30

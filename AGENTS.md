@@ -130,7 +130,7 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
 - Flutter: 3.44.4
 - CI: ubuntu-22.04 (glibc 2.35)
-- macOS app bundle: `fuego_wallet.app`
+- macOS app bundle: `fuego-valise.app`
 - Rust backend binary: `fuego_walletd`
 - Default remote daemon: `207.244.247.64:18180`
 

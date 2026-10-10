@@ -41,8 +41,8 @@ Burn XFG to mint ΗΞΔŦ or buy & sell on HⲈⲆ☈ⲦН Floor; Fuego's on-cha
 - **Real-time Hashrate** monitoring
 - **Mining Performance** tracking
 
-### 🔄 Unified Daemon
-The app uses a **unified daemon** process (`unified`) that bundles fuegod, walletd, and xfg-swapd into a single embedded process for local node operation. When the unified daemon is unavailable, the app falls back to a remote node connection.
+### 🔄 Unifyd Daemon
+The app uses the **unifyd** daemon (`unifyd`): an in-process node plus the wallet service in one binary, used for local node operation. It does not replace `xfg-swapd`, which stays separate. When the unifyd daemon is unavailable, the app falls back to a remote node connection.
 
 ## Get Started
 
@@ -110,7 +110,7 @@ lib/
 │   ├── wallet.dart
 │   └── wallet.g.dart
 ├── services/                          # Business logic
-│   ├── daemon_event_bus.dart          # Unified daemon health monitoring
+│   ├── daemon_event_bus.dart          # Unifyd daemon health monitoring
 │   ├── daemon_manager.dart            # Daemon lifecycle management
 │   ├── fuego_daemon_client.dart       # Fuego node RPC client
 │   ├── fuego_rpc_service.dart         # RPC communication
@@ -156,10 +156,10 @@ The app supports two daemon modes:
 
 | Mode | Description | Ports |
 |------|-------------|-------|
-| **Unified** (preferred) | Single `unified` binary bundling fuegod + walletd + xfg-swapd | walletd: 18189 |
+| **Unifyd** (preferred) | Single `unifyd` binary: in-process node + wallet service. An *alternative* to `fuego_walletd`, not a wrapper around it; it does not launch xfg-swapd | walletd: 18189 |
 | **Separate** | Individual daemons (fuegod, fuego_walletd, xfg-swapd) | fuegod: 18180, walletd: 18189, swapd: 18902 |
 
-The unified daemon is started automatically when the binary is present in the app bundle. If it fails (missing binary, port conflict, Keychain error), the app falls back to remote node mode.
+The unifyd daemon is started automatically when the binary is present in the app bundle. If it fails (missing binary, port conflict, Keychain error), the app falls back to remote node mode.
 
 ### Security Implementation
 - **Multi-layered Encryption** with industry standards
@@ -169,12 +169,12 @@ The unified daemon is started automatically when the binary is present in the ap
 
 ##  Configuration
 
-### Local Node (Unified Daemon)
-When running with a local node, the app uses the unified daemon process. The daemon is managed automatically by `DaemonManager`:
+### Local Node (Unifyd Daemon)
+When running with a local node, the app uses the unifyd daemon process. The daemon is managed automatically by `DaemonManager`:
 
-- **walletd port**: `18189` (unified daemon binds here)
-- **fuegod port**: `18180` (internal, managed by unified daemon)
-- **swapd port**: `18902` (internal, managed by unified daemon)
+- **walletd port**: `18189` (unifyd daemon binds here)
+- **fuegod port**: `18180` (internal, managed by unifyd daemon)
+- **swapd port**: `18902` (separate `xfg-swapd` process; unifyd does not launch it)
 
 ### Remote Node Connection
 The app connects to remote Fuego network nodes by default. You can configure custom nodes in the app settings.

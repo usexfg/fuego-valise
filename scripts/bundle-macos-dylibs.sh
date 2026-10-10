@@ -2,7 +2,7 @@
 
 # Bundle macOS daemon dependencies into the app.
 #
-# The fuego-suite C++ daemons (fuegod, unified, xfg-swapd) link against homebrew
+# The fuego-suite C++ daemons (fuegod, unifyd, xfg-swapd) link against homebrew
 # dylibs at absolute paths (/opt/homebrew/opt/...). End users do not have
 # those paths — without this step every C++ daemon dies with "Library not
 # loaded" on a clean machine.
@@ -29,7 +29,7 @@ BIN_DIR="$APP/Contents/MacOS"
 FW_DIR="$APP/Contents/Frameworks"
 mkdir -p "$FW_DIR"
 
-DAEMONS=("$BIN_DIR/fuegod" "$BIN_DIR/unified" "$BIN_DIR/xfg-swapd")
+DAEMONS=("$BIN_DIR/fuegod" "$BIN_DIR/unifyd" "$BIN_DIR/xfg-swapd")
 
 # otool -L can contain no /opt/homebrew paths (no-match grep exits 1).
 # Under `set -o pipefail` that kills the script; `|| true` keeps going.

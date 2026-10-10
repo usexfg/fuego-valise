@@ -218,7 +218,7 @@ jobs:
       - name: Bundle backends into app
         uses: ./.github/actions/bundle-desktop-backends
         with:
-          app: build/macos/Build/Products/Release/fuego_wallet.app
+          app: build/macos/Build/Products/Release/fuego-valise.app
 
       - name: Import Code Signing Certificate
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -251,11 +251,11 @@ jobs:
           if [ -f "$KEYCHAIN_PATH" ]; then
             IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' 'NR==1 {print $2}')"
           fi
-          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app "${IDENTITY:--}"
+          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego-valise.app "${IDENTITY:--}"
 
       - name: Create DMG
         run: |
-          APP_PATH=build/macos/Build/Products/Release/fuego_wallet.app
+          APP_PATH=build/macos/Build/Products/Release/fuego-valise.app
           hdiutil create -volname "Fuego Wallet" \
             -srcfolder "$APP_PATH" \
             -ov -format UDZO \

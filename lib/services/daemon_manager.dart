@@ -12,9 +12,11 @@ import 'security_service.dart';
 import 'walletd_auth.dart';
 import '../models/network_config.dart';
 
-/// Unified process manager for all backend daemons.
+/// Unifyd process manager for all backend daemons.
 ///
-/// Manages the unified daemon (fuegod + walletd + xfg-swapd in one process).
+/// Manages the unifyd daemon: an in-process node (CryptoNoteCore + P2P) and
+/// the wallet container service in one binary. It is an alternative to
+/// fuego_walletd, not a wrapper around it, and it does not launch xfg-swapd.
 /// Default ports: fuegod=18180, walletd=18189, swapd=18902.
 class DaemonManager {
   // ── Ports (configurable per network) ──────────────────────────────
@@ -28,7 +30,7 @@ class DaemonManager {
       swapdPort = 18902;
 
   // ── Process handles ──────────────────────────────────────────────
-  Process? _unified;
+  Process? _unifyd;
   Process? _fuegod;
   Process? _walletd;
   Process? _swapd;
@@ -83,12 +85,12 @@ class DaemonManager {
   /// Config path used for the last C++ swapd start; preserved for crash-restarts.
   String? _lastSwapdConfigPath;
 
-  /// Bounded stderr buffer captured during unified daemon startup
+  /// Bounded stderr buffer captured during unifyd daemon startup
   /// (release mode) so failures surface the real cause, not just the
   /// exit code (e.g. "Address already in use").
   StringBuffer? _unifiedExitLog;
 
-  /// Unified event bus — single source of truth for daemon health.
+  /// Unifyd event bus — single source of truth for daemon health.
   final DaemonEventBus eventBus = DaemonEventBus();
 
   /// Human-readable error from last `startAll()` call.
@@ -146,7 +148,7 @@ class DaemonManager {
   }
 
   /// True if [pid] looks like a Fuego daemon (fuegod, fuego_walletd, xfg-swapd,
-  /// unified) by inspecting `ps -o comm=` / `args` or Windows `wmic`/`tasklist`.
+  /// unifyd) by inspecting `ps -o comm=` / `args` or Windows `wmic`/`tasklist`.
   /// Returns false on unknown/unreadable (fail-closed: do not kill).
   /// Single-ps-then-recheck pattern mitigates TOCTOU; caller should re-verify
   /// PID still holds port before kill.
@@ -167,7 +169,7 @@ class DaemonManager {
           if (out.contains('fuego') ||
               out.contains('walletd') ||
               out.contains('swapd') ||
-              out.contains('unified') ||
+              out.contains('unifyd') ||
               out.contains('fuegod')) {
             return true;
           }
@@ -184,7 +186,7 @@ class DaemonManager {
           if (out2.contains('fuego') ||
               out2.contains('walletd') ||
               out2.contains('swapd') ||
-              out2.contains('unified')) {
+              out2.contains('unifyd')) {
             return true;
           }
         } catch (_) {}
@@ -205,7 +207,7 @@ class DaemonManager {
         'fuego-walletd',
         'xfg-swapd',
         'swapd',
-        'unified',
+        'unifyd',
       };
       if (allowed.contains(commBase)) return true;
       final args = await Process.run('ps', [
@@ -215,13 +217,13 @@ class DaemonManager {
         pid.toString(),
       ]);
       final argsStr = (args.stdout as String).toLowerCase();
-      // Check for path segments like /fuegod or /unified to avoid 'notfuego' false positive
+      // Check for path segments like /fuegod or /unifyd to avoid 'notfuego' false positive
       if (argsStr.contains('/fuegod') ||
           argsStr.contains('/fuego_walletd') ||
           argsStr.contains('/xfg-swapd') ||
-          argsStr.contains('/unified') ||
+          argsStr.contains('/unifyd') ||
           argsStr.contains(' fuegod ') ||
-          argsStr.contains(' unified ')) {
+          argsStr.contains(' unifyd ')) {
         return true;
       }
       return allowed.any((a) => argsStr.contains(a) && argsStr.contains('/$a'));
@@ -285,14 +287,14 @@ class DaemonManager {
 
   // ── Binary discovery ─────────────────────────────────────────────
 
-  String? _findUnifiedBinary() {
+  String? _findUnifydBinary() {
     final exe = File(Platform.resolvedExecutable);
     final candidates = [
-      '${exe.parent.path}/unified',
+      '${exe.parent.path}/unifyd',
       if (Platform.isMacOS)
-        '${exe.parent.parent.parent.path}/Resources/bin/unified',
-      '${Directory.current.path}/fuego-suite/build/src/unified',
-      '${Directory.current.path}/fuego-suite/build/release/src/unified',
+        '${exe.parent.parent.parent.path}/Resources/bin/unifyd',
+      '${Directory.current.path}/fuego-suite/build/src/unifyd',
+      '${Directory.current.path}/fuego-suite/build/release/src/unifyd',
     ];
     for (final path in candidates) {
       if (File(path).existsSync()) return path;
@@ -454,10 +456,10 @@ class DaemonManager {
     final fuegodOk = fuegodHealth.ok;
     final swapdOk = swapdHealth.ok;
 
-    // Proxy (walletd/unified) is the critical process. Embedded fuegod is
+    // Proxy (walletd/unifyd) is the critical process. Embedded fuegod is
     // managed by --local and may not expose 18180 until fully synced.
     final proxyAlive =
-        _unified != null || _walletd != null || _walletdExternallyRunning;
+        _unifyd != null || _walletd != null || _walletdExternallyRunning;
     final proxyHealthy = proxyAlive && walletdOk;
 
     // Local mode: the chain IS the embedded fuegod — it must answer on the
@@ -468,13 +470,13 @@ class DaemonManager {
     status.value = DaemonStatus(
       fuegodRunning:
           (_fuegod != null && fuegodOk) ||
-          (_unified != null && proxyHealthy) ||
+          (_unifyd != null && proxyHealthy) ||
           (_walletd != null && proxyHealthy && chainOk) ||
           (_walletdExternallyRunning && fuegodOk) ||
           _fuegodExternallyRunning,
       walletdRunning: proxyHealthy || _walletdExternallyRunning,
       swapdRunning:
-          (_swapd != null || _unified != null || _swapdExternallyRunning) &&
+          (_swapd != null || _unifyd != null || _swapdExternallyRunning) &&
           swapdOk,
       fuegodError:
           daemonErrors['fuegod'] ??
@@ -533,13 +535,13 @@ class DaemonManager {
     String? walletdErr;
     String? swapdErr;
 
-    // ── 0. Try unified daemon first (desktop bundles) ──
-    final unifiedBin = _findUnifiedBinary();
-    if (unifiedBin != null) {
-      debugPrint('[daemon] Found unified daemon: $unifiedBin');
+    // ── 0. Try unifyd daemon first (desktop bundles) ──
+    final unifydBin = _findUnifydBinary();
+    if (unifydBin != null) {
+      debugPrint('[daemon] Found unifyd daemon: $unifydBin');
       try {
-        walletdErr = await _startUnified(
-          unifiedBin,
+        walletdErr = await _startUnifyd(
+          unifydBin,
           useLocalNode: useLocalNode,
           useTestnet: useTestnet,
           daemonHost: daemonHost,
@@ -547,18 +549,18 @@ class DaemonManager {
         );
       } catch (e) {
         walletdErr = e.toString();
-        debugPrint('[daemon] Unified daemon crashed: $e');
+        debugPrint('[daemon] Unifyd daemon crashed: $e');
       }
       if (walletdErr == null) {
-        debugPrint('[daemon] Unified daemon started OK on port $walletdPort');
+        debugPrint('[daemon] Unifyd daemon started OK on port $walletdPort');
       } else {
         debugPrint(
-          '[daemon] Unified daemon failed ($walletdErr), falling back...',
+          '[daemon] Unifyd daemon failed ($walletdErr), falling back...',
         );
       }
     } else {
       debugPrint(
-        '[daemon] Unified daemon binary not found — using fuego_walletd',
+        '[daemon] Unifyd daemon binary not found — using fuego_walletd',
       );
     }
 
@@ -568,7 +570,7 @@ class DaemonManager {
     //         and break the remote path (this was the inverted-logic bug).
 
     // ── 2. fuego_walletd (wallet JSON-RPC proxy — required) ──
-    if (walletdErr != null || unifiedBin == null) {
+    if (walletdErr != null || unifydBin == null) {
       walletdErr = await _startWalletd(
         useLocalNode: useLocalNode,
         useTestnet: useTestnet,
@@ -939,21 +941,21 @@ class DaemonManager {
     }
   }
 
-  Future<String?> _startUnified(
+  Future<String?> _startUnifyd(
     String binary, {
     bool useLocalNode = true,
     bool useTestnet = false,
     String daemonHost = '127.0.0.1',
     int daemonPort = 18180,
   }) async {
-    debugPrint('[daemon] _startUnified: binary=$binary');
+    debugPrint('[daemon] _startUnifyd: binary=$binary');
 
     // Load before the readiness probes below: they call the wallet JSON-RPC,
     // which rejects an unauthenticated caller, and a probe that 401s makes the
     // app treat a healthy daemon as stale and kill it.
     await WalletdAuth.load();
 
-    // Detect externally-started unified daemon
+    // Detect externally-started unifyd daemon
     final alreadyRunning =
         await _probeJsonRpcReady(walletdPort) ||
         await _checkHealth(
@@ -964,12 +966,12 @@ class DaemonManager {
       _walletdExternallyRunning = true;
       _fuegodExternallyRunning = true;
       debugPrint(
-        '[daemon] Unified daemon already running on port $walletdPort',
+        '[daemon] Unifyd daemon already running on port $walletdPort',
       );
       return null;
     }
 
-    // Kill stale processes on ports the unified daemon binds: wallet proxy
+    // Kill stale processes on ports the unifyd daemon binds: wallet proxy
     // (18189), embedded fuegod RPC (18180), and P2P (10808). Leftover
     // daemons from a previous app instance (e.g. a translocated copy of the
     // app) hold these and make the new instance die with "Address already
@@ -982,7 +984,7 @@ class DaemonManager {
       }
     }
 
-    // Unified daemon needs --container-file and --container-password (via file, not argv)
+    // Unifyd daemon needs --container-file and --container-password (via file, not argv)
     final security = SecurityService();
     final appDir = await getApplicationSupportDirectory();
     final walletDir = p.join(appDir.path, 'wallet');
@@ -1027,7 +1029,7 @@ class DaemonManager {
         genArgs.addAll(['--container-password', containerPassword]);
       }
       if (useTestnet) genArgs.add('--testnet');
-      debugPrint('[daemon] unified generate-container (password redacted)');
+      debugPrint('[daemon] unifyd generate-container (password redacted)');
       final genEnv = containerPassword != null
           ? {'WALLETD_CONTAINER_PASSWORD': containerPassword}
           : null;
@@ -1067,7 +1069,7 @@ class DaemonManager {
       args.addAll(['--auth-token-file', authTokenFile]);
     } catch (e) {
       debugPrint(
-        '[daemon] unified auth token unavailable; API will be unauthenticated: $e',
+        '[daemon] unifyd auth token unavailable; API will be unauthenticated: $e',
       );
     }
     if (pwFile != null) {
@@ -1087,61 +1089,61 @@ class DaemonManager {
     }
     if (useTestnet) args.add('--testnet');
 
-    debugPrint('[daemon] unified starting (password redacted)');
+    debugPrint('[daemon] unifyd starting (password redacted)');
 
     try {
-      debugPrint('[daemon] Spawning unified daemon...');
+      debugPrint('[daemon] Spawning unifyd daemon...');
       final env = containerPassword != null
           ? {
               'WALLETD_CONTAINER_PASSWORD': containerPassword,
               ...Platform.environment,
             }
           : null;
-      _unified = await Process.start(binary, args, environment: env);
-      debugPrint('[daemon] unified process started (PID ${_unified!.pid})');
+      _unifyd = await Process.start(binary, args, environment: env);
+      debugPrint('[daemon] unifyd process started (PID ${_unifyd!.pid})');
       if (kDebugMode) {
-        _unified!.stdout
+        _unifyd!.stdout
             .transform<String>(utf8.decoder)
-            .listen((l) => debugPrint('[unified:out] $l'));
-        _unified!.stderr
+            .listen((l) => debugPrint('[unifyd:out] $l'));
+        _unifyd!.stderr
             .transform<String>(utf8.decoder)
-            .listen((l) => debugPrint('[unified:err] $l'));
+            .listen((l) => debugPrint('[unifyd:err] $l'));
       } else {
         // Keep a bounded buffer so startup failures surface the real
         // cause (e.g. "Address already in use") instead of just exit code 1.
         final buffer = StringBuffer();
-        _unified!.stdout.transform<String>(utf8.decoder).listen((l) {
+        _unifyd!.stdout.transform<String>(utf8.decoder).listen((l) {
           if (buffer.length < 8192) buffer.write(l);
         });
-        _unified!.stderr.transform<String>(utf8.decoder).listen((l) {
+        _unifyd!.stderr.transform<String>(utf8.decoder).listen((l) {
           if (buffer.length < 8192) buffer.write(l);
         });
         _unifiedExitLog = buffer;
       }
-      _unified!.exitCode.then((code) {
-        debugPrint('[daemon] unified daemon exited with code $code');
+      _unifyd!.exitCode.then((code) {
+        debugPrint('[daemon] unifyd daemon exited with code $code');
         final logTail = _unifiedExitLog?.toString().trim();
-        daemonErrors['unified'] = logTail != null && logTail.isNotEmpty
+        daemonErrors['unifyd'] = logTail != null && logTail.isNotEmpty
             ? 'exited with code $code — $logTail'
             : 'exited with code $code';
-        _unified = null;
+        _unifyd = null;
         _updateStatus();
       });
     } catch (e) {
       return 'Failed to spawn: $e';
     }
 
-    // Wait for ready — unified daemon exposes /json_rpc with getHealth
+    // Wait for ready — unifyd daemon exposes /json_rpc with getHealth
     // Blockchain rescan + wallet scan can take up to ~150s on mainnet
-    debugPrint('[daemon] Waiting for unified daemon on port $walletdPort...');
+    debugPrint('[daemon] Waiting for unifyd daemon on port $walletdPort...');
     for (var i = 0; i < 90; i++) {
       await Future<void>.delayed(const Duration(seconds: 2));
 
       // Process died — don't keep polling a corpse for 180s.
-      if (_unified == null) {
-        debugPrint('[daemon] unified daemon exited during startup');
-        return daemonErrors['unified'] ??
-            'unified daemon exited during startup';
+      if (_unifyd == null) {
+        debugPrint('[daemon] unifyd daemon exited during startup');
+        return daemonErrors['unifyd'] ??
+            'unifyd daemon exited during startup';
       }
 
       HttpClient? client;
@@ -1154,7 +1156,7 @@ class DaemonManager {
         await resp.drain<void>();
         if (resp.statusCode == 200) {
           debugPrint(
-            '[daemon] unified daemon healthy on port $walletdPort (attempt ${i + 1})',
+            '[daemon] unifyd daemon healthy on port $walletdPort (attempt ${i + 1})',
           );
           return null;
         } else {
@@ -1170,8 +1172,8 @@ class DaemonManager {
         client?.close(force: true);
       }
     }
-    debugPrint('[daemon] unified daemon not ready after 180s');
-    return 'unified daemon not ready after 180s';
+    debugPrint('[daemon] unifyd daemon not ready after 180s');
+    return 'unifyd daemon not ready after 180s';
   }
 
   Future<String?> _startSwapd({
@@ -1311,8 +1313,8 @@ class DaemonManager {
   Future<void> stopAll() async {
     _stopping = true;
     eventBus.stop();
-    await _stopProcess(_unified, 'unified');
-    _unified = null;
+    await _stopProcess(_unifyd, 'unifyd');
+    _unifyd = null;
     await _stopProcess(_swapd, 'xfg-swapd');
     _swapd = null;
     await _stopProcess(_walletd, 'fuego_walletd');
@@ -1351,22 +1353,22 @@ class DaemonManager {
 
   // ── Convenience getters ──────────────────────────────────────────
 
-  bool get unifiedRunning => _unified != null;
+  bool get unifiedRunning => _unifyd != null;
   bool get fuegodRunning =>
-      _unified != null ||
+      _unifyd != null ||
       _fuegod != null ||
       (_walletd != null && status.value.fuegodRunning) ||
       _fuegodExternallyRunning;
 
   /// True when the local wallet proxy process handle is alive.
   bool get walletdRunning =>
-      _unified != null || _walletd != null || _walletdExternallyRunning;
+      _unifyd != null || _walletd != null || _walletdExternallyRunning;
   bool get swapdRunning =>
-      _unified != null || _swapd != null || _swapdExternallyRunning;
+      _unifyd != null || _swapd != null || _swapdExternallyRunning;
 
   bool get allRunning => walletdRunning;
   bool get anyRunning =>
-      _unified != null ||
+      _unifyd != null ||
       _walletd != null ||
       _fuegod != null ||
       _swapd != null ||

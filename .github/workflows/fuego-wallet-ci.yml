@@ -125,28 +125,28 @@ jobs:
       - name: Bundle backends into app
         uses: ./.github/actions/bundle-desktop-backends
         with:
-          app: build/macos/Build/Products/Release/fuego_wallet.app
+          app: build/macos/Build/Products/Release/fuego-valise.app
 
       - name: Re-sign
-        run: ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app -
+        run: ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego-valise.app -
 
       - name: Package app
         run: |
           cd build/macos/Build/Products/Release
-          zip -r -y Fuego-Wallet-macOS.zip "fuego_wallet.app"
+          zip -r -y fuego-valise-macOS.zip "fuego-valise.app"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: fuego-wallet-macos
-          path: build/macos/Build/Products/Release/Fuego-Wallet-macOS.zip
+          path: build/macos/Build/Products/Release/fuego-valise-macOS.zip
           retention-days: 30
 
       - name: Upload to Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/macos/Build/Products/Release/Fuego-Wallet-macOS.zip
+          files: build/macos/Build/Products/Release/fuego-valise-macOS.zip
 
   build-linux:
     name: Build Linux (Ubuntu 22.04)
@@ -204,23 +204,23 @@ jobs:
       - name: Package app
         run: |
           cd build/linux/x64/release/bundle
-          mkdir -p "$GITHUB_WORKSPACE/Fuego-Wallet"
-          cp -r . "$GITHUB_WORKSPACE/Fuego-Wallet/"
+          mkdir -p "$GITHUB_WORKSPACE/fuego-valise"
+          cp -r . "$GITHUB_WORKSPACE/fuego-valise/"
           cd "$GITHUB_WORKSPACE"
-          tar -czf Fuego-Wallet-Linux-x64.tar.gz Fuego-Wallet/
+          tar -czf fuego-valise-Linux-x64.tar.gz fuego-valise/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: fuego-wallet-linux-ubuntu
-          path: Fuego-Wallet-Linux-x64.tar.gz
+          path: fuego-valise-Linux-x64.tar.gz
           retention-days: 30
 
       - name: Upload to Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: Fuego-Wallet-Linux-x64.tar.gz
+          files: fuego-valise-Linux-x64.tar.gz
 
   # CryptoNight compiles a different implementation per target; Android uses the
   # portable / ARM-without-crypto paths. Each must reproduce mainnet PoW.

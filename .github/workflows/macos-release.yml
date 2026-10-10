@@ -124,7 +124,7 @@ jobs:
       - name: Bundle backends into app
         uses: ./.github/actions/bundle-desktop-backends
         with:
-          app: build/macos/Build/Products/Release/fuego_wallet.app
+          app: build/macos/Build/Products/Release/fuego-valise.app
 
       - name: Sign app
         run: |
@@ -132,13 +132,13 @@ jobs:
           if [ -n "${KEYCHAIN_PATH:-}" ]; then
             IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' 'NR==1 {print $2}')"
           fi
-          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app "${IDENTITY:--}"
+          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego-valise.app "${IDENTITY:--}"
 
       - name: Verify macOS app
         run: |
           echo "=== Verifying macOS app ==="
 
-          APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
+          APP_PATH="build/macos/Build/Products/Release/fuego-valise.app"
 
           if [ ! -d "$APP_PATH" ]; then
             echo "ERROR: App bundle not found at $APP_PATH"
@@ -172,8 +172,8 @@ jobs:
         run: |
           echo "=== Creating DMG ==="
 
-          APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
-          DMG_PATH="build/macos/Build/Products/Release/Fuego-Wallet.dmg"
+          APP_PATH="build/macos/Build/Products/Release/fuego-valise.app"
+          DMG_PATH="build/macos/Build/Products/Release/fuego-valise.dmg"
 
           # Create temporary directory for DMG contents
           mkdir -p dmg-contents
@@ -197,7 +197,7 @@ jobs:
         run: |
           echo "=== Notarizing app ==="
 
-          DMG_PATH="build/macos/Build/Products/Release/Fuego-Wallet.dmg"
+          DMG_PATH="build/macos/Build/Products/Release/fuego-valise.dmg"
 
           if [ -z "${{ secrets.APPLE_ID }}" ] || [ -z "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" ]; then
             echo "WARNING: Apple ID credentials not set - skipping notarization"
@@ -277,8 +277,8 @@ jobs:
         with:
           name: macos-build
           path: |
-            build/macos/Build/Products/Release/fuego_wallet.app
-            build/macos/Build/Products/Release/Fuego-Wallet.dmg
+            build/macos/Build/Products/Release/fuego-valise.app
+            build/macos/Build/Products/Release/fuego-valise.dmg
             app-store-metadata/
             submission-checklist.md
           retention-days: 90
@@ -300,7 +300,7 @@ jobs:
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "xcrun altool --upload-app \\" >> $GITHUB_STEP_SUMMARY
           echo "  --type macos \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --file Fuego-Wallet.dmg \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --file fuego-valise.dmg \\" >> $GITHUB_STEP_SUMMARY
           echo "  --username \"\${APPLE_ID}\" \\" >> $GITHUB_STEP_SUMMARY
           echo "  --password \"\${APP_SPECIFIC_PASSWORD}\"" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

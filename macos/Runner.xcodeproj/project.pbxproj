@@ -71,7 +71,7 @@
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
 		335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GeneratedPluginRegistrant.swift; sourceTree = "<group>"; };
-		33CC10ED2044A3C60003C045 /* fuego_wallet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fuego_wallet.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		33CC10ED2044A3C60003C045 /* fuego-valise.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fuego-valise.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		33CC10F02044A3C60003C045 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33CC10F22044A3C60003C045 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Runner/Assets.xcassets; sourceTree = "<group>"; };
 		33CC10F52044A3C60003C045 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
@@ -150,7 +150,7 @@
 		33CC10EE2044A3C60003C045 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				33CC10ED2044A3C60003C045 /* fuego_wallet.app */,
+				33CC10ED2044A3C60003C045 /* fuego-valise.app */,
 				331C80D5294CF71000263BE5 /* RunnerTests.xctest */,
 			);
 			name = Products;
@@ -260,7 +260,7 @@
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
 			);
 			productName = fuego_wallet;
-			productReference = 33CC10ED2044A3C60003C045 /* fuego_wallet.app */;
+			productReference = 33CC10ED2044A3C60003C045 /* fuego-valise.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -370,7 +370,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "echo \"fuego_wallet.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n";
+			shellScript = "echo \"fuego-valise.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n";
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -496,7 +496,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.firefly.xfgwallet.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fuego_wallet.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fuego_wallet";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fuego-valise.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fuego_wallet";
 			};
 			name = Debug;
 		};
@@ -511,7 +511,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.firefly.xfgwallet.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fuego_wallet.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fuego_wallet";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fuego-valise.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fuego_wallet";
 			};
 			name = Release;
 		};
@@ -526,7 +526,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.firefly.xfgwallet.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fuego_wallet.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fuego_wallet";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/fuego-valise.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/fuego_wallet";
 			};
 			name = Profile;
 		};

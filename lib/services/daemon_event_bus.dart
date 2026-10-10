@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../models/chain_info.dart';
 import '../models/swap_models.dart';
 
-/// Dart EventBus mirroring the fuego-suite dashboard's unified daemon monitoring.
+/// Dart EventBus mirroring the fuego-suite dashboard's unifyd daemon monitoring.
 ///
 /// Polls all 3 daemons (fuegod, walletd, xfg-swapd) on independent timers,
 /// broadcasts typed events to all listeners. Single source of truth for
@@ -116,7 +116,7 @@ class DaemonEventBus {
 
   Future<void> _pollFuegod() async {
     try {
-      // ── Unified mode: HTTP GET /health on walletdPort ──
+      // ── Unifyd mode: HTTP GET /health on walletdPort ──
       // Each branch creates its own HttpClient so a closed client
       // is never reused after an exception.
       try {
@@ -129,7 +129,7 @@ class DaemonEventBus {
         final body = await resp.transform(utf8.decoder).join();
         client.close(force: true);
 
-        debugPrint('[EventBus] fuegod unified GET /health body=$body');
+        debugPrint('[EventBus] fuegod unifyd GET /health body=$body');
 
         if (resp.statusCode == 200) {
           final data = jsonDecode(body) as Map<String, dynamic>;
@@ -149,16 +149,16 @@ class DaemonEventBus {
               fuegodOk: daemonOk,
               fuegodError: daemonOk
                   ? null
-                  : 'daemon embedded in unified: offline',
+                  : 'daemon embedded in unifyd: offline',
             );
             return;
           }
           debugPrint(
-            '[EventBus] fuegod unified GET /health 200 but no daemon key',
+            '[EventBus] fuegod unifyd GET /health 200 but no daemon key',
           );
         }
       } catch (e) {
-        debugPrint('[EventBus] fuegod unified GET /health failed: $e');
+        debugPrint('[EventBus] fuegod unifyd GET /health failed: $e');
       }
 
       // ── Standalone architecture: direct getinfo on fuegod port ──
@@ -262,7 +262,7 @@ class DaemonEventBus {
 
   Future<void> _pollSwapd() async {
     try {
-      // ── Unified daemon: swapd health via GET /health on walletdPort ──
+      // ── Unifyd daemon: swapd health via GET /health on walletdPort ──
       bool healthHandled = false;
       try {
         final client = HttpClient()
@@ -274,7 +274,7 @@ class DaemonEventBus {
         final body = await resp.transform(utf8.decoder).join();
         client.close(force: true);
 
-        debugPrint('[EventBus] swapd unified GET /health body=$body');
+        debugPrint('[EventBus] swapd unifyd GET /health body=$body');
 
         if (resp.statusCode == 200) {
           final data = jsonDecode(body) as Map<String, dynamic>;
@@ -286,11 +286,11 @@ class DaemonEventBus {
             }
             healthHandled = true;
           } else {
-            debugPrint('[EventBus] swapd unified GET /health no "swap" key');
+            debugPrint('[EventBus] swapd unifyd GET /health no "swap" key');
           }
         }
       } catch (e) {
-        debugPrint('[EventBus] swapd unified GET /health failed: $e');
+        debugPrint('[EventBus] swapd unifyd GET /health failed: $e');
       }
 
       if (!healthHandled) {
@@ -396,7 +396,7 @@ class DaemonEventBus {
   }
 
   Future<List<Map<String, dynamic>>> _fetchSpvSwaps() async {
-    // Try standalone swapd JSON-RPC first, then unified walletd proxy if needed.
+    // Try standalone swapd JSON-RPC first, then unifyd walletd proxy if needed.
     final List<String> endpoints = <String>[
       'http://127.0.0.1:$swapdPort/',
       'http://127.0.0.1:$walletdPort/',
