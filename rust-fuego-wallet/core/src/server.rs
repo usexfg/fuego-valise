@@ -16,6 +16,11 @@ use zeroize::Zeroize;
 pub struct AppState {
     pub slot: Arc<WalletSlot>,
     pub fuegod_url: String,
+    /// Bearer token required on every state-changing or wallet-reading call.
+    /// `None` means no token was configured and the API is open to any local
+    /// process — that is the pre-token behaviour and is not a safe default on
+    /// a shared host, but it keeps a bare `fuego_walletd serve` usable.
+    pub auth_token: Option<Arc<str>>,
 }
 
 /// Error for wallet methods called while no wallet is open (walletd started with
@@ -698,18 +703,80 @@ async fn handle_wallet_method(
     }
 }
 
-fn is_authorized_host(headers: &axum::http::HeaderMap) -> bool {
-    if let Some(host_val) = headers.get(axum::http::header::HOST) {
-        if let Ok(host_str) = host_val.to_str() {
-            let host_clean = host_str.split(':').next().unwrap_or("").to_lowercase();
-            if host_clean == "localhost" || host_clean == "127.0.0.1" || host_clean == "[::1]" || host_clean.is_empty() {
-                return true;
-            }
-        }
-        false
-    } else {
-        true
+/// Compare a presented bearer token against the expected one without leaking
+/// the match position through timing.
+///
+/// The length is compared up front. Folding it into the accumulator instead
+/// (e.g. `(e.len() ^ p.len()) as u8`) truncates to eight bits, so a token
+/// followed by 256 junk bytes produces a zero length term and authenticates.
+/// The token's length is not secret — it is always the same fixed-width
+/// base64url string — so an early return leaks nothing worth hiding.
+fn token_matches(expected: &str, presented: &str) -> bool {
+    let e = expected.as_bytes();
+    let p = presented.as_bytes();
+    if e.len() != p.len() {
+        return false;
     }
+    let mut diff = 0u8;
+    for i in 0..e.len() {
+        diff |= e[i] ^ p[i];
+    }
+    diff == 0
+}
+
+/// Extract the token from an `Authorization: Bearer <token>` header.
+fn bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
+    let raw = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let rest = raw.strip_prefix("Bearer ").or_else(|| raw.strip_prefix("bearer "))?;
+    Some(rest.trim())
+}
+
+/// Enforce the bearer token when one is configured. Returns a 401 response when
+/// the token is absent or wrong.
+fn require_token(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Option<axum::response::Response> {
+    let Some(expected) = state.auth_token.as_deref() else {
+        return None;
+    };
+    if expected.is_empty() {
+        return None;
+    }
+    let ok = bearer_token(headers).is_some_and(|t| token_matches(expected, t));
+    if ok {
+        return None;
+    }
+    Some((
+        axum::http::StatusCode::UNAUTHORIZED,
+        axum::Json(serde_json::json!({
+            "error": "unauthorized",
+            "hint": "present Authorization: Bearer <token> from the auth token file"
+        })),
+    )
+        .into_response())
+}
+
+fn is_authorized_host(headers: &axum::http::HeaderMap) -> bool {
+    // walletd serves plaintext HTTP/1.1, where Host is mandatory. HTTP/2's
+    // :authority is a pseudo-header: hyper folds it into the URI and never
+    // places it in this map, so asking for it here could not succeed. A
+    // request that carries no Host is therefore not a loopback client.
+    let Some(raw) = headers.get(axum::http::header::HOST) else {
+        return false;
+    };
+    let Ok(host_str) = raw.to_str() else {
+        return false;
+    };
+    // "[::1]:18189" must not be split on the first colon, which lands inside
+    // the brackets and leaves a bare "[".
+    let host_clean = if let Some(rest) = host_str.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else {
+        host_str.split(':').next().unwrap_or("")
+    }
+    .to_lowercase();
+    matches!(host_clean.as_str(), "localhost" | "127.0.0.1" | "::1")
 }
 
 /// Decode a 32-byte hex seed, wiping the intermediate buffer.
@@ -812,6 +879,9 @@ async fn json_rpc_handler(
         };
         return (StatusCode::FORBIDDEN, Json(serde_json::to_value(error).unwrap())).into_response();
     }
+    if let Some(denied) = require_token(&state, &headers) {
+        return denied;
+    }
 
     let result: Result<serde_json::Value, String> =
         match handle_slot_method(&state.slot, &method, &mut body).await {
@@ -851,6 +921,9 @@ async fn fuegod_get(
     if !is_authorized_host(req.headers()) {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response();
     }
+    if let Some(denied) = require_token(&state, req.headers()) {
+        return denied;
+    }
     let fuegod_path = req.uri().path();
     let fuegod_query = req.uri().query().unwrap_or("");
     let client = reqwest::Client::new();
@@ -882,6 +955,9 @@ async fn fuegod_post(
 ) -> impl IntoResponse {
     if !is_authorized_host(req.headers()) {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response();
+    }
+    if let Some(denied) = require_token(&state, req.headers()) {
+        return denied;
     }
     let fuegod_path = req.uri().path().to_string();
     let (parts, body) = req.into_parts();
@@ -924,6 +1000,12 @@ async fn status_handler(
     if !is_authorized_host(&headers) {
         return forbidden();
     }
+    // Address and balance are wallet data, not liveness. Without this check
+    // /status answered any local process while the other wallet routes 401'd,
+    // so it was the one way to read them without the token.
+    if let Some(denied) = require_token(&state, &headers) {
+        return denied;
+    }
     let Some(wallet) = state.slot.current().await else { return no_wallet() };
     let wallet = wallet.lock().await;
     let balance = wallet.balance_full().await;
@@ -947,6 +1029,11 @@ async fn health_check(
     if !is_authorized_host(&headers) {
         return forbidden();
     }
+    // Liveness stays reachable without a token so the app can probe startup.
+    // The wallet's address and balance are not liveness, so they are only
+    // included when the caller presents the token — otherwise any local
+    // process, and on Android any app with INTERNET, could read them.
+    let authorized = require_token(&state, &headers).is_none();
     let client = reqwest::Client::new();
     let fuegod_ok = client.get(format!("{}/getinfo", state.fuegod_url))
         .send().await
@@ -975,8 +1062,8 @@ async fn health_check(
         "fuego": fuegod_ok,
         "daemon": fuegod_ok,
         "swap": crate::swapd::swapd_healthy(crate::swapd::SWAPD_RPC_PORT).await,
-        "wallet": wallet_json,
-        "scanned_height": scanned,
+        "wallet": if authorized { wallet_json } else { serde_json::Value::Null },
+        "scanned_height": if authorized { scanned } else { serde_json::Value::Null },
     }))
     .into_response()
 }
@@ -997,6 +1084,10 @@ async fn scan_balance_handler(
     if !is_authorized_host(&headers) {
         req.view_secret.zeroize();
         return forbidden();
+    }
+    if let Some(denied) = require_token(&state, &headers) {
+        req.view_secret.zeroize();
+        return denied;
     }
     let Some(wallet) = state.slot.current().await else {
         req.view_secret.zeroize();
@@ -1028,10 +1119,12 @@ pub async fn run_server(
     slot: Arc<WalletSlot>,
     fuegod_url: &str,
     bind_addr: &str,
+    auth_token: Option<String>,
 ) -> Result<(), String> {
     let state = Arc::new(AppState {
         slot,
         fuegod_url: fuegod_url.to_string(),
+        auth_token: auth_token.map(Arc::from),
     });
 
     let cors = tower_http::cors::CorsLayer::new()
@@ -1094,6 +1187,128 @@ pub async fn run_server(
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+
+    fn headers_with(value: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(axum::http::header::HOST, axum::http::HeaderValue::from_str(value).unwrap());
+        h
+    }
+
+    #[test]
+    fn loopback_hosts_are_authorized_and_others_are_not() {
+        // RFC 3986 requires the bracketed form for an IPv6 host, so a bare
+        // "::1" is not a legal Host value and is refused along with the rest.
+        for v in ["127.0.0.1:18189", "localhost:18189", "[::1]:18189", "127.0.0.1"] {
+            assert!(is_authorized_host(&headers_with(v)), "{v}");
+        }
+        for v in ["evil.com", "attacker.test:18189", "192.168.1.5:18189", "127.0.0.1.evil.com", "::1"] {
+            assert!(!is_authorized_host(&headers_with(v)), "{v}");
+        }
+    }
+
+    #[test]
+    fn a_request_carrying_no_host_at_all_is_refused() {
+        // Regression: the check used to fall through to `true` when neither
+        // header was present, which authorized any client that omitted both.
+        assert!(!is_authorized_host(&axum::http::HeaderMap::new()));
+    }
+
+    fn auth_headers(value: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_str(value).unwrap(),
+        );
+        h
+    }
+
+    #[test]
+    fn token_comparison_is_exact() {
+        assert!(token_matches("s3cret", "s3cret"));
+        assert!(!token_matches("s3cret", "s3cre"));
+        assert!(!token_matches("s3cret", "s3cretx"));
+        assert!(!token_matches("s3cret", "S3CRET"));
+        assert!(!token_matches("s3cret", ""));
+        // Two empty strings compare equal; the refusal of an unset token is
+        // require_token's job, not this function's.
+        assert!(token_matches("", ""));
+    }
+
+    #[test]
+    fn a_longer_token_with_junk_appended_is_rejected() {
+        // Regression: folding the length into the accumulator as u8 made
+        // 13 ^ 269 truncate to zero, so the token plus 256 bytes authenticated.
+        let base = "correct-token";
+        for extra in [1usize, 2, 43, 243, 256, 512, 1024] {
+            let presented = format!("{base}{}", "x".repeat(extra));
+            assert!(!token_matches(base, &presented), "extra={extra}");
+        }
+    }
+
+    #[test]
+    fn bearer_token_is_parsed_only_from_a_bearer_header() {
+        assert_eq!(bearer_token(&auth_headers("Bearer abc123")), Some("abc123"));
+        assert_eq!(bearer_token(&auth_headers("bearer abc123")), Some("abc123"));
+        assert_eq!(bearer_token(&auth_headers("Bearer  abc123 ")), Some("abc123"));
+        assert_eq!(bearer_token(&auth_headers("Basic abc123")), None);
+        assert_eq!(bearer_token(&auth_headers("abc123")), None);
+        assert_eq!(bearer_token(&axum::http::HeaderMap::new()), None);
+    }
+
+    /// A configured token must refuse a missing or wrong bearer token, and
+    /// accept only the exact value. With no token configured the API stays open
+    /// so a bare `fuego_walletd serve` still works.
+    #[tokio::test]
+    async fn a_configured_token_gates_every_call() {
+        let dir = std::env::temp_dir().join("walletd-auth-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let state = AppState {
+            slot: Arc::new(WalletSlot::new(dir, "http://127.0.0.1:1", false)),
+            fuegod_url: "http://127.0.0.1:1".to_string(),
+            auth_token: Some(Arc::from("correct-token")),
+        };
+
+        assert!(require_token(&state, &auth_headers("Bearer correct-token")).is_none());
+        assert!(require_token(&state, &auth_headers("Bearer wrong-token")).is_some());
+        assert!(require_token(&state, &auth_headers("Basic correct-token")).is_some());
+        assert!(require_token(&state, &axum::http::HeaderMap::new()).is_some());
+
+        let open = AppState { auth_token: None, ..state };
+        assert!(require_token(&open, &axum::http::HeaderMap::new()).is_none());
+        drop(svc);
+    }
+
+    /// Every handler that returns wallet data must call require_token. This is
+    /// the guard that caught /status answering unauthenticated while its
+    /// siblings 401'd, so the route list is pinned here rather than trusted.
+    #[test]
+    fn wallet_data_handlers_are_all_token_gated() {
+        let src = include_str!("server.rs");
+        for (handler, data) in [
+            ("json_rpc_handler", "wallet methods"),
+            ("fuegod_get", "proxied GET"),
+            ("fuegod_post", "proxied POST"),
+            ("status_handler", "address + balance"),
+            ("scan_balance_handler", "balance"),
+        ] {
+            let tail = src
+                .split_once(&format!("async fn {handler}("))
+                .expect("handler exists")
+                .1;
+            // Cut at the next top-level `async fn` / `fn` so we read only this
+            // handler's body regardless of what follows it.
+            let body = tail
+                .find("\nfn ")
+                .or_else(|| tail.find("\nasync fn "))
+                .map(|i| &tail[..i])
+                .unwrap_or(tail);
+            assert!(
+                body.contains("require_token"),
+                "{handler} returns {data} but never calls require_token"
+            );
+        }
+    }
 
     async fn call(wallet: &Mutex<WalletService>, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
         handle_wallet_method(Some(wallet), "http://127.0.0.1:1", method, &params).await

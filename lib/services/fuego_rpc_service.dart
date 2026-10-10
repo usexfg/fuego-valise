@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import '../models/wallet.dart';
+import 'walletd_auth.dart';
 import '../models/network_config.dart';
 import '../models/cd.dart';
 
@@ -22,7 +23,7 @@ class FuegoRPCService {
     NetworkConfig? networkConfig,
   }) : _baseUrl = 'http://$host:${port ?? NetworkConfig.mainnet.walletRpcPort}',
        _networkConfig = networkConfig ?? NetworkConfig.mainnet,
-       _dio = Dio(
+       _dio = WalletdAuth.dio(
          BaseOptions(
            connectTimeout: const Duration(seconds: 30),
            receiveTimeout: const Duration(seconds: 30),

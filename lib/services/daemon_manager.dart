@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import 'daemon_event_bus.dart';
 import 'security_service.dart';
+import 'walletd_auth.dart';
 import '../models/network_config.dart';
 
 /// Unified process manager for all backend daemons.
@@ -395,6 +396,14 @@ class DaemonManager {
     final client = HttpClient()..connectionTimeout = timeout;
     try {
       final req = await client.getUrl(Uri.parse(url));
+      final uri = Uri.parse(url);
+      final loopback = uri.host == '127.0.0.1' ||
+          uri.host == 'localhost' ||
+          uri.host == '::1';
+      final healthToken = WalletdAuth.token;
+      if (loopback && healthToken != null && healthToken.isNotEmpty) {
+        req.headers.set('Authorization', 'Bearer $healthToken');
+      }
       final resp = await req.close().timeout(timeout);
       await resp.drain<void>();
       if (resp.statusCode == 200) return _HealthResult.ok();
@@ -675,6 +684,11 @@ class DaemonManager {
           '(searched app bundle + rust-fuego-wallet/target/{release,debug})';
     }
 
+    // Load before the probes below: they talk to walletd, which rejects an
+    // unauthenticated call, and a probe that 401s makes the app kill a healthy
+    // walletd it started on the previous run.
+    await WalletdAuth.load();
+
     // Detect externally-started walletd
     final alreadyRunning =
         await _probeJsonRpcReady(walletdPort) ||
@@ -735,6 +749,38 @@ class DaemonManager {
     ];
     if (useTestnet) args.add('--testnet');
     if (useLocalNode) args.add('--local');
+
+    // Bearer token for the walletd API. Any local process can otherwise call
+    // every method while a wallet is open; on Android any app with network
+    // permission can reach 127.0.0.1. The token is passed by path, never by
+    // argv, so it does not show up in the process list (CWE-214), matching how
+    // the container password is already handled.
+    //
+    // Loading first and writing the same value means the file walletd reads and
+    // the value the HTTP clients present cannot drift.
+    try {
+      final authTokenFile = await WalletdAuth.tokenFilePath();
+      final token = WalletdAuth.token;
+      if (token == null || token.isEmpty) {
+        throw StateError('empty auth token');
+      }
+      await File(authTokenFile).writeAsString(token, flush: true);
+      if (!Platform.isWindows) {
+        final chmod = await Process.run('chmod', ['600', authTokenFile]);
+        if (chmod.exitCode != 0) {
+          throw StateError('chmod 600 on the auth token file failed');
+        }
+        final mode = await FileStat.stat(authTokenFile).then((st) => st.mode);
+        if ((mode & 0x1FF) != 0x180) {
+          throw StateError('auth token file is not owner-only after chmod');
+        }
+      }
+      args.addAll(['--auth-token-file', authTokenFile]);
+    } catch (e) {
+      debugPrint(
+        '[daemon] walletd auth token unavailable; API will be unauthenticated: $e',
+      );
+    }
 
     try {
       debugPrint('[daemon] Starting fuego_walletd: $binary ${args.join(' ')}');
@@ -834,6 +880,13 @@ class DaemonManager {
         Uri.parse('http://127.0.0.1:$port/json_rpc'),
       );
       req.headers.contentType = ContentType.json;
+      // Without the token these probes get 401 from a walletd we started
+      // ourselves, the app then judges its own healthy daemon "stale" and kills
+      // it on every relaunch.
+      final probeToken = WalletdAuth.token;
+      if (probeToken != null && probeToken.isNotEmpty) {
+        req.headers.set('Authorization', 'Bearer $probeToken');
+      }
       req.write(
         jsonEncode({
           'jsonrpc': '2.0',
@@ -861,6 +914,13 @@ class DaemonManager {
         Uri.parse('http://127.0.0.1:$port/json_rpc'),
       );
       req.headers.contentType = ContentType.json;
+      // Without the token these probes get 401 from a walletd we started
+      // ourselves, the app then judges its own healthy daemon "stale" and kills
+      // it on every relaunch.
+      final probeToken = WalletdAuth.token;
+      if (probeToken != null && probeToken.isNotEmpty) {
+        req.headers.set('Authorization', 'Bearer $probeToken');
+      }
       req.write(
         jsonEncode({
           'jsonrpc': '2.0',
@@ -887,6 +947,11 @@ class DaemonManager {
     int daemonPort = 18180,
   }) async {
     debugPrint('[daemon] _startUnified: binary=$binary');
+
+    // Load before the readiness probes below: they call the wallet JSON-RPC,
+    // which rejects an unauthenticated caller, and a probe that 401s makes the
+    // app treat a healthy daemon as stale and kill it.
+    await WalletdAuth.load();
 
     // Detect externally-started unified daemon
     final alreadyRunning =
@@ -982,6 +1047,29 @@ class DaemonManager {
       '--container-file',
       containerFile,
     ];
+    try {
+      final authTokenFile = await WalletdAuth.tokenFilePath();
+      final token = WalletdAuth.token;
+      if (token == null || token.isEmpty) {
+        throw StateError('empty auth token');
+      }
+      await File(authTokenFile).writeAsString(token, flush: true);
+      if (!Platform.isWindows) {
+        final chmod = await Process.run('chmod', ['600', authTokenFile]);
+        if (chmod.exitCode != 0) {
+          throw StateError('chmod 600 on the auth token file failed');
+        }
+        final mode = await FileStat.stat(authTokenFile).then((st) => st.mode);
+        if ((mode & 0x1FF) != 0x180) {
+          throw StateError('auth token file is not owner-only after chmod');
+        }
+      }
+      args.addAll(['--auth-token-file', authTokenFile]);
+    } catch (e) {
+      debugPrint(
+        '[daemon] unified auth token unavailable; API will be unauthenticated: $e',
+      );
+    }
     if (pwFile != null) {
       args.addAll(['--container-password-file', pwFile]);
     } else if (containerPassword != null) {

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'constants.dart';
 import 'network_info.dart';
+import '../services/walletd_auth.dart';
 import 'transaction.dart';
 
 class FuegoDaemonClient {
@@ -57,7 +58,11 @@ class FuegoDaemonClient {
       useWallet: useWallet,
     ).replace(queryParameters: query);
     _log('[daemon] GET $uri');
-    final resp = await _http.get(uri).timeout(const Duration(seconds: 10));
+    // The token authorises the local wallet API; it must not be sent to a
+    // remote seed node, which is what `host` resolves to in remote mode.
+    final resp = await _http
+        .get(uri, headers: WalletdAuth.headersForHost(uri.host))
+        .timeout(const Duration(seconds: 10));
     if (resp.statusCode != 200) {
       throw FuegoRpcException('HTTP ${resp.statusCode}');
     }
@@ -74,7 +79,10 @@ class FuegoDaemonClient {
     final resp = await _http
         .post(
           uri,
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletdAuth.headersForHost(uri.host),
+          },
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 10));

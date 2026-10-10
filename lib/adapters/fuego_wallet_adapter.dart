@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import '../models/wallet.dart';
+import '../services/walletd_auth.dart';
 import '../models/network_config.dart';
 import 'package:flutter/foundation.dart';
 
@@ -32,7 +33,7 @@ class FuegoWalletAdapter {
   StreamController<WalletEvent>? _eventController;
 
   FuegoWalletAdapter._internal()
-    : _dio = Dio(
+    : _dio = WalletdAuth.dio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 30),
@@ -260,40 +261,6 @@ class FuegoWalletAdapter {
     } catch (e) {
       debugPrint('sendTransaction failed: $e');
       throw Exception('Failed to send transaction: $e');
-    }
-  }
-
-  /// Create a deposit (CD banking)
-  Future<String> createDeposit({
-    required int term, // in blocks (e.g., 777600 for 90 days @ 1 block/min)
-    required int amount,
-    int? fee,
-    int mixin = 4,
-  }) async {
-    if (!_isOpen) throw Exception('Wallet is not open');
-
-    try {
-      final response = await _dio.post(
-        '$_walletRpcUrl/json_rpc',
-        data: {
-          'jsonrpc': '2.0',
-          'id': 'test',
-          'method': 'create_deposit',
-          'params': {
-            'term': term,
-            'amount': amount,
-            'fee': fee ?? 1000000000,
-            'mixin': mixin,
-          },
-        },
-      );
-
-      final txHash = response.data['result']['tx_hash'] as String;
-      _emitEvent(WalletEvent.depositCreated(txHash));
-      return txHash;
-    } catch (e) {
-      debugPrint('createDeposit failed: $e');
-      throw Exception('Failed to create deposit: $e');
     }
   }
 

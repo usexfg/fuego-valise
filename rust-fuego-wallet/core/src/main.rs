@@ -14,7 +14,7 @@ mod wallet_slot;
 mod walletd;
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use crate::wallet_slot::WalletSlot;
 
@@ -68,8 +68,21 @@ enum Commands {
         /// `open_wallet` JSON-RPC method after unlock. Never creates master_seed.bin.
         #[arg(long)]
         await_wallet: bool,
+
+        /// File holding the bearer token that callers must present as
+        /// `Authorization: Bearer <token>`. Passed by path, never by argv, so
+        /// the token does not appear in the process list. When omitted, no
+        /// token is required and the API is reachable by any local process.
+        #[arg(long)]
+        auth_token_file: Option<PathBuf>,
     },
     Status,
+}
+
+/// Read the bearer token from `path`, trimming trailing whitespace.
+pub fn read_auth_token_file(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let raw = std::fs::read_to_string(path)?;
+    Ok(raw.trim().to_string())
 }
 
 fn read_seed_file(wallet_dir: &PathBuf) -> Option<[u8; 32]> {
@@ -110,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&wallet_dir)?;
 
     match cli.command.unwrap_or(Commands::Status) {
-        Commands::Serve { daemon_host, daemon_port, testnet, local, swapd_config, no_swapd, await_wallet } => {
+        Commands::Serve { daemon_host, daemon_port, testnet, local, swapd_config, no_swapd, await_wallet, auth_token_file } => {
             let (actual_host, actual_port, _daemon_guard) = if local {
                 log::info!("--local: starting embedded fuegod...");
                 let data_dir = wallet_dir.join("fuegod");
@@ -207,7 +220,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // 4. Start Axum server
             let bind = format!("{}:{}", cli.host, cli.port);
-            server::run_server(slot, &daemon_url, &bind).await?;
+            let auth_token = match &auth_token_file {
+                Some(p) => Some(read_auth_token_file(p)?),
+                None => None,
+            };
+            if auth_token.is_none() {
+                log::warn!(
+                    "no --auth-token-file: every local process can call this API unauthenticated"
+                );
+            }
+            server::run_server(slot, &daemon_url, &bind, auth_token).await?;
         }
 
         Commands::Status => {

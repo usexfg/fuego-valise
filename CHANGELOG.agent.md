@@ -1,5 +1,236 @@
 # CHANGELOG.agent.md
 
+## [2026-10-09] Audit fixes 1-3: alias networkId, pre-v11 mint overflow, walletd token
+
+Fixes three findings from the 12-item audit in `AUDIT_STATUS.md`, after a
+pre-implementation and a post-implementation adversarial review each. The
+post-implementation review found a live authentication bypass and a credential
+leak in the first draft of the token work; both are fixed here and each has a
+regression test.
+
+**C++ (fuego-suite submodule — needs its own commit and a parent pin bump):**
+
+- `AssetBalance` gained an `overflow` flag. Both accumulators set it when a
+  running sum would wrap, so a wrapped total can never be read as a value.
+- The v10-only branch in `pushBlock` refuses when either balance overflowed, and
+  the HEAT-mint fee arithmetic now uses `addChecked` for `out+burn+fund`, the
+  `out+fee+burn` conservation check, and `in.heat+minted`. Verified bit-identical
+  on every non-overflowing input; the change only differs where the old
+  arithmetic wrapped. No HEAT/Hearth/CD/atomic-swap transaction has ever reached
+  mainnet, so no historical block changes meaning.
+- `Currency::validateNetworkId32` compares the low 32 bits of the network id.
+  The alias extra's `networkId` is a `uint32_t` written as 4 fixed bytes while
+  the chain id is a 64-bit keccak digest, so comparing the zero-extended field
+  against the full digest could never succeed and every alias this chain's own
+  wallets registered was silently dropped from the index. Widening the field
+  was rejected: `write(uint32_t)` emits 4 bytes and `write(uint64_t)` emits 8, so
+  it would change the wire format.
+- The `networkId == 0` "legacy" bypass is removed. The field is the last item in
+  the extra and always written, and a truncated blob fails the strict
+  end-of-stream read, so an extra without it was never parseable — there is no
+  legacy case to grandfather, and accepting 0 was the replay hole the field
+  exists to close. Alias registration never worked on mainnet, so nothing is
+  lost.
+
+**Rust (`fuego_walletd`):**
+
+- `--auth-token-file`; a 256-bit token from the keychain gates
+  `/json_rpc`, the fuegod proxy and `/scan_balance`. Passed by path, never argv.
+  `/health` and `/status` stay reachable for startup probing.
+- `is_authorized_host` refuses a request with no `Host` header (it previously
+  returned true), and parses bracketed IPv6 hosts correctly.
+- `token_matches` compares lengths before the byte loop. The first draft folded
+  the length into the accumulator as `u8`, where `13 ^ 269` truncates to zero —
+  the correct token plus 256 junk bytes authenticated. Reproduced, fixed, and
+  covered by `a_longer_token_with_junk_appended_is_rejected`.
+- `/health` no longer returns the wallet address and balance to an unauthenticated
+  caller; those fields are null without the token while liveness stays open.
+
+**Dart:**
+
+- `WalletdAuth` holds the token. It is sent only to loopback: the same clients
+  also reach the chain daemon, which in remote mode is a third-party seed node,
+  and the first draft posted the wallet API key there on every `getinfo` fallback
+  and HEAT-metrics poll.
+- The readiness probes now send the token. Without it they got 401 from a
+  walletd the app had started itself, so the app judged its own healthy daemon
+  stale and killed it on every relaunch.
+- The token is cleared with the rest of the wallet data.
+
+**`unified` (desktop) now gated too — the largest gap is closed:**
+
+- `JsonRpcServer` gained an opt-in `setBearerToken`, enforced in `processRequest`
+  before any method dispatch. Empty (the default) leaves the server
+  unauthenticated, so the daemon RPC is untouched. `PaymentGateService` opts in
+  from a new `--auth-token-file`.
+- The token file is read with the same hardening as the container password —
+  regular file, owned by the caller, no group/other bits — so another local user
+  cannot substitute their own token.
+- Dart now loads the token and passes `--auth-token-file` in `_startUnified` too.
+  The same `length-first` compare is used here; folding the length into a `u8`
+  accumulator would let the token plus 256 junk bytes through, which is the bug
+  already fixed and regression-tested on the Rust side.
+- `load()` now runs *before* the readiness probes in both spawn paths. After
+  walletd started requiring a token, the probes were getting 401 from the app's
+  own healthy daemon, judging it stale and killing it on every relaunch.
+
+**Remaining defects in the same branch, also fixed:**
+
+- The AMM direction-0 and direction-1 subtractions were unchecked.
+  `inAssets.xfg - outAssets.xfg - xfgFee` wrapping near 2^64 inflates
+  `expectedHeat` until the check trivially passes and HEAT is minted for XFG
+  never paid in; the mirrored `inAssets.heat - outAssets.heat` does the same to
+  XFG. Both now subtract through a checked helper.
+- The four sibling `inAssets.xfg < outAssets.xfg + xfgFee` tests (HEAT send,
+  market buy, market sell, and the general case) shared the same wrap: an `out`
+  near 2^64 wraps the add, the guard reads false, and an unbalanced transaction
+  is accepted. They now use a comparison helper that never adds.
+- `Core.cpp` computed the new `overflow` flag and ignored it. It now refuses on
+  it. Unreachable today because `check_money_overflow` runs first, but it keeps
+  the mempool path consistent with the block path.
+- `getAliasFromExtra` scanned the whole extra for a `0xEA` byte instead of
+  parsing the field the caller had already located, so a `0xEA` inside another
+  field's payload started an alias parse at attacker-adjacent bytes — and a
+  failed parse returns false, which makes the caller reject the entire
+  transaction. It now takes the walker's tag offset.
+- The per-asset arithmetic helpers moved to `AssetType.h` so `Blockchain.cpp` and
+  `Core.cpp` share one definition instead of drifting.
+
+**Second adversarial review found two defects in the `unified` token work — both fixed here:**
+
+- `JsonRpcServer` looked up `Authorization` with that exact case, but `HttpParser`
+  lowercases every header name on the wire, so the lookup could never match and
+  **every** request — including one with a correct token — was rejected. Now reads
+  `"authorization"`, matching the daemon's own `HttpServer::authenticate`, and
+  accepts `bearer ` as well as `Bearer ` since RFC 7235 schemes are
+  case-insensitive.
+- The first token-file reader was a bare `std::ifstream` that enforced none of
+  the owner-only properties its own comment claimed: no `O_NOFOLLOW`, no uid
+  check, no group/other-bits check. A symlinked or group-readable token file was
+  accepted, so another local user could substitute their own token. The
+  container-password reader was already hardened against exactly this; it is now
+  parameterised on the option name and validator and shared by both, so the
+  token file gets the same `O_NOFOLLOW` + `S_ISREG` + uid + permission checks.
+
+**Also from the second review:**
+
+- `getAliasReleaseFromExtra` and `getAliasTransferFromExtra` byte-scanned the
+  whole extra for `0xEC`/`0xED` the same way registration did, and are called
+  from the same walker that already located the field. A `0xEC`/`0xED` byte in an
+  earlier field's payload triggered the identical misparse → `return false` →
+  whole-transaction rejection, or injected a phantom release/transfer. Both now
+  take the walker's tag offset.
+- Removed the unused `addAssetChecked` from `AssetType.h`; `addChecked` for
+  running sums stays file-local to `Blockchain.cpp`. A duplicate helper in a
+  consensus header is the drift footgun the header exists to prevent.
+- Probes no longer send a literal `Bearer ''` when no token is present.
+- The health probe now carries the token on loopback, so a gated `unified`
+  answers it instead of 401ing.
+- The `chmod 600` on the token file is checked, and the resulting mode verified,
+  instead of relying on a `debugPrint` that release builds strip.
+
+| Gate | Result | Evidence |
+|------|--------|----------|
+| Rust tests | PASS | `cargo test -p rust_fuego_wallet` — 30 passed, 0 failed (was 24) |
+| Rust builds | PASS | `cargo check --workspace` clean |
+| Analyzer | PASS | `dart analyze lib/` — 0 errors, 0 warnings (761 pre-existing infos) |
+| Flutter tests | PASS | `flutter test` — 80/80 |
+| C++ compiles | PASS | 6 translation units rebuilt, 0 errors, no new warnings |
+| Adversarial review | PASS | two passes; pass 2 found 2 blocking + 3 minor in `unified`/alias/Dart, all fixed |
+
+**Not verified — blocked on someone else's work:**
+
+- `fuegod` and `unified` do not **link**. 8 symbols are missing from
+  `XfgSwap::PriceWorker` and `XfgSwap::CoinGeckoFeed` in `libSwapDaemonLib.a`.
+  Confirmed pre-existing by stashing these changes and rebuilding: the same 8
+  symbols are missing at clean `f6e3482ba`. It comes from the price-feed commits
+  (`CoinGecko` source, bounded poll worker) in flight on `/Users/aejt/xfgo`.
+  Until that links, **no C++ test suite can run** and the `unified` auth path is
+  compile-verified only — it has never been executed. Enabling
+  `--auth-token-file` on `unified` must not ship before it has been run once.
+- The app has not been run against a real walletd or `unified`, so the Dart token
+  wiring is analyzer-verified and unit-tested, not exercised end to end. That is
+  the one check that would catch a missed client and a 401 brick.
+
+**Renaming `unified` → `unifyd` and the release artifact → `fuego-valise` are
+deliberately NOT in this commit** (they are mechanical, cross-repo, and mixing a
+consensus/security change with a bulk rename makes the pin bump harder to
+review). They land as a separate commit.
+
+**Sign-off:** space-bunny-free — 2026-10-09
+
+---
+
+## [2026-10-09] walletd host gate: absent Host was authorized; dead IPv6 branch
+
+Found by the pre-implementation adversarial review of the walletd auth work
+(audit item 3, token gate). `is_authorized_host` ended in `else { true }`, so a
+request carrying neither `Host` nor any recognised host was authorized. The
+`"[::1]"` arm was also dead: the host was split on the first `:`, which lands
+inside the brackets and leaves a bare `[`.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 1 | Refuse a request with no `Host` header | space-bunny-free | 2026-10-09 | DONE |
+| 2 | Parse bracketed IPv6 hosts instead of splitting on the first colon | space-bunny-free | 2026-10-09 | DONE |
+| 3 | Add `loopback_hosts_are_authorized_and_others_are_not` and `a_request_carrying_no_host_at_all_is_refused` | space-bunny-free | 2026-10-09 | DONE |
+
+A bearer token is still the real fix and is not in this entry; the host gate is
+DNS-rebinding defense, not authorization. On desktop the token is not a boundary
+against same-user processes — the stated target is Android, where another app
+can reach loopback but cannot read app-private storage.
+
+| Gate | Result | Evidence |
+|------|--------|----------|
+| Tests pass | PASS | `cargo test -p rust_fuego_wallet` — 26 passed, 0 failed (was 24; +2 new) |
+| Workspace builds | PASS | `cargo check --workspace` — Finished dev profile |
+
+**Sign-off:** space-bunny-free — 2026-10-09
+
+---
+
+## [2026-10-09] Audit item pass: dead Rust tree, dead Dart deposit, stale CD fee docs
+
+Closes three findings from the 12-item audit tracked in `AUDIT_STATUS.md`
+(items 10b, 10d, 12). No consensus, wallet-format, or RPC behaviour changes.
+
+`rust-fuego-wallet/src/` is not a workspace member — `Cargo.toml` lists only
+`core` plus the four SDK crates, and `core/Cargo.toml` points its bin at its own
+`src/main.rs`. No CI, script, or Dart reference reaches the root tree. The two
+files named in the audit were byte-identical to the `core/src/` copies.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 1 | Delete `rust-fuego-wallet/src/keystore.rs` (identical to `core/src/keystore.rs`) | space-bunny-free | 2026-10-09 | DONE |
+| 2 | Delete `rust-fuego-wallet/src/wallet.rs` (identical to `core/src/wallet.rs`) | space-bunny-free | 2026-10-09 | DONE |
+| 3 | Delete dead Dart `createDeposit` from `fuego_wallet_adapter.dart` — zero call sites, and its `create_deposit` method has no daemon route | space-bunny-free | 2026-10-09 | DONE |
+| 4 | Correct the CD creation-fee destination in `fuego-suite/README.md` (2 sites) | space-bunny-free | 2026-10-09 | DONE |
+| 5 | Same correction in `how-cds-work.mdx` and `interest-and-yield.mdx` | space-bunny-free | 2026-10-09 | DONE |
+
+The fee is burned and credited (as ΗΞΔŦ) to the Treasury LP Manager via the
+`TreasuryFund` tag from v12; the @fuegoxfg development-fund donation is the
+pre-v12 behaviour and is now labelled as historical.
+
+| Gate | Result | Evidence |
+|------|--------|----------|
+| Rust builds | PASS | `cargo check -p rust_fuego_wallet` — Finished dev profile in 22.50s, no errors |
+| Analyzer | PASS | `dart analyze lib/` — 0 errors, 0 warnings (761 pre-existing infos) |
+| Tests pass | PASS | `flutter test` — 80/80, All tests passed |
+| Doc grep | PASS | no remaining `donated/sent to @fuegoxfg` outside the labelled pre-v12 note |
+| All tasks done | PASS | 5/5 |
+
+**Deliberately not touched:**
+- The other 8 orphaned files in `rust-fuego-wallet/src/` (`base58.rs`, `crypto.rs`,
+  `daemon.rs`, `fuegod.rs`, `main.rs`, `release.rs`, `server.rs`, `walletd.rs`) — also
+  dead, but outside the two files the audit named. `server.rs` diverges (653 vs 1162
+  lines) and `SECURITY_REVIEW.md` cites this tree as reviewed surface.
+- `docs/developer/unified-commitment-plan.md:39` still labels term 1..MAX_TERM as
+  "XFG CD". Reads as a historical design doc; not edited without reading it in full.
+
+**Sign-off:** space-bunny-free — 2026-10-09
+
+---
+
 ## [2026-10-08] DeXFG swap daemon execution contract
 
 DeXFG now consumes the daemon's runtime network and chain catalog, preserves

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../services/walletd_auth.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -282,7 +283,7 @@ class DexCubit extends Cubit<DexState> {
     if (_baseUrl.isEmpty) return;
     try {
       final resp = await _http
-          .get(Uri.parse('$_baseUrl/getinfo'))
+          .get(Uri.parse('$_baseUrl/getinfo'), headers: WalletdAuth.headers())
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode == 200) {
         emit(state.copyWith(isConnected: true, error: null));
@@ -298,7 +299,7 @@ class DexCubit extends Cubit<DexState> {
     Map<String, String>? query,
   }) async {
     final resp = await _http
-        .get(_rest(path, query: query))
+        .get(_rest(path, query: query), headers: WalletdAuth.headers())
         .timeout(const Duration(seconds: 10));
     if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
     return jsonDecode(resp.body) as Map<String, dynamic>;
@@ -311,7 +312,7 @@ class DexCubit extends Cubit<DexState> {
     final resp = await _http
         .post(
           _rest(path),
-          headers: {'Content-Type': 'application/json'},
+          headers: {'Content-Type': 'application/json', ...WalletdAuth.headers()},
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 10));
@@ -326,7 +327,7 @@ class DexCubit extends Cubit<DexState> {
     final resp = await _http
         .post(
           _rest('/json_rpc'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {'Content-Type': 'application/json', ...WalletdAuth.headers()},
           body: jsonEncode({
             'jsonrpc': '2.0',
             'id': 'dex',
