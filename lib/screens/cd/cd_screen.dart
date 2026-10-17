@@ -9,17 +9,21 @@ class CdScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Certificates of Deposit'),
-      ),
+      appBar: AppBar(title: const Text('Certificates of Deposit')),
       body: BlocBuilder<CdCubit, CdState>(
         builder: (context, state) {
-          if (state.status == CdLoadStatus.loading || state.status == CdLoadStatus.initial) {
+          if (state.status == CdLoadStatus.loading ||
+              state.status == CdLoadStatus.initial) {
             return const Center(child: CircularProgressIndicator());
           }
 
           if (state.status == CdLoadStatus.error) {
-            return Center(child: Text('Error: ${state.error}', style: const TextStyle(color: AppTheme.errorColor)));
+            return Center(
+              child: Text(
+                'Error: ${state.error}',
+                style: const TextStyle(color: AppTheme.errorColor),
+              ),
+            );
           }
 
           return ListView(
@@ -35,18 +39,22 @@ class CdScreen extends StatelessWidget {
               if (state.myCds.isEmpty)
                 const Center(child: Text('No CDs found.'))
               else
-                ...state.myCds.map((cd) => Card(
-                  child: ListTile(
-                    title: Text('Amount: ${cd.amount} ${cd.coin}'),
-                    subtitle: Text('Matures at block: ${cd.maturityHeight}'),
-                    trailing: ElevatedButton(
-                      onPressed: cd.matured ? () {
-                        // TODO: Claim CD
-                      } : null,
-                      child: const Text('Claim'),
+                ...state.myCds.map(
+                  (cd) => Card(
+                    child: ListTile(
+                      title: Text('Amount: ${cd.amount} ${cd.coin}'),
+                      subtitle: Text('Matures at block: ${cd.maturityHeight}'),
+                      trailing: ElevatedButton(
+                        onPressed: cd.matured
+                            ? () {
+                                // TODO: Claim CD
+                              }
+                            : null,
+                        child: const Text('Claim'),
+                      ),
                     ),
                   ),
-                )),
+                ),
             ],
           );
         },

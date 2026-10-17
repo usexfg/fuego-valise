@@ -5,8 +5,6 @@
 
 import 'chain_registry.g.dart';
 
-
-
 /// Canonical EVM chain key used by Web3MultiChainService.
 enum EvmChainKey {
   eth('eth', 1),
@@ -80,13 +78,13 @@ class Erc20Token {
   String get lcAddress => address.toLowerCase();
 
   Map<String, dynamic> toJson() => {
-        'address': address,
-        'symbol': symbol,
-        'name': name,
-        'decimals': decimals,
-        'chain': chainKey,
-        'chainId': chainId,
-      };
+    'address': address,
+    'symbol': symbol,
+    'name': name,
+    'decimals': decimals,
+    'chain': chainKey,
+    'chainId': chainId,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -443,25 +441,45 @@ class Erc20Registry {
   // UI. Tempo has no native gas token (eth_getBalance returns constant).
 
   static const List<Erc20Token> all = [
-    usdtEth, usdcEth,
-    usdtArb, usdcArb, usdcArbNative,
-    usdcBase, usdtBase, ousdtBase,
-    usdtBsc, usdcBsc,
-    usdtPoly, usdcPoly,
-    usdtOp, usdcOp, usdcOpBridged, ousdtOp,
-    usdtAvax, usdcAvax,
-    usdtCro, usdcCro,
-    usdcMonad, usdt0Monad,
+    usdtEth,
+    usdcEth,
+    usdtArb,
+    usdcArb,
+    usdcArbNative,
+    usdcBase,
+    usdtBase,
+    ousdtBase,
+    usdtBsc,
+    usdcBsc,
+    usdtPoly,
+    usdcPoly,
+    usdtOp,
+    usdcOp,
+    usdcOpBridged,
+    ousdtOp,
+    usdtAvax,
+    usdcAvax,
+    usdtCro,
+    usdcCro,
+    usdcMonad,
+    usdt0Monad,
     usdt0Xpl,
-    eusdtPls, eusdcPls,
-    usdcUni, usdt0Uni, ousdtUni,
+    eusdtPls,
+    eusdcPls,
+    usdcUni,
+    usdt0Uni,
+    ousdtUni,
     usdgRh,
-    usdcLinea, usdcZksync,
+    usdcLinea,
+    usdcZksync,
     usdcHyperEvm,
-    usdcInk, ousdtInk,
+    usdcInk,
+    ousdtInk,
     ousdtBob,
     usdcPlume,
-    usdtSoneium, usdcSoneiumBridged, ousdtSoneium,
+    usdtSoneium,
+    usdcSoneiumBridged,
+    ousdtSoneium,
     usdcSei,
   ];
 
@@ -523,7 +541,10 @@ class Erc20Amount {
     if (decimals == 0) return baseUnits.toString();
     final base = BigInt.from(10).pow(decimals);
     final whole = baseUnits ~/ base;
-    final frac = (baseUnits.remainder(base).abs()).toString().padLeft(decimals, '0');
+    final frac = (baseUnits.remainder(base).abs()).toString().padLeft(
+      decimals,
+      '0',
+    );
     final trimmed = frac.replaceAll(RegExp(r'0+$'), '');
     if (trimmed.isEmpty) return whole.toString();
     return '${whole.toString()}.$trimmed';

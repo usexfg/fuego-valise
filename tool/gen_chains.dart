@@ -11,6 +11,7 @@
 // by chains.yaml directly ("- key:" starts an entry, indented "k: v" lines
 // follow; strings may be single/double quoted; '#' comments stripped).
 
+import 'dart:convert';
 import 'dart:io';
 
 const String yamlPath = 'chains.yaml';
@@ -28,7 +29,11 @@ void main(List<String> args) {
   final src = File(yamlPath).readAsStringSync();
   final chains = parseChainsYaml(src);
   validate(chains);
-  final code = render(chains);
+  // Formatted before comparison: CI runs `dart format --set-exit-if-changed lib/`,
+  // and dart_style cannot be told to skip generated files from analysis_options.yaml
+  // (dart_style 2.x ignores `formatter: exclude`). Emitting canonical formatter
+  // output is what keeps both gates satisfiable at once.
+  final code = dartFormat(render(chains));
 
   final outFile = File(outPath);
   if (!check) {
@@ -225,6 +230,46 @@ String render(List<Map<String, String>> chains) {
 /// Escapes a string for a single-quoted Dart literal.
 String _dartStr(String s) =>
     s.replaceAll('\\', r'\\').replaceAll("'", r"\'");
+
+// ── Formatting ────────────────────────────────────────────────────────
+
+/// Runs [src] through the same `dart format` CI gates on, so the committed
+/// generated file is byte-identical to what `dart format lib/` would produce.
+///
+/// dart_style cannot be told to skip generated files from analysis_options.yaml
+/// (dart_style 2.x ignores `formatter: exclude`) and `dart format` has no
+/// --exclude flag, so the generator emits canonical formatter output instead.
+/// That is what keeps the format gate and the --check drift gate satisfiable
+/// at the same time.
+String dartFormat(String src) {
+  final tmp = File(
+    '${Directory.systemTemp.path}/gen_chains_fmt_'
+    '${pid}_${DateTime.now().microsecondsSinceEpoch}.dart',
+  );
+  try {
+    tmp.writeAsStringSync(src);
+    final res = Process.runSync(
+      Platform.environment['DART_FORMATTER'] ?? 'dart',
+      ['format', tmp.path],
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+    if (res.exitCode != 0) {
+      throw StateError(
+        'dart format failed (exit ${res.exitCode}): '
+        '${res.stderr ?? res.stdout}',
+      );
+    }
+    // `dart format <file>` rewrites in place and prints the path.
+    final formatted = tmp.existsSync() ? tmp.readAsStringSync() : '';
+    if (formatted.trim().isEmpty) {
+      throw StateError('dart format produced no output for $outPath');
+    }
+    return formatted;
+  } finally {
+    if (tmp.existsSync()) tmp.deleteSync();
+  }
+}
 
 // ── Diagnostics ───────────────────────────────────────────────────────
 

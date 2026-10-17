@@ -19,7 +19,10 @@ import 'package:web3dart/web3dart.dart';
 class ReserveProofService {
   /// EVM reserve proof. [privateKeyHex] is the 64-hex-char private key of the
   /// funded address (any EVM chain — the scheme is chain-agnostic).
-  static String buildEvmProof({required String offerId, required String privateKeyHex}) {
+  static String buildEvmProof({
+    required String offerId,
+    required String privateKeyHex,
+  }) {
     final credentials = EthPrivateKey.fromHex(privateKeyHex);
     final messageBytes = Uint8List.fromList(utf8.encode(offerId));
     final sig = credentials.signPersonalMessageToUint8List(messageBytes);
@@ -27,10 +30,11 @@ class ReserveProofService {
     // v as 27/28 or 0/1; normalize to 27/28 for canonical storage.
     final v = sig[64];
     final normalizedV = (v < 27) ? (v + 27) : v;
-    final hex = sig
-        .sublist(0, 64)
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join() +
+    final hex =
+        sig
+            .sublist(0, 64)
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join() +
         normalizedV.toRadixString(16).padLeft(2, '0');
     final address = credentials.address.hex; // lowercase "0x..."
     return '$address:$hex:$offerId';
@@ -38,9 +42,14 @@ class ReserveProofService {
 
   /// Solana reserve proof. [privateKeyHex] is the 64-hex-char (32-byte)
   /// private key of the funded account.
-  static Future<String> buildSolProof({required String offerId, required String privateKeyHex}) async {
+  static Future<String> buildSolProof({
+    required String offerId,
+    required String privateKeyHex,
+  }) async {
     final keyBytes = _hexToBytes(privateKeyHex);
-    final keypair = await solana.Ed25519HDKeyPair.fromPrivateKeyBytes(privateKey: keyBytes);
+    final keypair = await solana.Ed25519HDKeyPair.fromPrivateKeyBytes(
+      privateKey: keyBytes,
+    );
     final messageBytes = Uint8List.fromList(utf8.encode(offerId));
     final signature = await keypair.sign(messageBytes.toList());
     final pub = b58.base58encode(keypair.publicKey.bytes);

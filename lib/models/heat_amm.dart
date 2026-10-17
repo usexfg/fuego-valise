@@ -82,8 +82,9 @@ class HeatMetrics {
   }
 
   /// Redemption price as a human-readable double (num/denom).
-  double get redemptionPriceValue =>
-      redemptionPriceDenom != 0 ? redemptionPriceNum / redemptionPriceDenom : 0.0;
+  double get redemptionPriceValue => redemptionPriceDenom != 0
+      ? redemptionPriceNum / redemptionPriceDenom
+      : 0.0;
 
   /// Redemption price as a display string (num/denom).
   String get redemptionPrice => redemptionPriceValue.toStringAsFixed(6);
@@ -146,10 +147,10 @@ class OrderBookLevel {
   }
 
   Map<String, dynamic> toJson() => {
-        'price': price,
-        'amount': amount,
-        'orderCount': orderCount,
-      };
+    'price': price,
+    'amount': amount,
+    'orderCount': orderCount,
+  };
 }
 
 /// Response to `/getorderbook`

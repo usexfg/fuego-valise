@@ -102,7 +102,8 @@ class WalletState extends Equatable {
     peerCount: peerCount ?? this.peerCount,
     scannedHeight: scannedHeight ?? this.scannedHeight,
     subaddresses: subaddresses ?? this.subaddresses,
-    legacySubaddressBalance: legacySubaddressBalance ?? this.legacySubaddressBalance,
+    legacySubaddressBalance:
+        legacySubaddressBalance ?? this.legacySubaddressBalance,
     legacyWalletBalance: legacyWalletBalance ?? this.legacyWalletBalance,
   );
 
@@ -186,7 +187,9 @@ class WalletCubit extends Cubit<WalletState> {
       // sub-addresses with it (a no-op when already known).
       final legacy = _subaddressStore.legacy;
       if (legacy.isNotEmpty) {
-        await _daemon.registerLegacySubaddresses(legacy.map((s) => s.index).toList());
+        await _daemon.registerLegacySubaddresses(
+          legacy.map((s) => s.index).toList(),
+        );
         await _subaddressStore.markLegacyRegistered();
       }
       return true;
@@ -435,7 +438,11 @@ class WalletCubit extends Cubit<WalletState> {
     try {
       if (!await _ensureWalletdHasVault()) return null;
       final (index, address) = await _daemon.createSubaddress();
-      final sub = await _subaddressStore.add(index: index, address: address, label: label);
+      final sub = await _subaddressStore.add(
+        index: index,
+        address: address,
+        label: label,
+      );
       emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
       return sub;
     } catch (e) {
@@ -451,18 +458,26 @@ class WalletCubit extends Cubit<WalletState> {
       final r = await _daemon.getSubaddresses();
       final current = [
         for (final e in (r['subaddresses'] as List<dynamic>? ?? const []))
-          if (e is Map<String, dynamic> && e['index'] is int && e['address'] is String)
+          if (e is Map<String, dynamic> &&
+              e['index'] is int &&
+              e['address'] is String)
             (e['index'] as int, e['address'] as String),
       ];
       await _subaddressStore.reconcile(current);
       final legacyBalance = (r['legacy'] as List<dynamic>? ?? const [])
-          .fold<int>(0, (sum, e) => sum + ((e as Map<String, dynamic>)['balance'] as int? ?? 0));
+          .fold<int>(
+            0,
+            (sum, e) =>
+                sum + ((e as Map<String, dynamic>)['balance'] as int? ?? 0),
+          );
       final legacyWallet = await _daemon.getLegacyWallet();
-      emit(state.copyWith(
-        subaddresses: _subaddressStore.subaddresses,
-        legacySubaddressBalance: legacyBalance,
-        legacyWalletBalance: legacyWallet?['balance'] as int? ?? 0,
-      ));
+      emit(
+        state.copyWith(
+          subaddresses: _subaddressStore.subaddresses,
+          legacySubaddressBalance: legacyBalance,
+          legacyWalletBalance: legacyWallet?['balance'] as int? ?? 0,
+        ),
+      );
     } catch (e) {
       _log('[wallet] sub-address sync failed: $e');
     }

@@ -87,10 +87,13 @@ class SwapCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String pairName = swap.pairName;
-    final Color chainColor = ChainInfo.colors[pairName] ?? AppTheme.primaryColor;
+    final Color chainColor =
+        ChainInfo.colors[pairName] ?? AppTheme.primaryColor;
     final String? iconAsset = ChainInfo.icons[pairName];
     final Color lockColor = _lockColor;
-    final String lockLabel = swap.lockTypeLabel.isEmpty ? 'HTLC' : swap.lockTypeLabel;
+    final String lockLabel = swap.lockTypeLabel.isEmpty
+        ? 'HTLC'
+        : swap.lockTypeLabel;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -117,20 +120,26 @@ class SwapCard extends StatelessWidget {
                           iconAsset,
                           width: 28,
                           height: 28,
-                          errorBuilder: (BuildContext c, Object e, StackTrace? s) {
-                            return _fallbackIcon(pairName, chainColor);
-                          },
+                          errorBuilder:
+                              (BuildContext c, Object e, StackTrace? s) {
+                                return _fallbackIcon(pairName, chainColor);
+                              },
                         )
                       : _fallbackIcon(pairName, chainColor),
                 ),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: chainColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: chainColor.withValues(alpha: 0.4)),
+                      border: Border.all(
+                        color: chainColor.withValues(alpha: 0.4),
+                      ),
                     ),
                     child: Text(
                       pairName,
@@ -146,7 +155,10 @@ class SwapCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: lockColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
@@ -228,14 +240,18 @@ class SwapCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (swap.ctrLockTxId != null && swap.ctrLockTxId!.isNotEmpty) ...[
+                if (swap.ctrLockTxId != null &&
+                    swap.ctrLockTxId!.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   InkWell(
                     onTap: () => _copyShort(context),
                     onLongPress: () => _openExplorer(context),
                     borderRadius: BorderRadius.circular(4),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -271,7 +287,9 @@ class SwapCard extends StatelessWidget {
                   minHeight: 3,
                   backgroundColor: AppTheme.surfaceColor,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    swap.isLanded ? AppTheme.successColor : AppTheme.primaryColor,
+                    swap.isLanded
+                        ? AppTheme.successColor
+                        : AppTheme.primaryColor,
                   ),
                 ),
               ),
@@ -280,12 +298,9 @@ class SwapCard extends StatelessWidget {
                 swap.isLanded
                     ? 'Landed ${swap.confirmations}/${swap.requiredConfirmations} — SPV verified'
                     : swap.confirmations == 0
-                        ? 'Seen in mempool — 0/${swap.requiredConfirmations}'
-                        : '${swap.confirmations}/${swap.requiredConfirmations} confirmations',
-                style: const TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 10,
-                ),
+                    ? 'Seen in mempool — 0/${swap.requiredConfirmations}'
+                    : '${swap.confirmations}/${swap.requiredConfirmations} confirmations',
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
               ),
             ],
             if (onAccept != null || onRefund != null || onInspect != null) ...[
@@ -312,7 +327,10 @@ class SwapCard extends StatelessWidget {
                       ),
                       child: const Text(
                         'Accept',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   if (onRefund != null)
@@ -333,7 +351,10 @@ class SwapCard extends StatelessWidget {
                       ),
                       child: const Text(
                         'Refund',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   if (onInspect != null)
@@ -350,7 +371,10 @@ class SwapCard extends StatelessWidget {
                       ),
                       child: const Text(
                         'Inspect',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                 ],
@@ -363,7 +387,9 @@ class SwapCard extends StatelessWidget {
   }
 
   Widget _fallbackIcon(String pairName, Color chainColor) {
-    final String letters = pairName.length >= 2 ? pairName.substring(0, 2) : pairName;
+    final String letters = pairName.length >= 2
+        ? pairName.substring(0, 2)
+        : pairName;
     return Container(
       width: 28,
       height: 28,

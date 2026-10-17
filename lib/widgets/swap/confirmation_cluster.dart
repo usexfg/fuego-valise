@@ -108,7 +108,9 @@ class ConfirmationCluster extends StatelessWidget {
         ? (confirmations / req).clamp(0.0, 1.0).toDouble()
         : 0.0;
     final bool hasTxid = txid != null && txid!.isNotEmpty;
-    final String explorerUrl = hasTxid ? ChainInfo.explorerTxUrl(chain, txid!) : '';
+    final String explorerUrl = hasTxid
+        ? ChainInfo.explorerTxUrl(chain, txid!)
+        : '';
     final bool canOpen = explorerUrl.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -116,9 +118,7 @@ class ConfirmationCluster extends StatelessWidget {
         Wrap(
           spacing: 6,
           runSpacing: 6,
-          children: [
-            for (int i = 0; i < req; i++) _buildDot(i, filled, req),
-          ],
+          children: [for (int i = 0; i < req; i++) _buildDot(i, filled, req)],
         ),
         const SizedBox(height: 8),
         Text(
@@ -203,7 +203,9 @@ class ConfirmationCluster extends StatelessWidget {
             value: progress,
             minHeight: 4,
             backgroundColor: AppTheme.surfaceColor,
-            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFC5A059)), // Champagne gold progress
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              Color(0xFFC5A059),
+            ), // Champagne gold progress
           ),
         ),
       ],
@@ -212,21 +214,30 @@ class ConfirmationCluster extends StatelessWidget {
 
   Widget _buildDot(int index, int filled, int req) {
     final bool isFilled = index < filled;
-    final bool isCurrent = index == filled && filled < req && filled == confirmations;
+    final bool isCurrent =
+        index == filled && filled < req && filled == confirmations;
     final bool showCheck = isFilled && spvVerified;
     final Widget dot = Container(
       width: 10,
       height: 10,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isFilled ? Color(0xFFC5A059) : Colors.transparent, // Champagne fill
+        color: isFilled
+            ? Color(0xFFC5A059)
+            : Colors.transparent, // Champagne fill
         border: Border.all(
-          color: isFilled ? Color(0xFFC5A059) : Color(0xFF3D5A80), // Midnight Blue unfilled
+          color: isFilled
+              ? Color(0xFFC5A059)
+              : Color(0xFF3D5A80), // Midnight Blue unfilled
           width: 1.2,
         ),
       ),
       child: showCheck
-          ? const Icon(Icons.check, size: 7, color: Color(0xFF0D0B08)) // Black check on gold
+          ? const Icon(
+              Icons.check,
+              size: 7,
+              color: Color(0xFF0D0B08),
+            ) // Black check on gold
           : null,
     );
     if (!isCurrent || !isFilled) {

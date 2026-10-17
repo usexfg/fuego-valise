@@ -10,12 +10,16 @@ class HearthTheme {
   static const Color bgElevated = Color(0xFF1E1B14);
   static const Color bgInput = Color(0xFF1A1712);
 
-  static const Color bidPrimary = Color(0xFF3D5A80); // Midnight Blue — bids (private banking)
+  static const Color bidPrimary = Color(
+    0xFF3D5A80,
+  ); // Midnight Blue — bids (private banking)
   static const Color bidLight = Color(0xFF5A7A9C);
   static const Color bidBg = Color(0x183D5A80);
   static const Color bidDepth = Color(0x303D5A80);
 
-  static const Color askPrimary = Color(0xFFC5A059); // Champagne gold — house primary
+  static const Color askPrimary = Color(
+    0xFFC5A059,
+  ); // Champagne gold — house primary
   static const Color askLight = Color(0xFFD4B896);
   static const Color askBg = Color(0x18C5A059);
   static const Color askDepth = Color(0x30C5A059);
@@ -39,7 +43,11 @@ class HearthTheme {
   static const Color heatFlame = Color(0xFFEAF6F9);
   static const Color heatAqua = Color(0xFF9FD4DE);
 
-  static TextStyle mono({double size = 12, FontWeight weight = FontWeight.w500, Color color = textPrimary}) {
+  static TextStyle mono({
+    double size = 12,
+    FontWeight weight = FontWeight.w500,
+    Color color = textPrimary,
+  }) {
     return TextStyle(
       fontFamily: 'IBMPlexMono',
       fontSize: size,

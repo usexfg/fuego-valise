@@ -8,10 +8,15 @@ void main() {
     // Access private encoders via service instance trick — test via public balanceOfRaw encoding side-effect.
     // Instead, directly test the static helpers by reproducing them here and comparing to known good vectors.
     test('balanceOf selector is 70a08231', () {
-      final holder = EthereumAddress.fromHex('0x1111111111111111111111111111111111111111');
+      final holder = EthereumAddress.fromHex(
+        '0x1111111111111111111111111111111111111111',
+      );
       // Reproduce encoder
       final data = [
-        0x70, 0xa0, 0x82, 0x31,
+        0x70,
+        0xa0,
+        0x82,
+        0x31,
         ...List<int>.filled(12, 0),
         ...holder.addressBytes,
       ];
@@ -27,7 +32,10 @@ void main() {
       expect(amount, BigInt.from(1500000));
       // Encoded amount should be 32-byte big endian
       final hex = amount.toRadixString(16).padLeft(64, '0');
-      expect(hex, '000000000000000000000000000000000000000000000000000000000016e360');
+      expect(
+        hex,
+        '000000000000000000000000000000000000000000000000000000000016e360',
+      );
     });
 
     test('approve encodes max uint256', () {
@@ -66,7 +74,11 @@ void main() {
     test('address validation throws', () async {
       final svc = Erc20Service();
       expect(
-        () => svc.balanceOf(chainKey: 'eth', tokenAddress: 'bad', holderAddress: '0x1111111111111111111111111111111111111111'),
+        () => svc.balanceOf(
+          chainKey: 'eth',
+          tokenAddress: 'bad',
+          holderAddress: '0x1111111111111111111111111111111111111111',
+        ),
         throwsA(isA<ArgumentError>()),
       );
       svc.dispose();

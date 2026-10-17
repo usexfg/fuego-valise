@@ -38,12 +38,7 @@ class SwapTimelineStepper extends StatelessWidget {
     15: 7,
   };
 
-  static const Map<int, int> _afkIndex = {
-    100: 0,
-    101: 1,
-    102: 2,
-    103: 3,
-  };
+  static const Map<int, int> _afkIndex = {100: 0, 101: 1, 102: 2, 103: 3};
 
   static const Map<String, int> _nameToAdaptorId = {
     'ADAPTOR_KEYS_EXCHANGED': 10,
@@ -127,8 +122,7 @@ class SwapTimelineStepper extends StatelessWidget {
       return '';
     }
     try {
-      final DateTime dt =
-          DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      final DateTime dt = DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
       final String y = dt.year.toString().padLeft(4, '0');
       final String m = dt.month.toString().padLeft(2, '0');
       final String d = dt.day.toString().padLeft(2, '0');
@@ -239,8 +233,8 @@ class SwapTimelineStepper extends StatelessWidget {
                           color: _isCompleted(i, currentPos)
                               ? AppTheme.textPrimary
                               : i == currentPos
-                                  ? AppTheme.primaryColor
-                                  : AppTheme.textMuted,
+                              ? AppTheme.primaryColor
+                              : AppTheme.textMuted,
                           fontSize: 11,
                           fontWeight: i == currentPos
                               ? FontWeight.w700
@@ -299,8 +293,8 @@ class SwapTimelineStepper extends StatelessWidget {
             color: completed
                 ? AppTheme.textPrimary
                 : current
-                    ? AppTheme.primaryColor
-                    : AppTheme.textMuted,
+                ? AppTheme.primaryColor
+                : AppTheme.textMuted,
             fontSize: 11,
             fontWeight: current ? FontWeight.w700 : FontWeight.w500,
             height: 1.2,
@@ -313,10 +307,7 @@ class SwapTimelineStepper extends StatelessWidget {
           Text(
             swap.displayState,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 9,
-            ),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 9),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -359,8 +350,8 @@ class SwapTimelineStepper extends StatelessWidget {
           color: completed
               ? AppTheme.primaryColor
               : current
-                  ? AppTheme.primaryColor
-                  : AppTheme.surfaceColor,
+              ? AppTheme.primaryColor
+              : AppTheme.surfaceColor,
           width: 1.2,
         ),
       ),

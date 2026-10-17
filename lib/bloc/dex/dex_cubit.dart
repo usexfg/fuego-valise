@@ -137,13 +137,8 @@ class DexCubit extends Cubit<DexState> {
 
   void configure(String host, {int port = 18189}) =>
       _baseUrl = 'http://$host:$port';
-  void configureSwapDaemon({
-    String host = '127.0.0.1',
-    int port = 18902,
-  }) => _swapClient = SwapDaemonClient(
-    host: host,
-    port: port,
-  );
+  void configureSwapDaemon({String host = '127.0.0.1', int port = 18902}) =>
+      _swapClient = SwapDaemonClient(host: host, port: port);
 
   void configureWeb3({
     String ethRpcUrl = '',
@@ -179,11 +174,27 @@ class DexCubit extends Cubit<DexState> {
   }
 
   /// ERC20 helpers delegated to Web3MultiChainService.erc20.
-  Future<BigInt> erc20BalanceOf({required String chain, required String tokenAddress, required String holder}) =>
-      _web3!.getErc20Balance(holderAddress: holder, tokenAddress: tokenAddress, chain: chain);
+  Future<BigInt> erc20BalanceOf({
+    required String chain,
+    required String tokenAddress,
+    required String holder,
+  }) => _web3!.getErc20Balance(
+    holderAddress: holder,
+    tokenAddress: tokenAddress,
+    chain: chain,
+  );
 
-  Future<BigInt> erc20Allowance({required String chain, required String tokenAddress, required String owner, required String spender}) =>
-      _web3!.getErc20Allowance(owner: owner, spender: spender, tokenAddress: tokenAddress, chain: chain);
+  Future<BigInt> erc20Allowance({
+    required String chain,
+    required String tokenAddress,
+    required String owner,
+    required String spender,
+  }) => _web3!.getErc20Allowance(
+    owner: owner,
+    spender: spender,
+    tokenAddress: tokenAddress,
+    chain: chain,
+  );
 
   /// Check allowance and approve HTLC spender if needed before a token lock.
   /// Returns txHash if approval sent, 'already-approved' if sufficient, throws on failure.
@@ -196,9 +207,20 @@ class DexCubit extends Cubit<DexState> {
     required BigInt amountBaseUnits,
   }) async {
     if (_web3 == null) throw StateError('Web3 not configured');
-    final current = await erc20Allowance(chain: chain, tokenAddress: tokenAddress, owner: owner, spender: spender);
+    final current = await erc20Allowance(
+      chain: chain,
+      tokenAddress: tokenAddress,
+      owner: owner,
+      spender: spender,
+    );
     if (current >= amountBaseUnits) return 'already-approved';
-    return _web3!.approveErc20(privateKey: privateKey, tokenAddress: tokenAddress, spender: spender, amountBaseUnits: amountBaseUnits, chain: chain);
+    return _web3!.approveErc20(
+      privateKey: privateKey,
+      tokenAddress: tokenAddress,
+      spender: spender,
+      amountBaseUnits: amountBaseUnits,
+      chain: chain,
+    );
   }
 
   Future<void> init({String host = '127.0.0.1', int port = 18189}) async {
@@ -216,9 +238,7 @@ class DexCubit extends Cubit<DexState> {
           .get(Uri.parse('$_baseUrl/getinfo'))
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode == 200) {
-        emit(
-          state.copyWith(isConnected: true, error: null),
-        );
+        emit(state.copyWith(isConnected: true, error: null));
         await Future.wait([loadOffers(), loadPrice()]);
       }
     } catch (e) {
@@ -391,13 +411,7 @@ class DexCubit extends Cubit<DexState> {
       final selected = allOffers
           .where((offer) => offer.pair == state.selectedPair)
           .toList();
-      emit(
-        state.copyWith(
-          offers: selected,
-          isLoading: false,
-          error: null,
-        ),
-      );
+      emit(state.copyWith(offers: selected, isLoading: false, error: null));
     } catch (e) {
       debugPrint('DexCubit: loadOffers failed: $e');
     }
@@ -1121,7 +1135,12 @@ class DexCubit extends Cubit<DexState> {
       emit(state.copyWith(spvSwaps: swaps, error: null));
       if (swaps.isNotEmpty) {
         final latest = swaps.first;
-        emit(state.copyWith(lastLockType: latest.lockTypeName, lastPtlcPoint: latest.ptlcPoint));
+        emit(
+          state.copyWith(
+            lastLockType: latest.lockTypeName,
+            lastPtlcPoint: latest.ptlcPoint,
+          ),
+        );
       }
     } catch (e) {
       debugPrint('DexCubit: loadSpvSwaps failed: $e');

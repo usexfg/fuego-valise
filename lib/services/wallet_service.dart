@@ -21,9 +21,9 @@ class WalletService {
   WalletService._internal();
 
   static Never _unavailable(String method) => throw UnsupportedError(
-        'WalletService.$method is removed (insecure: private_key over HTTP). '
-        'Use FuegoRPCService.sendTransaction / FuegoDaemonClient via NodeConnection.',
-      );
+    'WalletService.$method is removed (insecure: private_key over HTTP). '
+    'Use FuegoRPCService.sendTransaction / FuegoDaemonClient via NodeConnection.',
+  );
 
   Future<String> getBalance(String address) async => _unavailable('getBalance');
 
@@ -36,8 +36,7 @@ class WalletService {
     required String toAddress,
     required String amount,
     required String privateKey,
-  }) async =>
-      _unavailable('sendTransaction');
+  }) async => _unavailable('sendTransaction');
 
   Future<List<Map<String, dynamic>>> getTransactionHistory() async =>
       _unavailable('getTransactionHistory');

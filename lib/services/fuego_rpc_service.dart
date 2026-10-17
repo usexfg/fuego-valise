@@ -14,8 +14,7 @@ class FuegoRPCService {
   NetworkConfig _networkConfig;
 
   /// Mainnet seed list (derived from [NetworkConfig.mainnet.seedNodes]).
-  static List<String> get defaultRemoteNodes =>
-      NetworkConfig.mainnet.seedNodes;
+  static List<String> get defaultRemoteNodes => NetworkConfig.mainnet.seedNodes;
 
   FuegoRPCService({
     String host = 'localhost',
@@ -23,11 +22,13 @@ class FuegoRPCService {
     NetworkConfig? networkConfig,
   }) : _baseUrl = 'http://$host:${port ?? NetworkConfig.mainnet.walletRpcPort}',
        _networkConfig = networkConfig ?? NetworkConfig.mainnet,
-       _dio = Dio(BaseOptions(
-         connectTimeout: const Duration(seconds: 30),
-         receiveTimeout: const Duration(seconds: 30),
-         headers: {'Content-Type': 'application/json'},
-       ));
+       _dio = Dio(
+         BaseOptions(
+           connectTimeout: const Duration(seconds: 30),
+           receiveTimeout: const Duration(seconds: 30),
+           headers: {'Content-Type': 'application/json'},
+         ),
+       );
 
   /// Point wallet JSON-RPC at [host]:[port].
   ///
@@ -42,7 +43,8 @@ class FuegoRPCService {
     _networkConfig = config;
     final uri = Uri.parse(_baseUrl);
     // Keep the current host; only retarget port when it was a known network port.
-    final keepPort = uri.port == NetworkConfig.mainnet.walletRpcPort ||
+    final keepPort =
+        uri.port == NetworkConfig.mainnet.walletRpcPort ||
             uri.port == NetworkConfig.testnet.walletRpcPort ||
             uri.port == NetworkConfig.mainnet.daemonRpcPort ||
             uri.port == NetworkConfig.testnet.daemonRpcPort
@@ -94,7 +96,11 @@ class FuegoRPCService {
         localHeight = status['height'] as int? ?? 0;
       } catch (_) {}
 
-      final available = response['available_balance'] ?? response['availableBalance'] ?? response['balance'] ?? 0;
+      final available =
+          response['available_balance'] ??
+          response['availableBalance'] ??
+          response['balance'] ??
+          0;
       final locked = response['locked_amount'] ?? response['lockedAmount'] ?? 0;
 
       final effectiveLocal = localHeight > 0 ? localHeight : bchainHeight;
@@ -160,16 +166,17 @@ class FuegoRPCService {
       // sendTransaction → proxy remaps to walletd's "transfer"
       // Proxy also converts anonymity → mixin, adds unlock_time
       final response = await _makeRPCCall('sendTransaction', {
-        'destinations': [{
-          'amount': request.amount,
-          'address': request.address,
-        }],
+        'destinations': [
+          {'amount': request.amount, 'address': request.address},
+        ],
         'fee': request.fee,
         'anonymity': request.mixins,
         'paymentId': request.paymentId.isNotEmpty ? request.paymentId : null,
       });
 
-      return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
+      return response['tx_hash'] as String? ??
+          response['transactionHash'] as String? ??
+          '';
     } catch (e) {
       throw FuegoRPCException('Failed to send transaction: $e');
     }
@@ -177,8 +184,11 @@ class FuegoRPCService {
 
   Future<String> createIntegratedAddress(String paymentId) async {
     try {
-      if (paymentId.length != 64 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(paymentId)) {
-        throw FuegoRPCException('Invalid payment ID: must be 64 hex characters');
+      if (paymentId.length != 64 ||
+          !RegExp(r'^[0-9a-fA-F]+$').hasMatch(paymentId)) {
+        throw FuegoRPCException(
+          'Invalid payment ID: must be 64 hex characters',
+        );
       }
 
       final address = await getAddress();
@@ -195,8 +205,10 @@ class FuegoRPCService {
   }
 
   Future<String> generatePaymentId() async {
-    final bytes = List<int>.generate(32, (i) =>
-        DateTime.now().millisecondsSinceEpoch + i);
+    final bytes = List<int>.generate(
+      32,
+      (i) => DateTime.now().millisecondsSinceEpoch + i,
+    );
     return sha256.convert(bytes).toString().substring(0, 64);
   }
 
@@ -207,19 +219,17 @@ class FuegoRPCService {
         params['address'] = address;
       }
       final response = await _makeRPCCall('register_alias', params);
-      return response['tx_hash'] as String? ?? response['transactionHash'] as String? ?? '';
+      return response['tx_hash'] as String? ??
+          response['transactionHash'] as String? ??
+          '';
     } catch (e) {
       throw FuegoRPCException('Failed to register alias: $e');
     }
   }
 
-
   // ── Mining (routed through proxy → fuegod) ──
 
-  Future<bool> startMining({
-    String? address,
-    int threads = 1,
-  }) async {
+  Future<bool> startMining({String? address, int threads = 1}) async {
     try {
       final minerAddress = address ?? await getAddress();
       await _makeRPCCall('start_mining', {
@@ -341,11 +351,15 @@ class FuegoRPCService {
     return response;
   }
 
-  Future<CdCreateResult> cdCreateLadder(List<Map<String, dynamic>> rungs) async {
+  Future<CdCreateResult> cdCreateLadder(
+    List<Map<String, dynamic>> rungs,
+  ) async {
     final response = await _makeRPCCall('cd::create_ladder', {'rungs': rungs});
     // Return first tx as representative; ladder creates multiple
     final hashes = response['tx_hashes'] as List<dynamic>?;
-    final tx = hashes != null && hashes.isNotEmpty ? hashes.first as String : '';
+    final tx = hashes != null && hashes.isNotEmpty
+        ? hashes.first as String
+        : '';
     return CdCreateResult.fromJson({
       'cd_id': tx,
       'tx_hash': tx,
@@ -389,16 +403,12 @@ class FuegoRPCService {
   }
 
   Future<CdBuyResult> cdBuy(String listingId) async {
-    final response = await _makeRPCCall('cd::buy', {
-      'listing_id': listingId,
-    });
+    final response = await _makeRPCCall('cd::buy', {'listing_id': listingId});
     return CdBuyResult.fromJson(response);
   }
 
   Future<void> cdCancelListing(String listingId) async {
-    await _makeRPCCall('cd::cancel_listing', {
-      'listing_id': listingId,
-    });
+    await _makeRPCCall('cd::cancel_listing', {'listing_id': listingId});
   }
 
   Future<CdApyResult> cdApy() async {

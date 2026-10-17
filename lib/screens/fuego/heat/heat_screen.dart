@@ -24,13 +24,22 @@ class _HeatScreenState extends State<HeatScreen> {
   }
 
   Future<void> _loadMetrics() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final daemon = context.read<FuegoDaemonClient>();
       final metrics = await daemon.getHeatMetrics();
-      setState(() { _metrics = metrics; _loading = false; });
+      setState(() {
+        _metrics = metrics;
+        _loading = false;
+      });
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -42,44 +51,51 @@ class _HeatScreenState extends State<HeatScreen> {
         title: const Text('ΗΞΔŦ Stablecoin'),
         backgroundColor: AppTheme.surfaceColor,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMetrics,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadMetrics),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cloud_off, size: 48, color: AppTheme.textMuted),
-                      const SizedBox(height: 12),
-                      Text(_error!, style: const TextStyle(color: AppTheme.textMuted)),
-                      const SizedBox(height: 12),
-                      ElevatedButton(onPressed: _loadMetrics, child: const Text('Retry')),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off,
+                    size: 48,
+                    color: AppTheme.textMuted,
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadMetrics,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildPiDashboard(),
-                      const SizedBox(height: 16),
-                      _buildSupplyCard(),
-                      const SizedBox(height: 16),
-                      _buildTreasuryCard(),
-                      const SizedBox(height: 16),
-                      _buildPoolCard(),
-                      const SizedBox(height: 16),
-                      _buildMintAction(),
-                    ],
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: AppTheme.textMuted),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _loadMetrics,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadMetrics,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildPiDashboard(),
+                  const SizedBox(height: 16),
+                  _buildSupplyCard(),
+                  const SizedBox(height: 16),
+                  _buildTreasuryCard(),
+                  const SizedBox(height: 16),
+                  _buildPoolCard(),
+                  const SizedBox(height: 16),
+                  _buildMintAction(),
+                ],
+              ),
+            ),
     );
   }
 
@@ -91,14 +107,25 @@ class _HeatScreenState extends State<HeatScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const Text('PI Controller', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            const Text(
+              'PI Controller',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _metricColumn('Target', m.piTarget, AppTheme.textMuted),
-                _metricColumn('Price', m.redemptionPrice, AppTheme.primaryColor),
-                _metricColumn('APY', '${m.currentApy.toStringAsFixed(1)}%', AppTheme.successColor),
+                _metricColumn(
+                  'Price',
+                  m.redemptionPrice,
+                  AppTheme.primaryColor,
+                ),
+                _metricColumn(
+                  'APY',
+                  '${m.currentApy.toStringAsFixed(1)}%',
+                  AppTheme.successColor,
+                ),
               ],
             ),
           ],
@@ -115,11 +142,29 @@ class _HeatScreenState extends State<HeatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Supply', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+            const Text(
+              'Supply',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMuted,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(_metrics!.supply, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontFamily: AppTheme.numberFontFamily)),
+            Text(
+              _metrics!.supply,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+                fontFamily: AppTheme.numberFontFamily,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('ΗΞΔŦ in circulation', style: const TextStyle(color: AppTheme.textSecondary)),
+            Text(
+              'ΗΞΔŦ in circulation',
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
           ],
         ),
       ),
@@ -134,12 +179,31 @@ class _HeatScreenState extends State<HeatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Treasury & Yield', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+            const Text(
+              'Treasury & Yield',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMuted,
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _metricColumn('Treasury', _metrics!.treasury, AppTheme.accentColor)),
-                Expanded(child: _metricColumn('CD Yield', _metrics!.cdYield, AppTheme.successColor)),
+                Expanded(
+                  child: _metricColumn(
+                    'Treasury',
+                    _metrics!.treasury,
+                    AppTheme.accentColor,
+                  ),
+                ),
+                Expanded(
+                  child: _metricColumn(
+                    'CD Yield',
+                    _metrics!.cdYield,
+                    AppTheme.successColor,
+                  ),
+                ),
               ],
             ),
           ],
@@ -156,12 +220,31 @@ class _HeatScreenState extends State<HeatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Hearth Pool', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+            const Text(
+              'Hearth Pool',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMuted,
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _metricColumn('XFG', _metrics!.poolXfg, AppTheme.primaryColor)),
-                Expanded(child: _metricColumn('ΗΞΔŦ', _metrics!.poolHeat, AppTheme.accentColor)),
+                Expanded(
+                  child: _metricColumn(
+                    'XFG',
+                    _metrics!.poolXfg,
+                    AppTheme.primaryColor,
+                  ),
+                ),
+                Expanded(
+                  child: _metricColumn(
+                    'ΗΞΔŦ',
+                    _metrics!.poolHeat,
+                    AppTheme.accentColor,
+                  ),
+                ),
               ],
             ),
           ],
@@ -184,11 +267,16 @@ class _HeatScreenState extends State<HeatScreen> {
           ).then((_) => _loadMetrics());
         },
         icon: const Icon(Icons.local_fire_department),
-        label: const Text('Mint ΗΞΔŦ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        label: const Text(
+          'Mint ΗΞΔŦ',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppTheme.primaryColor,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
     );
@@ -197,9 +285,20 @@ class _HeatScreenState extends State<HeatScreen> {
   Widget _metricColumn(String label, String value, Color color) {
     return Column(
       children: [
-        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: color, fontFamily: AppTheme.numberFontFamily)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: color,
+            fontFamily: AppTheme.numberFontFamily,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+        ),
       ],
     );
   }

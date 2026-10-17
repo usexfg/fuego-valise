@@ -23,7 +23,10 @@ class CdOverviewScreen extends StatelessWidget {
                 Center(
                   child: Container(
                     margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.successColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
@@ -81,7 +84,10 @@ class CdOverviewScreen extends StatelessWidget {
           children: [
             const Icon(Icons.cloud_off, size: 48, color: AppTheme.textMuted),
             const SizedBox(height: 12),
-            Text(state.error ?? 'Failed to load', style: const TextStyle(color: AppTheme.textMuted)),
+            Text(
+              state.error ?? 'Failed to load',
+              style: const TextStyle(color: AppTheme.textMuted),
+            ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () => context.read<CdCubit>().loadAll(),
@@ -92,10 +98,12 @@ class CdOverviewScreen extends StatelessWidget {
       );
     }
 
-    final activeCds = state.myCds.where((cd) => !cd.matured && !cd.forSale).toList()
-      ..sort((a, b) => a.blocksToMaturity.compareTo(b.blocksToMaturity));
-    final completeCds = state.myCds.where((cd) => cd.matured && !cd.forSale).toList()
-      ..sort((a, b) => b.depositHeight.compareTo(a.depositHeight));
+    final activeCds =
+        state.myCds.where((cd) => !cd.matured && !cd.forSale).toList()
+          ..sort((a, b) => a.blocksToMaturity.compareTo(b.blocksToMaturity));
+    final completeCds =
+        state.myCds.where((cd) => cd.matured && !cd.forSale).toList()
+          ..sort((a, b) => b.depositHeight.compareTo(a.depositHeight));
     final withdrawnCds = state.myCds.where((cd) => cd.forSale).toList()
       ..sort((a, b) => b.depositHeight.compareTo(a.depositHeight));
 
@@ -109,13 +117,21 @@ class CdOverviewScreen extends StatelessWidget {
           ),
 
           // ── My CDs Section ──
-          if (activeCds.isNotEmpty || completeCds.isNotEmpty || withdrawnCds.isNotEmpty)
+          if (activeCds.isNotEmpty ||
+              completeCds.isNotEmpty ||
+              withdrawnCds.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                child: Text('MY CDs', style: TextStyle(
-                  color: AppTheme.textMuted, fontSize: 12,
-                  fontWeight: FontWeight.w600, letterSpacing: 1)),
+                child: Text(
+                  'MY CDs',
+                  style: TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1,
+                  ),
+                ),
               ),
             ),
 
@@ -161,9 +177,15 @@ class CdOverviewScreen extends StatelessWidget {
                   children: const [
                     Icon(Icons.savings, size: 64, color: AppTheme.textMuted),
                     SizedBox(height: 12),
-                    Text('No CDs yet', style: TextStyle(fontSize: 18, color: AppTheme.textMuted)),
+                    Text(
+                      'No CDs yet',
+                      style: TextStyle(fontSize: 18, color: AppTheme.textMuted),
+                    ),
                     SizedBox(height: 4),
-                    Text('Create one or browse the market', style: TextStyle(color: AppTheme.textMuted)),
+                    Text(
+                      'Create one or browse the market',
+                      style: TextStyle(color: AppTheme.textMuted),
+                    ),
                   ],
                 ),
               ),
@@ -220,7 +242,10 @@ class _MarketplaceSection extends StatelessWidget {
 
     // Sort buckets by amount
     final sortedBuckets = buckets.entries.toList()
-      ..sort((a, b) => _parseBucketAmount(a.key).compareTo(_parseBucketAmount(b.key)));
+      ..sort(
+        (a, b) =>
+            _parseBucketAmount(a.key).compareTo(_parseBucketAmount(b.key)),
+      );
 
     return Container(
       color: AppTheme.surfaceColor,
@@ -232,13 +257,24 @@ class _MarketplaceSection extends StatelessWidget {
             children: [
               const Icon(Icons.store, size: 16, color: AppTheme.accentColor),
               const SizedBox(width: 6),
-              Text('MARKETPLACE', style: TextStyle(
-                color: AppTheme.textMuted, fontSize: 12,
-                fontWeight: FontWeight.w600, letterSpacing: 1)),
+              Text(
+                'MARKETPLACE',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1,
+                ),
+              ),
               const Spacer(),
               if (listings.isNotEmpty)
-                Text('${listings.length} listings', style: const TextStyle(
-                  color: AppTheme.textMuted, fontSize: 11)),
+                Text(
+                  '${listings.length} listings',
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -255,15 +291,18 @@ class _MarketplaceSection extends StatelessWidget {
                 children: [
                   Icon(Icons.storefront, size: 20, color: AppTheme.textMuted),
                   const SizedBox(width: 8),
-                  Text('No CDs listed for sale', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+                  Text(
+                    'No CDs listed for sale',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                  ),
                 ],
               ),
             )
           else
-            ...sortedBuckets.map((entry) => _MarketBucket(
-              amount: entry.key,
-              listings: entry.value,
-            )),
+            ...sortedBuckets.map(
+              (entry) =>
+                  _MarketBucket(amount: entry.key, listings: entry.value),
+            ),
         ],
       ),
     );
@@ -304,15 +343,29 @@ class _MarketBucket extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.08),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(8),
+              ),
             ),
             child: Row(
               children: [
-                Text(amount, style: TextStyle(
-                  color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 16, fontFamily: AppTheme.numberFontFamily)),
+                Text(
+                  amount,
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    fontFamily: AppTheme.numberFontFamily,
+                  ),
+                ),
                 const Spacer(),
-                Text('${listings.length} ${listings.length == 1 ? 'CD' : 'CDs'}',
-                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                Text(
+                  '${listings.length} ${listings.length == 1 ? 'CD' : 'CDs'}',
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
               ],
             ),
           ),
@@ -337,8 +390,11 @@ class _MarketBucket extends StatelessWidget {
 }
 
 const _headerStyle = TextStyle(
-  color: AppTheme.textMuted, fontSize: 10,
-  fontWeight: FontWeight.w600, letterSpacing: 0.5);
+  color: AppTheme.textMuted,
+  fontSize: 10,
+  fontWeight: FontWeight.w600,
+  letterSpacing: 0.5,
+);
 
 class _MarketRow extends StatelessWidget {
   final CdMarketListing listing;
@@ -361,13 +417,34 @@ class _MarketRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(flex: 2, child: _termWidget(daysRemaining)),
-            Expanded(flex: 2, child: Text(listing.amount,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13))),
-            Expanded(flex: 2, child: xfgAmount('${listing.price}',
-              style: const TextStyle(color: AppTheme.accentColor, fontSize: 13, fontWeight: FontWeight.w600))),
+            Expanded(
+              flex: 2,
+              child: Text(
+                listing.amount,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: xfgAmount(
+                '${listing.price}',
+                style: const TextStyle(
+                  color: AppTheme.accentColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
             SizedBox(
               width: 48,
-              child: Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 18),
+              child: Icon(
+                Icons.chevron_right,
+                color: AppTheme.textMuted,
+                size: 18,
+              ),
             ),
           ],
         ),
@@ -397,7 +474,14 @@ class _MarketRow extends StatelessWidget {
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
@@ -428,11 +512,20 @@ class _StatusGroup extends StatelessWidget {
             children: [
               Icon(icon, size: 14, color: color),
               const SizedBox(width: 6),
-              Text(label.toUpperCase(), style: TextStyle(
-                color: color, fontSize: 11,
-                fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+              Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
               const Spacer(),
-              Text('${cds.length}', style: TextStyle(color: color, fontSize: 11)),
+              Text(
+                '${cds.length}',
+                style: TextStyle(color: color, fontSize: 11),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -476,43 +569,80 @@ class _UserCdCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     matured ? 'MATURED' : '${daysLeft}d left',
-                    style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(cd.coin, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                Text(
+                  cd.coin,
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
                 if (_isAutoRoll) ...[
                   const SizedBox(width: 6),
-                  const Text('AUTO-ROLL',
-                    style: TextStyle(color: AppTheme.accentColor, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                  const Text(
+                    'AUTO-ROLL',
+                    style: TextStyle(
+                      color: AppTheme.accentColor,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ],
                 const Spacer(),
                 Flexible(
-                  child: Text(cd.amount,
+                  child: Text(
+                    cd.amount,
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                     style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontFamily: AppTheme.numberFontFamily)),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                      fontFamily: AppTheme.numberFontFamily,
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 6),
             Row(
               children: [
-                Text('${cd.interestRate} APY', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                Text(
+                  '${cd.interestRate} APY',
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
                 const Spacer(),
                 Flexible(
-                  child: Text('Earned: ${cd.accruedInterest}',
+                  child: Text(
+                    'Earned: ${cd.accruedInterest}',
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
-                    style: const TextStyle(color: AppTheme.successColor, fontSize: 11)),
+                    style: const TextStyle(
+                      color: AppTheme.successColor,
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -540,7 +670,10 @@ class _UserCdCard extends StatelessWidget {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
-                    child: const Text('Withdraw', style: TextStyle(fontSize: 12)),
+                    child: const Text(
+                      'Withdraw',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                 )
               else
@@ -548,13 +681,19 @@ class _UserCdCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => context.read<CdCubit>().claimCd(cd.cdId),
+                        onPressed: () =>
+                            context.read<CdCubit>().claimCd(cd.cdId),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.successColor,
-                          side: BorderSide(color: AppTheme.successColor.withOpacity(0.6)),
+                          side: BorderSide(
+                            color: AppTheme.successColor.withOpacity(0.6),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 8),
                         ),
-                        child: const Text('Claim', style: TextStyle(fontSize: 12)),
+                        child: const Text(
+                          'Claim',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -566,7 +705,10 @@ class _UserCdCard extends StatelessWidget {
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 8),
                         ),
-                        child: const Text('Rollover', style: TextStyle(fontSize: 12)),
+                        child: const Text(
+                          'Rollover',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                   ],
@@ -586,11 +728,16 @@ class _UserCdCard extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) {
-        int selectedTerm = [6, 18, 36, 72].contains(origEpochs) ? origEpochs : 6;
+        int selectedTerm = [6, 18, 36, 72].contains(origEpochs)
+            ? origEpochs
+            : 6;
         return StatefulBuilder(
           builder: (ctx, setState) => AlertDialog(
             backgroundColor: AppTheme.cardColor,
-            title: const Text('Rollover CD', style: TextStyle(color: AppTheme.textPrimary)),
+            title: const Text(
+              'Rollover CD',
+              style: TextStyle(color: AppTheme.textPrimary),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -600,34 +747,53 @@ class _UserCdCard extends StatelessWidget {
                   style: const TextStyle(color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 16),
-                const Text('New term', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                const Text(
+                  'New term',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [6, 18, 36, 72].map((t) => ChoiceChip(
-                    label: Text('$t epochs'),
-                    selected: selectedTerm == t,
-                    selectedColor: AppTheme.primaryColor,
-                    labelStyle: TextStyle(color: selectedTerm == t ? Colors.white : AppTheme.textPrimary),
-                    backgroundColor: AppTheme.surfaceColor,
-                    onSelected: (_) => setState(() => selectedTerm = t),
-                  )).toList(),
+                  children: [6, 18, 36, 72]
+                      .map(
+                        (t) => ChoiceChip(
+                          label: Text('$t epochs'),
+                          selected: selectedTerm == t,
+                          selectedColor: AppTheme.primaryColor,
+                          labelStyle: TextStyle(
+                            color: selectedTerm == t
+                                ? Colors.white
+                                : AppTheme.textPrimary,
+                          ),
+                          backgroundColor: AppTheme.surfaceColor,
+                          onSelected: (_) => setState(() => selectedTerm = t),
+                        ),
+                      )
+                      .toList(),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
               ),
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(ctx).pop();
                   final blocks = selectedTerm * 900;
-                  context.read<CdCubit>().rolloverCd(cdId: cd.cdId, newTerm: blocks);
+                  context.read<CdCubit>().rolloverCd(
+                    cdId: cd.cdId,
+                    newTerm: blocks,
+                  );
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                ),
                 child: const Text('Rollover'),
               ),
             ],
@@ -670,7 +836,10 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
   double get _total => _rungs.fold(0, (s, r) => s + r.amount);
 
   Future<void> _createLadder() async {
-    setState(() { _submitting = true; _error = null; });
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
       final cubit = context.read<CdCubit>();
       for (final r in _rungs) {
@@ -683,7 +852,10 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
       }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() {
+        _submitting = false;
+        _error = e.toString();
+      });
     }
   }
 
@@ -691,7 +863,10 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppTheme.cardColor,
-      title: const Text('Build CD Ladder', style: TextStyle(color: AppTheme.textPrimary)),
+      title: const Text(
+        'Build CD Ladder',
+        style: TextStyle(color: AppTheme.textPrimary),
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -718,11 +893,24 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
                   children: [
                     Row(
                       children: [
-                        Text('Rung ${idx + 1}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text(
+                          'Rung ${idx + 1}',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const Spacer(),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
-                          onPressed: _rungs.length > 1 ? () => setState(() => _rungs.removeAt(idx)) : null,
+                          icon: const Icon(
+                            Icons.close,
+                            size: 16,
+                            color: AppTheme.textMuted,
+                          ),
+                          onPressed: _rungs.length > 1
+                              ? () => setState(() => _rungs.removeAt(idx))
+                              : null,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -732,45 +920,88 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
-                      children: List.generate(_amountTiers.length, (i) => ChoiceChip(
-                        label: Text(_amountLabels[i], style: const TextStyle(fontSize: 11)),
-                        selected: rung.amount == _amountTiers[i],
-                        selectedColor: AppTheme.primaryColor,
-                        labelStyle: TextStyle(color: rung.amount == _amountTiers[i] ? Colors.white : AppTheme.textPrimary),
-                        backgroundColor: AppTheme.backgroundColor,
-                        onSelected: (_) => setState(() => rung.amount = _amountTiers[i]),
-                      )),
+                      children: List.generate(
+                        _amountTiers.length,
+                        (i) => ChoiceChip(
+                          label: Text(
+                            _amountLabels[i],
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          selected: rung.amount == _amountTiers[i],
+                          selectedColor: AppTheme.primaryColor,
+                          labelStyle: TextStyle(
+                            color: rung.amount == _amountTiers[i]
+                                ? Colors.white
+                                : AppTheme.textPrimary,
+                          ),
+                          backgroundColor: AppTheme.backgroundColor,
+                          onSelected: (_) =>
+                              setState(() => rung.amount = _amountTiers[i]),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     if (isAuto)
-                      const Text('Epoch-to-epoch · AUTO-ROLL', style: TextStyle(color: AppTheme.primaryColor, fontSize: 10, fontWeight: FontWeight.w600))
+                      const Text(
+                        'Epoch-to-epoch · AUTO-ROLL',
+                        style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
                     else
                       Wrap(
                         spacing: 6,
-                        children: _termOptions.map((t) => ChoiceChip(
-                          label: Text('$t', style: const TextStyle(fontSize: 11)),
-                          selected: rung.termEpochs == t,
-                          selectedColor: AppTheme.primaryColor,
-                          labelStyle: TextStyle(color: rung.termEpochs == t ? Colors.white : AppTheme.textPrimary),
-                          backgroundColor: AppTheme.backgroundColor,
-                          onSelected: (_) => setState(() => rung.termEpochs = t),
-                        )).toList(),
+                        children: _termOptions
+                            .map(
+                              (t) => ChoiceChip(
+                                label: Text(
+                                  '$t',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                selected: rung.termEpochs == t,
+                                selectedColor: AppTheme.primaryColor,
+                                labelStyle: TextStyle(
+                                  color: rung.termEpochs == t
+                                      ? Colors.white
+                                      : AppTheme.textPrimary,
+                                ),
+                                backgroundColor: AppTheme.backgroundColor,
+                                onSelected: (_) =>
+                                    setState(() => rung.termEpochs = t),
+                              ),
+                            )
+                            .toList(),
                       ),
                   ],
                 ),
               );
             }),
             TextButton.icon(
-              onPressed: () => setState(() => _rungs.add(_LadderRung(amount: 10000, termEpochs: 6))),
+              onPressed: () => setState(
+                () => _rungs.add(_LadderRung(amount: 10000, termEpochs: 6)),
+              ),
               icon: const Icon(Icons.add, size: 16),
               label: const Text('Add rung', style: TextStyle(fontSize: 12)),
             ),
             const SizedBox(height: 8),
-            Text('Total: ${_total.toStringAsFixed(0)} HEAT across ${_rungs.length} rungs',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+            Text(
+              'Total: ${_total.toStringAsFixed(0)} HEAT across ${_rungs.length} rungs',
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+              ),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 11)),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppTheme.errorColor,
+                  fontSize: 11,
+                ),
+              ),
             ],
           ],
         ),
@@ -778,13 +1009,25 @@ class _LadderBuilderDialogState extends State<_LadderBuilderDialog> {
       actions: [
         TextButton(
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
         ),
         ElevatedButton(
           onPressed: _submitting ? null : _createLadder,
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+          ),
           child: _submitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
               : Text('Create ${_rungs.length} CDs'),
         ),
       ],

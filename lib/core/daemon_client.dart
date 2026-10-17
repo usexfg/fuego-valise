@@ -10,6 +10,7 @@ import 'transaction.dart';
 class FuegoDaemonClient {
   String host;
   int port;
+
   /// Local fuego_walletd port; follows mainnet/testnet switches (see main.dart).
   int walletPort;
   final http.Client _http;
@@ -205,11 +206,14 @@ class FuegoDaemonClient {
 
   /// Sub-addresses with unspent balances, and legacy sub-addresses with the
   /// balance still to be swept.
-  Future<Map<String, dynamic>> getSubaddresses() => _walletRpc('get_subaddresses');
+  Future<Map<String, dynamic>> getSubaddresses() =>
+      _walletRpc('get_subaddresses');
 
   /// Starts scanning old-scheme sub-addresses; walletd rescans once when the set grows.
   Future<bool> registerLegacySubaddresses(List<int> indices) async {
-    final r = await _walletRpc('register_legacy_subaddresses', {'indices': indices});
+    final r = await _walletRpc('register_legacy_subaddresses', {
+      'indices': indices,
+    });
     return r['rescan'] as bool? ?? false;
   }
 

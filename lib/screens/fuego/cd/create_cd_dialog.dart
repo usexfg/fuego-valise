@@ -48,89 +48,150 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final totalBlocks = _isAutoRoll ? _epochBlocks : _selectedTerm * _epochBlocks;
+    final totalBlocks = _isAutoRoll
+        ? _epochBlocks
+        : _selectedTerm * _epochBlocks;
     final blockTimeSec = 480;
     final days = (totalBlocks * blockTimeSec) ~/ 86400;
     final interest = _selectedAmount * 0.02;
-    final apy = (_selectedTerm == 6)   ? '4.2%' :
-               (_selectedTerm == 18)  ? '5.8%' :
-               (_selectedTerm == 36)  ? '7.1%' :
-                                        '8.5%';
+    final apy = (_selectedTerm == 6)
+        ? '4.2%'
+        : (_selectedTerm == 18)
+        ? '5.8%'
+        : (_selectedTerm == 36)
+        ? '7.1%'
+        : '8.5%';
 
     return AlertDialog(
       backgroundColor: AppTheme.cardColor,
-      title: const Text('Create CD', style: TextStyle(color: AppTheme.textPrimary)),
+      title: const Text(
+        'Create CD',
+        style: TextStyle(color: AppTheme.textPrimary),
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Amount (HΞ∆T)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            const Text(
+              'Amount (HΞ∆T)',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: List.generate(_amountTiers.length, (i) => ChoiceChip(
-                label: Text('${_chipLabels[i]} HΞ∆T'),
-                selected: _selectedAmount == _amountTiers[i],
-                selectedColor: AppTheme.primaryColor,
-                labelStyle: TextStyle(
-                  color: _selectedAmount == _amountTiers[i] ? Colors.white : AppTheme.textPrimary,
-                  fontSize: 13,
+              children: List.generate(
+                _amountTiers.length,
+                (i) => ChoiceChip(
+                  label: Text('${_chipLabels[i]} HΞ∆T'),
+                  selected: _selectedAmount == _amountTiers[i],
+                  selectedColor: AppTheme.primaryColor,
+                  labelStyle: TextStyle(
+                    color: _selectedAmount == _amountTiers[i]
+                        ? Colors.white
+                        : AppTheme.textPrimary,
+                    fontSize: 13,
+                  ),
+                  backgroundColor: AppTheme.surfaceColor,
+                  onSelected: (_) =>
+                      setState(() => _selectedAmount = _amountTiers[i]),
                 ),
-                backgroundColor: AppTheme.surfaceColor,
-                onSelected: (_) => setState(() => _selectedAmount = _amountTiers[i]),
-              )),
+              ),
             ),
             const SizedBox(height: 20),
             if (_isAutoRoll)
-              const Text('Epoch-to-epoch · auto-rolls until you withdraw',
-                  style: TextStyle(color: AppTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.w600))
+              const Text(
+                'Epoch-to-epoch · auto-rolls until you withdraw',
+                style: TextStyle(
+                  color: AppTheme.primaryColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              )
             else
-              const Text('Term (epochs)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+              const Text(
+                'Term (epochs)',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+              ),
             const SizedBox(height: 8),
             if (!_isAutoRoll)
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _termTiers.map((t) => ChoiceChip(
-                  label: Text('$t epochs'),
-                  selected: _selectedTerm == t,
-                  selectedColor: AppTheme.primaryColor,
-                  labelStyle: TextStyle(
-                    color: _selectedTerm == t ? Colors.white : AppTheme.textPrimary,
-                  ),
-                  backgroundColor: AppTheme.surfaceColor,
-                  onSelected: (_) => setState(() => _selectedTerm = t),
-                )).toList(),
+                children: _termTiers
+                    .map(
+                      (t) => ChoiceChip(
+                        label: Text('$t epochs'),
+                        selected: _selectedTerm == t,
+                        selectedColor: AppTheme.primaryColor,
+                        labelStyle: TextStyle(
+                          color: _selectedTerm == t
+                              ? Colors.white
+                              : AppTheme.textPrimary,
+                        ),
+                        backgroundColor: AppTheme.surfaceColor,
+                        onSelected: (_) => setState(() => _selectedTerm = t),
+                      ),
+                    )
+                    .toList(),
               ),
             if (_isAutoRoll)
-              const Text('Unlocks at first epoch end and auto-rolls over '
-                  'each epoch until you withdraw.',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+              const Text(
+                'Unlocks at first epoch end and auto-rolls over '
+                'each epoch until you withdraw.',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+              ),
             const SizedBox(height: 8),
-            Text('≈ $days days — $totalBlocks blocks at 8 min/block',
-                style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+            Text(
+              '≈ $days days — $totalBlocks blocks at 8 min/block',
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+            ),
             const SizedBox(height: 12),
-            _buildDetailRow('Deposit', _fmtHeat(_selectedAmount) + (_selectedAmount < 1 ? '' : ' HΞ∆T')),
-            _buildDetailRow('Interest (APY ~$apy)', _fmtHeat(interest) + (interest < 1 ? '' : ' HΞ∆T')),
-            _buildDetailRow('At maturity', _fmtHeat(_selectedAmount + interest) + ((_selectedAmount + interest) < 1 ? '' : ' HΞ∆T')),
+            _buildDetailRow(
+              'Deposit',
+              _fmtHeat(_selectedAmount) + (_selectedAmount < 1 ? '' : ' HΞ∆T'),
+            ),
+            _buildDetailRow(
+              'Interest (APY ~$apy)',
+              _fmtHeat(interest) + (interest < 1 ? '' : ' HΞ∆T'),
+            ),
+            _buildDetailRow(
+              'At maturity',
+              _fmtHeat(_selectedAmount + interest) +
+                  ((_selectedAmount + interest) < 1 ? '' : ' HΞ∆T'),
+            ),
             const SizedBox(height: 8),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text(_error!, style: const TextStyle(color: AppTheme.errorColor, fontSize: 12)),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: AppTheme.errorColor,
+                    fontSize: 12,
+                  ),
+                ),
               ),
-            const Text('(0.1% CD creation fee of 0.1% routes to @fuegoxfg '
-                'development fund. There are no fees on CD claims)',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 10, fontStyle: FontStyle.italic)),
+            const Text(
+              '(0.1% CD creation fee of 0.1% routes to @fuegoxfg '
+              'development fund. There are no fees on CD claims)',
+              style: TextStyle(
+                color: AppTheme.textMuted,
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
         ),
         ElevatedButton(
           onPressed: _submitting ? null : _submit,
@@ -140,7 +201,10 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
           ),
           child: _submitting
               ? const SizedBox(
-                  width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Text('Create'),
         ),
       ],
@@ -153,24 +217,42 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-          Text(value, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Future<void> _submit() async {
-    setState(() { _submitting = true; _error = null; });
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
       await context.read<CdCubit>().createCd(
-            coin: 'HEAT',
-            amount: _selectedAmount.toStringAsFixed(0),
-            durationBlocks: _isAutoRoll ? _epochBlocks : _selectedTerm * _epochBlocks,
-          );
+        coin: 'HEAT',
+        amount: _selectedAmount.toStringAsFixed(0),
+        durationBlocks: _isAutoRoll
+            ? _epochBlocks
+            : _selectedTerm * _epochBlocks,
+      );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() {
+        _submitting = false;
+        _error = e.toString();
+      });
     }
   }
 }

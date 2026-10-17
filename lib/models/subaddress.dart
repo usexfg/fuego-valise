@@ -23,7 +23,10 @@ class Subaddress {
     this.legacy = false,
   });
 
-  factory Subaddress.fromJson(Map<String, dynamic> json, {bool legacyDefault = false}) {
+  factory Subaddress.fromJson(
+    Map<String, dynamic> json, {
+    bool legacyDefault = false,
+  }) {
     return Subaddress(
       address: json['address'] as String? ?? '',
       label: json['label'] as String? ?? '',
@@ -36,20 +39,20 @@ class Subaddress {
   }
 
   Map<String, dynamic> toJson() => {
-        'address': address,
-        'label': label,
-        'index': index,
-        'createdAt': createdAt.toIso8601String(),
-        'legacy': legacy,
-      };
+    'address': address,
+    'label': label,
+    'index': index,
+    'createdAt': createdAt.toIso8601String(),
+    'legacy': legacy,
+  };
 
   Subaddress copyWith({String? label}) => Subaddress(
-        address: address,
-        label: label ?? this.label,
-        index: index,
-        createdAt: createdAt,
-        legacy: legacy,
-      );
+    address: address,
+    label: label ?? this.label,
+    index: index,
+    createdAt: createdAt,
+    legacy: legacy,
+  );
 
   String get addressShort {
     if (address.length <= 30) return address;
@@ -88,16 +91,25 @@ class SubaddressStore {
     try {
       final file = await _file();
       if (await file.exists()) {
-        final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        final data =
+            jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         final isOld = (data['version'] as int? ?? 1) < _version;
         final list = data['subaddresses'] as List<dynamic>? ?? [];
         _subaddresses = list
-            .map((e) => Subaddress.fromJson(e as Map<String, dynamic>, legacyDefault: isOld))
+            .map(
+              (e) => Subaddress.fromJson(
+                e as Map<String, dynamic>,
+                legacyDefault: isOld,
+              ),
+            )
             .toList();
         _legacyRegistered = data['legacyRegistered'] as bool? ?? false;
-        _labels = (data['labels'] as Map<String, dynamic>? ?? const {})
-            .map((k, v) => MapEntry(k, v as String? ?? ''));
-        _hidden = (data['hidden'] as List<dynamic>? ?? const []).cast<String>().toSet();
+        _labels = (data['labels'] as Map<String, dynamic>? ?? const {}).map(
+          (k, v) => MapEntry(k, v as String? ?? ''),
+        );
+        _hidden = (data['hidden'] as List<dynamic>? ?? const [])
+            .cast<String>()
+            .toSet();
         for (final s in _subaddresses) {
           if (s.label.isNotEmpty) _labels.putIfAbsent(s.address, () => s.label);
         }
@@ -113,16 +125,21 @@ class SubaddressStore {
     try {
       final dst = await _file();
       final tmp = File('${dst.path}.tmp');
-      await tmp.writeAsString(jsonEncode({
-        'version': _version,
-        'legacyRegistered': _legacyRegistered,
-        'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
-        'labels': _labels,
-        'hidden': _hidden.toList(),
-      }), flush: true);
+      await tmp.writeAsString(
+        jsonEncode({
+          'version': _version,
+          'legacyRegistered': _legacyRegistered,
+          'subaddresses': _subaddresses.map((s) => s.toJson()).toList(),
+          'labels': _labels,
+          'hidden': _hidden.toList(),
+        }),
+        flush: true,
+      );
       // Mobile app sandboxes are already private, and iOS forbids spawning processes.
       if (Platform.isLinux || Platform.isMacOS) {
-        try { await Process.run('chmod', ['600', tmp.path]); } catch (_) {}
+        try {
+          await Process.run('chmod', ['600', tmp.path]);
+        } catch (_) {}
       }
       await tmp.rename(dst.path);
     } catch (e) {
@@ -172,8 +189,12 @@ class SubaddressStore {
     ];
     final next = [..._subaddresses.where((s) => s.legacy), ...current];
     if (listEquals(
-      next.map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}').toList(),
-      _subaddresses.map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}').toList(),
+      next
+          .map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}')
+          .toList(),
+      _subaddresses
+          .map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}')
+          .toList(),
     )) {
       return;
     }
@@ -189,15 +210,23 @@ class SubaddressStore {
   /// Hides a sub-address from the list. Legacy entries stay until their funds
   /// are swept, since they are the only record of which old keys to scan.
   Future<void> remove(int index, {bool legacy = false}) async {
-    for (final s in _subaddresses.where((s) => s.index == index && s.legacy == legacy)) {
+    for (final s in _subaddresses.where(
+      (s) => s.index == index && s.legacy == legacy,
+    )) {
       if (!legacy) _hidden.add(s.address);
     }
     _subaddresses.removeWhere((s) => s.index == index && s.legacy == legacy);
     await _save();
   }
 
-  Future<void> updateLabel(int index, String label, {bool legacy = false}) async {
-    final i = _subaddresses.indexWhere((s) => s.index == index && s.legacy == legacy);
+  Future<void> updateLabel(
+    int index,
+    String label, {
+    bool legacy = false,
+  }) async {
+    final i = _subaddresses.indexWhere(
+      (s) => s.index == index && s.legacy == legacy,
+    );
     if (i != -1) {
       _subaddresses[i] = _subaddresses[i].copyWith(label: label);
       _labels[_subaddresses[i].address] = label;

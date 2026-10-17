@@ -93,11 +93,7 @@ class TimelockCountdown extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(
-              Icons.hourglass_bottom,
-              size: 14,
-              color: urgency,
-            ),
+            Icon(Icons.hourglass_bottom, size: 14, color: urgency),
             const SizedBox(width: 6),
             Expanded(
               child: Text(

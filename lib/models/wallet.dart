@@ -52,10 +52,11 @@ class Wallet {
   // Convert atomic units to XFG (7 decimal places)
   double get balanceXFG => balance / 10000000.0;
   double get unlockedBalanceXFG => unlockedBalance / 10000000.0;
-  
+
   // Sync progress percentage
-  double get syncProgress => 
-      blockchainHeight > 0 ? (localHeight / blockchainHeight).clamp(0.0, 1.0) : 0.0;
+  double get syncProgress => blockchainHeight > 0
+      ? (localHeight / blockchainHeight).clamp(0.0, 1.0)
+      : 0.0;
 }
 
 @JsonSerializable()
@@ -82,14 +83,14 @@ class WalletTransaction {
     required this.confirmations,
   });
 
-  factory WalletTransaction.fromJson(Map<String, dynamic> json) => 
+  factory WalletTransaction.fromJson(Map<String, dynamic> json) =>
       _$WalletTransactionFromJson(json);
   Map<String, dynamic> toJson() => _$WalletTransactionToJson(this);
 
   // Convert atomic units to XFG
   double get amountXFG => amount / 10000000.0;
   double get feeXFG => fee / 10000000.0;
-  
+
   // Get transaction status
   TransactionStatus get status {
     if (confirmations == 0) return TransactionStatus.pending;
@@ -97,7 +98,8 @@ class WalletTransaction {
     return TransactionStatus.confirmed;
   }
 
-  DateTime get dateTime => DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+  DateTime get dateTime =>
+      DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
 }
 
 enum TransactionStatus { pending, confirming, confirmed }
@@ -118,7 +120,7 @@ class SendTransactionRequest {
     this.mixins = 8, // Default ring size
   });
 
-  factory SendTransactionRequest.fromJson(Map<String, dynamic> json) => 
+  factory SendTransactionRequest.fromJson(Map<String, dynamic> json) =>
       _$SendTransactionRequestFromJson(json);
   Map<String, dynamic> toJson() => _$SendTransactionRequestToJson(this);
 }
