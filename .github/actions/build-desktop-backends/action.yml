@@ -12,6 +12,8 @@ runs:
       run: |
         if [ "$RUNNER_OS" = "macOS" ]; then
           brew install boost openssl icu4c jsoncpp cmake ninja || true
+        elif [ "$RUNNER_OS" = "Windows" ]; then
+          choco install cmake ninja boost-msvc-14.3 openssl 2>/dev/null || true
         else
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build \
@@ -25,12 +27,15 @@ runs:
         cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml \
           -p rust_fuego_wallet -p fuego-ffi
         mkdir -p backends
-        cp rust-fuego-wallet/target/release/fuego_walletd backends/
-        if [ "$RUNNER_OS" = "macOS" ]; then
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          cp rust-fuego-wallet/target/release/fuego_walletd.exe backends/ 2>/dev/null || cp rust-fuego-wallet/target/release/fuego_walletd backends/
+          cp rust-fuego-wallet/target/release/fuego_ffi.dll backends/libfuego_ffi.dll 2>/dev/null || cp rust-fuego-wallet/target/release/libfuego_ffi.dll backends/ 2>/dev/null || true
+        elif [ "$RUNNER_OS" = "macOS" ]; then
+          cp rust-fuego-wallet/target/release/fuego_walletd backends/
           cp rust-fuego-wallet/target/release/libfuego_ffi.dylib backends/
-          # Xcode's "Bundle Framework" phase copies it into Contents/Frameworks.
           cp rust-fuego-wallet/target/release/libfuego_ffi.dylib macos/Runner/libfuego_ffi.dylib
         else
+          cp rust-fuego-wallet/target/release/fuego_walletd backends/
           cp rust-fuego-wallet/target/release/libfuego_ffi.so backends/
         fi
 
@@ -38,16 +43,15 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # suite's CMake adds -march=native to Crypto when CI/GITHUB_* is set at configure
-        # time; shipped daemons would then die with SIGILL on CPUs older than the runner.
         portable_cmake() { env -u CI -u GITHUB_ACTIONS -u GITHUB_REF -u GITHUB_RUN_ID cmake "$@"; }
         if [ "$RUNNER_OS" = "macOS" ]; then
           portable_cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+        elif [ "$RUNNER_OS" = "Windows" ]; then
+          portable_cmake -S fuego-suite -B fuego-suite/build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
         else
           portable_cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
         fi
-        # fuegod (local mode) and xfg-swapd (cross-chain swaps) are required.
         cmake --build fuego-suite/build --target Daemon SwapDaemon
         find_bin() { find fuego-suite/build/ -name "$1" -type f | head -1; }
         FUEGOD="$(find_bin fuegod)"
@@ -57,7 +61,6 @@ runs:
           exit 1
         fi
         cp "$FUEGOD" "$SWAPD" backends/
-        # unifyd is part of the required desktop bundle (AGENTS.md); never ship without it.
         cmake --build fuego-suite/build --target PaymentGateService
         UNIFYD="$(find_bin unifyd)"
         if [ -z "$UNIFYD" ]; then

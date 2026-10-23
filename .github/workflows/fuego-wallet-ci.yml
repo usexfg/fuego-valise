@@ -292,6 +292,85 @@ jobs:
           path: fuego-valise-Linux-x64.tar.gz
           retention-days: 30
 
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    needs: analyze
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: 'stable'
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Pub\Cache
+          key: flutter-pub-cache-windows-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-cache-windows-
+
+      - name: Install dependencies
+        run: |
+          for retry in 1 2 3; do
+            if flutter pub get; then
+              echo "Flutter pub get successful on attempt $retry"
+              break
+            fi
+            echo "Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            Start-Sleep -Seconds 10
+          done
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\bin\
+            ~\.cargo\registry\index\
+            ~\.cargo\registry\cache\
+            target\
+          key: rust-deps-windows-${{ hashFiles('rust-fuego-wallet/Cargo.lock') }}
+          restore-keys: |
+            rust-deps-windows-
+
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Bundle backends into app
+        uses: ./.github/actions/bundle-desktop-backends
+        with:
+          app: build\windows\x64\runner\Release
+
+      - name: Package app
+        run: |
+          cd build\windows\x64\runner\Release
+          Compress-Archive -Path * -DestinationPath fuego-valise-Windows-x64.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuego-wallet-windows
+          path: build\windows\x64\runner\Release\fuego-valise-Windows-x64.zip
+          retention-days: 30
+
   ffi-cryptonight-paths:
     name: FFI / CryptoNight on portable, aarch64, armv7
     runs-on: ubuntu-24.04
