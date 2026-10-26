@@ -322,15 +322,16 @@ jobs:
             flutter-pub-cache-windows-
 
       - name: Install dependencies
+        shell: pwsh
         run: |
-          for retry in 1 2 3; do
-            if flutter pub get; then
-              echo "Flutter pub get successful on attempt $retry"
+          for ($retry = 1; $retry -le 3; $retry++) {
+            if (flutter pub get) {
+              Write-Host "Flutter pub get successful on attempt $retry"
               break
-            fi
-            echo "Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            }
+            Write-Host "Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
             Start-Sleep -Seconds 10
-          done
+          }
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@v1
