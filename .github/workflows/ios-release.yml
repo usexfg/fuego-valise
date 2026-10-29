@@ -58,14 +58,20 @@ jobs:
             sleep 10
           done
 
-      - name: Set up Rust
+      - name: Set up Rust for iOS
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
-          targets: aarch64-apple-ios
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
-      - name: Build fuego-ffi staticlib
-        run: cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios
+      - name: Build fuego-ffi staticlibs for all iOS targets
+        run: |
+          manifest="rust-fuego-wallet/Cargo.toml"
+          for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+            echo "Building for $target..."
+            cargo build --release --manifest-path "$manifest" -p fuego-ffi --target "$target"
+          done
+          ls -lh rust-fuego-wallet/target/*/release/libfuego_ffi.a
 
       - name: Run tests
         continue-on-error: true
