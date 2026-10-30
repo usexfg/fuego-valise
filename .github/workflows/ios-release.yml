@@ -66,10 +66,11 @@ jobs:
 
       - name: Build fuego-ffi staticlibs for all iOS targets
         run: |
+          set -euo pipefail
           manifest="rust-fuego-wallet/Cargo.toml"
           for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
             echo "Building for $target..."
-            cargo build --release --manifest-path "$manifest" -p fuego-ffi --target "$target"
+            (env -u SDKROOT cargo build --release --manifest-path "$manifest" -p fuego-ffi --target "$target")
           done
           ls -lh rust-fuego-wallet/target/*/release/libfuego_ffi.a
 

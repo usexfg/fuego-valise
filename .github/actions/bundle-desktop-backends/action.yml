@@ -18,19 +18,23 @@ runs:
       run: |
         set -euo pipefail
         test -d "$APP"
+        # build-desktop-backends stores the wallet binary as "unified" (older
+        # pinned suite) or "unifyd" (newer suite). Bundle whichever exists so
+        # DaemonManager always gets it; the wallet spawns it under that name.
+        if [ -f backends/unifyd ]; then UNIFYD_BIN=unifyd; else UNIFYD_BIN=unified; fi
         if [ "$RUNNER_OS" = "macOS" ]; then
-          for b in fuego_walletd fuegod xfg-swapd unifyd; do
+          for b in fuego_walletd fuegod xfg-swapd "$UNIFYD_BIN"; do
             install -m 755 "backends/$b" "$APP/Contents/MacOS/$b"
           done
           test -f "$APP/Contents/Frameworks/libfuego_ffi.dylib"
           ./scripts/bundle-macos-dylibs.sh "$APP"
         elif [ "$RUNNER_OS" = "Windows" ]; then
-          for b in fuego_walletd fuegod xfg-swapd unifyd; do
+          for b in fuego_walletd fuegod xfg-swapd "$UNIFYD_BIN"; do
             cp "backends/$b" "$APP/$b.exe" 2>/dev/null || cp "backends/$b.exe" "$APP/$b.exe" 2>/dev/null || true
           done
           cp backends/libfuego_ffi.dll "$APP/" 2>/dev/null || true
         else
-          for b in fuego_walletd fuegod xfg-swapd unifyd; do
+          for b in fuego_walletd fuegod xfg-swapd "$UNIFYD_BIN"; do
             install -m 755 "backends/$b" "$APP/$b"
           done
           install -m 644 backends/libfuego_ffi.so "$APP/lib/libfuego_ffi.so"

@@ -62,9 +62,15 @@ runs:
         fi
         cp "$FUEGOD" "$SWAPD" backends/
         cmake --build fuego-suite/build --target PaymentGateService
+        # The pinned suite (<=1.10.02 line) outputs the wallet-cli binary as
+        # "unified"; newer suite renamed it "unifyd". Accept either name so the
+        # bundle step can't silently skip the wallet backend.
         UNIFYD="$(find_bin unifyd)"
         if [ -z "$UNIFYD" ]; then
-          echo "::error::unifyd missing after the PaymentGateService build"
+          UNIFYD="$(find_bin unified)"
+        fi
+        if [ -z "$UNIFYD" ]; then
+          echo "::error::unifyd (or unified) missing after the PaymentGateService build"
           exit 1
         fi
         cp "$UNIFYD" backends/
