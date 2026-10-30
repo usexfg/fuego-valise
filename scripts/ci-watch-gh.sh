@@ -30,13 +30,14 @@ while true; do
 
   ALL_GREEN=true
   SUMMARY=""
-  # One API call for every run of this exact head sha; classify by run name.
-  # (The old per-workflow query filter was ignored by the API and let a single
-  # run stand in for both workflows — false green.)
+  # One API call for every run of this exact head sha; classify by `path`
+  # (the workflow file). Run `name` is the display name ("Fuego Wallet CI"),
+  # which never equals the filename — matching on name produced 12h of
+  # bogus "MISSING for this commit" while both runs had already finished.
   ROWS="$(gh api "repos/$REPO/actions/runs?branch=$BRANCH&head_sha=$HEAD_SHA&per_page=30" \
-    --jq '[.workflow_runs[] | {name, status, conclusion, id}] | sort_by(.id) | reverse' 2>/dev/null || echo '[]')"
+    --jq '[.workflow_runs[] | {name, path, status, conclusion, id}] | sort_by(.id) | reverse' 2>/dev/null || echo '[]')"
   for WF in "${WORKFLOWS[@]}"; do
-    ROW="$(echo "$ROWS" | jq -c ".[] | select(.name == \"$WF\")" | head -1)"
+    ROW="$(echo "$ROWS" | jq -c ".[] | select(.path == \".github/workflows/$WF\")" | head -1)"
     if [ -z "$ROW" ]; then
       STATE="MISSING for this commit"
       ALL_GREEN=false
