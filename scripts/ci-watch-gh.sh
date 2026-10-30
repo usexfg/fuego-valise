@@ -47,8 +47,9 @@ while true; do
     elif [ "$CONCLUSION" = "success" ]; then
       STATE="GREEN (run=$RUN_ID)"
     else
-      STATE="FAILED (run=$RUN_ID conclusion=$CONCLUSION)"
-      ALL_GREEN=false
+      echo "❌ $WF FAILED on head $HEAD_SHA (run=$RUN_ID conclusion=$CONCLUSION)"
+      echo "   See: gh run view $RUN_ID -R $REPO --log-failed"
+      exit 2
     fi
     SUMMARY="$SUMMARY
   $WF: $STATE"
