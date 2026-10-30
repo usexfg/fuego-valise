@@ -30,26 +30,30 @@ while true; do
 
   ALL_GREEN=true
   SUMMARY=""
+  # One API call for every run of this exact head sha; classify by run name.
+  # (The old per-workflow query filter was ignored by the API and let a single
+  # run stand in for both workflows — false green.)
+  ROWS="$(gh api "repos/$REPO/actions/runs?branch=$BRANCH&head_sha=$HEAD_SHA&per_page=30" \
+    --jq '[.workflow_runs[] | {name, status, conclusion, id}] | sort_by(.id) | reverse' 2>/dev/null || echo '[]')"
   for WF in "${WORKFLOWS[@]}"; do
-    ROW="$(gh api "repos/$REPO/actions/runs?workflow=$WF&branch=$BRANCH&per_page=1" \
-      --jq '.workflow_runs[0] // {}' 2>/dev/null || echo '{}')"
-    STATUS="$(echo "$ROW" | jq -r '.status // "none"')"
-    CONCLUSION="$(echo "$ROW" | jq -r '.conclusion // "none"')"
-    RUN_SHA="$(echo "$ROW" | jq -r '.head_sha // "none"')"
-    RUN_ID="$(echo "$ROW" | jq -r '.id // "none"')"
-    RUN_NAME="$(echo "$ROW" | jq -r '.display_title // "none"')"
-    if [ "$RUN_SHA" != "$HEAD_SHA" ]; then
-      STATE="STALE/MISSING (sha=$RUN_SHA)"
+    ROW="$(echo "$ROWS" | jq -c ".[] | select(.name == \"$WF\")" | head -1)"
+    if [ -z "$ROW" ]; then
+      STATE="MISSING for this commit"
       ALL_GREEN=false
-    elif [ "$STATUS" != "completed" ]; then
-      STATE="RUNNING (run=$RUN_ID $STATUS)"
-      ALL_GREEN=false
-    elif [ "$CONCLUSION" = "success" ]; then
-      STATE="GREEN (run=$RUN_ID)"
     else
-      echo "❌ $WF FAILED on head $HEAD_SHA (run=$RUN_ID conclusion=$CONCLUSION)"
-      echo "   See: gh run view $RUN_ID -R $REPO --log-failed"
-      exit 2
+      ID="$(echo "$ROW" | jq -r .id)"
+      STATUS="$(echo "$ROW" | jq -r .status)"
+      CONCLUSION="$(echo "$ROW" | jq -r '.conclusion // "none"')"
+      if [ "$STATUS" != "completed" ]; then
+        STATE="RUNNING (run=$ID $STATUS)"
+        ALL_GREEN=false
+      elif [ "$CONCLUSION" = "success" ]; then
+        STATE="GREEN (run=$ID)"
+      else
+        echo "❌ $WF FAILED on head $HEAD_SHA (run=$ID conclusion=$CONCLUSION)"
+        echo "   See: gh run view $ID -R $REPO --log-failed"
+        exit 2
+      fi
     fi
     SUMMARY="$SUMMARY
   $WF: $STATE"
