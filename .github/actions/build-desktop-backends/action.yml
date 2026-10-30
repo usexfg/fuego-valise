@@ -13,12 +13,55 @@ runs:
         if [ "$RUNNER_OS" = "macOS" ]; then
           brew install boost openssl icu4c jsoncpp cmake ninja || true
         elif [ "$RUNNER_OS" = "Windows" ]; then
-          choco install cmake ninja boost-msvc-14.3 openssl 2>/dev/null || true
+          # Windows deps come from the pwsh step below. The old
+          # `choco install ninja boost-msvc-14.3` path here was a toolchain
+          # mismatch: -G Ninja picks the MinGW gcc on PATH, which cannot link
+          # MSVC-flavoured boost libs, and FindBoost then failed with
+          # "Could NOT find Boost (missing: Boost_INCLUDE_DIR ...)".
+          # We now mirror fuego-suite's own proven Windows recipe
+          # (.github/workflows/check.yml build-windows): MSVC generator,
+          # Boost 1.85 official MSVC binaries in C:\boost, vcpkg for
+          # jsoncpp/openssl, Boost/OpenSSL root hints to find_package.
+          :
         else
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build \
             libboost-all-dev libssl-dev libicu-dev libjsoncpp-dev
         fi
+
+    - name: Install Windows Boost + OpenSSL + vcpkg deps
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # Boost 1.85 official MSVC binaries (same installer suite CI uses).
+        if (-not (Test-Path "C:\boost\lib")) {
+          $ProgressPreference = 'SilentlyContinue'
+          $Url = "https://archives.boost.io/release/1.85.0/binaries/boost_1_85_0-msvc-14.3-64.exe"
+          Invoke-WebRequest -Uri $Url -OutFile "$env:TEMP\boost.exe" -UseBasicParsing
+          Start-Process -Wait "$env:TEMP\boost.exe" -ArgumentList "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=C:\boost"
+          if (-not (Test-Path "C:\boost\lib")) { throw "Boost installer did not create C:\boost\lib" }
+        }
+        # OpenSSL: find a dev install on the image; fall back to choco (same
+        # detection as suite check.yml so both repos stay in lockstep).
+        $candidates = @(
+          "C:\Program Files\OpenSSL-Win64",
+          "C:\Program Files\OpenSSL",
+          "C:\Program Files\FireDaemon OpenSSL 3"
+        )
+        $openssl = $candidates | Where-Object { Test-Path "$_\include\openssl\ssl.h" } | Select-Object -First 1
+        if (-not $openssl) {
+          $found = Get-ChildItem -Path "C:\Program Files" -Filter "ssl.h" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) { $openssl = (Get-Item $found.FullName).Directory.Parent.Parent.FullName }
+        }
+        if (-not $openssl) {
+          choco install openssl -y --no-progress
+          $openssl = $candidates | Where-Object { Test-Path "$_\include\openssl\ssl.h" } | Select-Object -First 1
+          if (-not $openssl) { throw "OpenSSL not found after choco install" }
+        }
+        echo "OPENSSL_ROOT_DIR=$openssl" >> $env:GITHUB_ENV
+        # jsoncpp (and vcpkg-provided openssl) exactly as suite check.yml does.
+        $vcpkgDir = if (Test-Path "C:\vcpkg") { "C:\vcpkg" } elseif ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { throw "vcpkg not found on runner image" }
+        & (Join-Path $vcpkgDir "vcpkg.exe") install --no-progress jsoncpp:x64-windows openssl:x64-windows
 
     - name: Build fuego_walletd and fuego-ffi
       shell: bash
@@ -48,12 +91,41 @@ runs:
           portable_cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
         elif [ "$RUNNER_OS" = "Windows" ]; then
-          portable_cmake -S fuego-suite -B fuego-suite/build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+          # Suite's Windows CI (check.yml) builds with the MSVC generator and
+          # explicit hint flags; the MinGW compiler on PATH cannot pair with
+          # boost-msvc libs. Detect the installed VS year so this works on
+          # windows-2022 (VS17/2022) and windows-2025 (VS18/2026) images.
+          if [ -d "/c/Program Files/Microsoft Visual Studio/2025" ]; then
+            vs_gen="Visual Studio 18 2026"
+          else
+            vs_gen="Visual Studio 17 2022"
+          fi
+          if [ -z "${VCPKG_INSTALLATION_ROOT:-}" ]; then
+            echo "::error::VCPKG_INSTALLATION_ROOT is not set on this runner"
+            exit 1
+          fi
+          cmake_args=( -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+                       -DVCPKG_TARGET_TRIPLET=x64-windows
+                       -DBOOST_ROOT="C:/boost"
+                       -DBOOST_LIBRARYDIR="C:/boost/lib"
+                       -DBOOST_INCLUDEDIR="C:/boost/include/boost-1_85" )
+          if [ -n "${OPENSSL_ROOT_DIR:-}" ]; then
+            cmake_args+=( -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR" )
+          fi
+          portable_cmake -S fuego-suite -B fuego-suite/build -G "$vs_gen" -A x64 "${cmake_args[@]}"
         else
           portable_cmake -S fuego-suite -B fuego-suite/build -G Ninja -DCMAKE_BUILD_TYPE=Release
         fi
-        cmake --build fuego-suite/build --target Daemon SwapDaemon
-        find_bin() { find fuego-suite/build/ -name "$1" -type f | head -1; }
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          # MSVC generator is multi-config: pick Release explicitly, and keep
+          # msbuild parallel (without --parallel it runs projects serially).
+          cmake --build fuego-suite/build --target Daemon SwapDaemon \
+            --config Release --parallel "$NUMBER_OF_PROCESSORS"
+        else
+          cmake --build fuego-suite/build --target Daemon SwapDaemon
+        fi
+        # Windows MSVC builds emit <name>.exe into per-config directories.
+        find_bin() { find fuego-suite/build/ \( -name "$1" -o -name "$1.exe" \) -type f | head -1; }
         FUEGOD="$(find_bin fuegod)"
         SWAPD="$(find_bin xfg-swapd)"
         if [ -z "$FUEGOD" ] || [ -z "$SWAPD" ]; then
@@ -61,7 +133,12 @@ runs:
           exit 1
         fi
         cp "$FUEGOD" "$SWAPD" backends/
-        cmake --build fuego-suite/build --target PaymentGateService
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          cmake --build fuego-suite/build --target PaymentGateService \
+            --config Release --parallel "$NUMBER_OF_PROCESSORS"
+        else
+          cmake --build fuego-suite/build --target PaymentGateService
+        fi
         # The pinned suite (<=1.10.02 line) outputs the wallet-cli binary as
         # "unified"; newer suite renamed it "unifyd". Accept either name so the
         # bundle step can't silently skip the wallet backend.

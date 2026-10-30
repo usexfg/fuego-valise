@@ -295,7 +295,10 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
-    timeout-minutes: 60
+    # Windows payload: vcpkg (openssl + jsoncpp source-build), MSVC suite
+    # build of Daemon/SwapDaemon/PaymentGateService, then flutter build
+    # windows. 60 min was consumed by that pipeline's slow steps alone.
+    timeout-minutes: 150
     needs: analyze
 
     steps:
