@@ -89,7 +89,12 @@ fn main() {
         );
     }
 
-    let mut slow_hash = fs::read_to_string(cn_dir.join("slow-hash.c")).unwrap();
+    // Windows runners check out the submodule with CRLF (core.autocrlf), which
+    // breaks the multiline anchors below (they assume LF like the repo copy).
+    // Normalize before matching so the same fixes apply on every platform.
+    let mut slow_hash = fs::read_to_string(cn_dir.join("slow-hash.c"))
+        .unwrap()
+        .replace("\r\n", "\n");
     for fix in SLOW_HASH_FIXES {
         match (slow_hash.matches(fix.buggy).count(), slow_hash.contains(fix.fixed)) {
             (1, _) => slow_hash = slow_hash.replacen(fix.buggy, fix.fixed, 1),
