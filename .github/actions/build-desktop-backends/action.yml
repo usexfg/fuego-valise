@@ -20,8 +20,10 @@ runs:
           # "Could NOT find Boost (missing: Boost_INCLUDE_DIR ...)".
           # We now mirror fuego-suite's own proven Windows recipe
           # (.github/workflows/check.yml build-windows): MSVC generator,
-          # Boost 1.85 official MSVC binaries in C:\boost, vcpkg for
-          # jsoncpp/openssl, Boost/OpenSSL root hints to find_package.
+          # vcpkg for jsoncpp/openssl, and an evidence-driven Boost install
+          # (see the pwsh step below: run 41135681226 proved the DIY 1.85
+          # Inno install lands nowhere, while run 41022264264 proved the
+          # chocolatey boost-msvc-14.3 package installs successfully).
           :
         else
           sudo apt-get update
@@ -33,16 +35,79 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        # Boost 1.85 official MSVC binaries (same installer suite CI uses).
-        if (-not (Test-Path "C:\boost\lib")) {
-          $ProgressPreference = 'SilentlyContinue'
-          $Url = "https://archives.boost.io/release/1.85.0/binaries/boost_1_85_0-msvc-14.3-64.exe"
-          Invoke-WebRequest -Uri $Url -OutFile "$env:TEMP\boost.exe" -UseBasicParsing
-          Start-Process -Wait "$env:TEMP\boost.exe" -ArgumentList "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=C:\boost"
-          if (-not (Test-Path "C:\boost\lib")) { throw "Boost installer did not create C:\boost\lib" }
+        # ---- Boost ----
+        # Rationale: the official 1.85 binaries installer (suite's exact file)
+        # exited without creating C:\boost\lib on this image (run 41135681226),
+        # while `choco install boost-msvc-14.3` provably installed successfully
+        # (run 41022264264: "boost-msvc-14.3 has been installed"). So install
+        # the chocolatey package and DISCOVER the actual root instead of
+        # assuming any destination. The Inno layout is <root>\include\boost-1_X\.
+        if (Test-Path "C:\boost\lib") {
+          $boost_root = "C:\boost"
+        } else {
+          choco install boost-msvc-14.3 -y --no-progress
+          $boost_root = $null
+          # 1) Inno Setup uninstall key InstallLocation (normal + WOW6432 hives).
+          foreach ($hive in @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+          )) {
+            $reg = Get-ItemProperty $hive -ErrorAction SilentlyContinue |
+              Where-Object { $_.DisplayName -like "*boost*" -and $_.InstallLocation } |
+              Select-Object -First 1
+            if ($reg -and (Test-Path $reg.InstallLocation)) {
+              $boost_root = $reg.InstallLocation.TrimEnd('\')
+              break
+            }
+          }
+          # 2) Known candidate dirs.
+          if (-not $boost_root) {
+            $cands = Get-ChildItem "C:\local","C:\Program Files","C:\" -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -like "boost*" }
+            if ($cands) { $boost_root = ($cands | Sort-Object Name -Descending | Select-Object -First 1).FullName }
+          }
+          # 3) Last resort: filesystem scan for the boost headers themselves.
+          if (-not $boost_root) {
+            $vh = Get-ChildItem "C:\local","C:\Program Files","C:\" -Recurse -Filter "version.hpp" -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -like "*boost*" -and ((Get-Content $_.FullName) -match '^#define BOOST_LIB_VERSION') } |
+              Select-Object -First 1
+            if ($vh) {
+              # ...\include\boost-1_87\boost\version.hpp -> ...\include\boost-1_87
+              $boost_root = Split-Path (Split-Path $vh.FullName -Parent) -Parent
+            }
+          }
+          if (-not $boost_root) {
+            Get-ChildItem "C:\" -Directory -ErrorAction SilentlyContinue | Select-Object Name | Out-String | Write-Host
+            throw "boost-msvc-14.3 installed but no Boost root could be located"
+          }
         }
-        # OpenSSL: find a dev install on the image; fall back to choco (same
-        # detection as suite check.yml so both repos stay in lockstep).
+        Write-Host "BOOST_ROOT=$boost_root"
+        $boost_include = $null
+        if (Test-Path "$boost_root\include") {
+          $boost_include = (Get-ChildItem "$boost_root\include" -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName "boost\version.hpp") } |
+            Select-Object -First 1).FullName
+        }
+        if (-not $boost_include) {
+          $vhAny = Get-ChildItem "$boost_root" -Recurse -Filter "version.hpp" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -like "*boost*" } | Select-Object -First 1
+          if ($vhAny) {
+            # <boost-1_X>\boost\version.hpp -> <boost-1_X>  (parent of the boost dir)
+            $boost_include = Split-Path $vhAny.Directory.FullName -Parent
+          }
+        }
+        if (-not $boost_include) { throw "no boost headers found under $boost_root" }
+        if (-not (Test-Path (Join-Path $boost_include "boost\version.hpp"))) { throw "boost_include=$boost_include does not contain boost\version.hpp" }
+        Write-Host "BOOST_INCLUDE_DIR=$boost_include"
+        $boost_lib = "$boost_root\lib"
+        if (-not (Test-Path $boost_lib)) { throw "no lib dir under $boost_root" }
+        $vcLibs = Get-ChildItem "$boost_lib" -Filter "*-vc143-mt*.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $vcLibs) { Write-Host "WARNING: no vc143 .lib files found in $boost_lib"; Get-ChildItem $boost_lib | Select-Object -First 10 Name | Out-String | Write-Host }
+        echo "BOOST_ROOT=$boost_root" >> $env:GITHUB_ENV
+        echo "BOOST_INCLUDE_DIR=$boost_include" >> $env:GITHUB_ENV
+        echo "BOOST_LIB_DIR=$boost_lib" >> $env:GITHUB_ENV
+        # ---- OpenSSL: find a dev install on the image; fall back to choco ----
+        # (same detection as suite check.yml so both repos stay in lockstep)
         $candidates = @(
           "C:\Program Files\OpenSSL-Win64",
           "C:\Program Files\OpenSSL",
@@ -59,7 +124,7 @@ runs:
           if (-not $openssl) { throw "OpenSSL not found after choco install" }
         }
         echo "OPENSSL_ROOT_DIR=$openssl" >> $env:GITHUB_ENV
-        # jsoncpp (and vcpkg-provided openssl) exactly as suite check.yml does.
+        # ---- jsoncpp (+ vcpkg openssl) exactly as suite check.yml does ----
         $vcpkgDir = if (Test-Path "C:\vcpkg") { "C:\vcpkg" } elseif ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { throw "vcpkg not found on runner image" }
         & (Join-Path $vcpkgDir "vcpkg.exe") install --no-progress jsoncpp:x64-windows openssl:x64-windows
 
@@ -105,10 +170,22 @@ runs:
             exit 1
           fi
           cmake_args=( -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
-                       -DVCPKG_TARGET_TRIPLET=x64-windows
-                       -DBOOST_ROOT="C:/boost"
-                       -DBOOST_LIBRARYDIR="C:/boost/lib"
-                       -DBOOST_INCLUDEDIR="C:/boost/include/boost-1_85" )
+                       -DVCPKG_TARGET_TRIPLET=x64-windows )
+          # These come from the pwsh install step's discovery (GITHUB_ENV).
+          # Only C:\boost keeps a hardcoded fallback, and the *versioned*
+          # include path is NEVER assumed: FindBoost resolves it from
+          # BOOST_ROOT anyway, the reported include dir is just a fast path.
+          if [ -n "${BOOST_ROOT:-}" ]; then
+            cmake_args+=( -DBOOST_ROOT="$BOOST_ROOT" )
+          elif [ -d "/c/boost" ]; then
+            cmake_args+=( -DBOOST_ROOT="C:/boost" )
+          fi
+          if [ -n "${BOOST_INCLUDE_DIR:-}" ]; then
+            cmake_args+=( -DBOOST_INCLUDEDIR="$BOOST_INCLUDE_DIR" )
+          fi
+          if [ -n "${BOOST_LIB_DIR:-}" ]; then
+            cmake_args+=( -DBOOST_LIBRARYDIR="$BOOST_LIB_DIR" )
+          fi
           if [ -n "${OPENSSL_ROOT_DIR:-}" ]; then
             cmake_args+=( -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR" )
           fi
