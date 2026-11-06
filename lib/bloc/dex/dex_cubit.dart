@@ -360,11 +360,10 @@ class DexCubit extends Cubit<DexState> {
   );
 
   void selectPair(SwapPairSdk pair) {
-    final chain = _chainForPair(pair);
     emit(
       state.copyWith(
         selectedPair: pair,
-        selectedChain: chain,
+        selectedChain: pair.chain,
         offers: [],
         recentTrades: [],
         isLoading: true,
@@ -388,55 +387,6 @@ class DexCubit extends Cubit<DexState> {
         selectPair(pair);
         return;
       }
-    }
-  }
-
-  ChainTypeSdk _chainForPair(SwapPairSdk pair) {
-    switch (pair) {
-      case SwapPairSdk.sol:
-        return ChainTypeSdk.solana;
-      case SwapPairSdk.eth:
-        return ChainTypeSdk.ethereum;
-      case SwapPairSdk.xmr:
-        return ChainTypeSdk.monero;
-      case SwapPairSdk.bch:
-        return ChainTypeSdk.bitcoinCash;
-      case SwapPairSdk.arb:
-        return ChainTypeSdk.arbitrum;
-      case SwapPairSdk.base:
-        return ChainTypeSdk.base;
-      case SwapPairSdk.kmd:
-        return ChainTypeSdk.komodo;
-      case SwapPairSdk.bnb:
-        return ChainTypeSdk.bnb;
-      case SwapPairSdk.dcr:
-        return ChainTypeSdk.decred;
-      case SwapPairSdk.btc:
-        return ChainTypeSdk.bitcoin;
-      case SwapPairSdk.ltc:
-        return ChainTypeSdk.litecoin;
-      case SwapPairSdk.poly:
-        return ChainTypeSdk.polygon;
-      case SwapPairSdk.gleec:
-        return ChainTypeSdk.gleec;
-      case SwapPairSdk.robinhood:
-        return ChainTypeSdk.robinhood;
-      case SwapPairSdk.avax:
-        return ChainTypeSdk.avax;
-      case SwapPairSdk.cro:
-        return ChainTypeSdk.cro;
-      case SwapPairSdk.bob:
-        return ChainTypeSdk.bob;
-      case SwapPairSdk.unichain:
-        return ChainTypeSdk.unichain;
-      case SwapPairSdk.plasma:
-        return ChainTypeSdk.plasma;
-      case SwapPairSdk.pulsex:
-        return ChainTypeSdk.pulsex;
-      case SwapPairSdk.monad:
-        return ChainTypeSdk.monad;
-      case SwapPairSdk.optimism:
-        return ChainTypeSdk.optimism;
     }
   }
 
@@ -521,7 +471,7 @@ class DexCubit extends Cubit<DexState> {
       state.copyWith(
         selectedOffer: offer,
         selectedPair: offer.pair,
-        selectedChain: _chainForPair(offer.pair),
+        selectedChain: offer.pair.chain,
       ),
     );
   }

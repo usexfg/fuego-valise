@@ -1476,7 +1476,7 @@ class _DexScreenState extends State<DexScreen>
 
   // ── ERC20 balances inline (EVM chains) ──────────────────────────────
   Widget _buildErc20Balances(DexState state) {
-    final chainKey = _evmChainKey(state.selectedChain);
+    final chainKey = state.selectedChain.evm?.key;
     if (chainKey == null) return const SizedBox.shrink();
     final tokens = Erc20Registry.forChain(chainKey);
     if (tokens.isEmpty) return const SizedBox.shrink();
@@ -1543,43 +1543,6 @@ class _DexScreenState extends State<DexScreen>
         ],
       ),
     );
-  }
-
-  String? _evmChainKey(ChainTypeSdk c) {
-    switch (c) {
-      case ChainTypeSdk.ethereum:
-        return 'eth';
-      case ChainTypeSdk.arbitrum:
-        return 'arb';
-      case ChainTypeSdk.base:
-        return 'base';
-      case ChainTypeSdk.bnb:
-        return 'bsc';
-      case ChainTypeSdk.polygon:
-        return 'poly';
-      case ChainTypeSdk.avax:
-        return 'avax';
-      case ChainTypeSdk.gleec:
-        return 'gleec';
-      case ChainTypeSdk.robinhood:
-        return 'rh';
-      case ChainTypeSdk.cro:
-        return 'cro';
-      case ChainTypeSdk.bob:
-        return 'bob';
-      case ChainTypeSdk.unichain:
-        return 'uni';
-      case ChainTypeSdk.plasma:
-        return 'xpl';
-      case ChainTypeSdk.pulsex:
-        return 'pls';
-      case ChainTypeSdk.monad:
-        return 'monad';
-      case ChainTypeSdk.optimism:
-        return 'op';
-      default:
-        return null;
-    }
   }
 
   String? _deriveEvmAddress(String pk) {

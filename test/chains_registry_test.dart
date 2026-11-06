@@ -85,8 +85,8 @@ void main() {
       );
       expect(covered.length, kChains.length);
 
-      // Every EVM chain backed by one of the daemon's 29 SwapPair entries is
-      // swap-tier; unsupported wallet-only EVM networks remain excluded.
+      // Every EVM chain backed by an executable SwapPairCatalog entry is
+      // swap-tier. Tempo has no native coin for HashedTimelock to escrow.
       expect(swapKeys, {
         'eth',
         'arb',
@@ -103,6 +103,23 @@ void main() {
         'rh',
         'bob',
         'gleec',
+        'linea',
+        'zksync',
+        'hyperevm',
+        'ink',
+        'rsk',
+        'gnosis',
+        'flare',
+        'kaia',
+        'scroll',
+        'abstract',
+        'plume',
+        'soneium',
+        'doma',
+        'beam',
+        'moonriver',
+        'peaq',
+        'sei',
       });
 
       // ChainInfo.walletOnlyChains is derived from kWalletTierKeys.
@@ -110,8 +127,7 @@ void main() {
         ChainInfo.walletOnlyChains,
         kWalletTierKeys.map((k) => k.toUpperCase()).toSet(),
       );
-      expect(ChainInfo.walletOnlyChains.contains('LINEA'), isTrue);
-      expect(ChainInfo.walletOnlyChains.contains('ETH'), isFalse);
+      expect(ChainInfo.walletOnlyChains, {'TEMPO'});
     });
   });
 

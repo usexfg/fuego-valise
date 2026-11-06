@@ -14,7 +14,8 @@
 #   gasToken      native gas ticker ('' when none, e.g. Tempo)
 #   color         brand color "#RRGGBB"
 #   icon          asset path (missing files are tolerated by the UI)
-#   tier          swap  = wired into xfg-swapd orderbook
+#   tier          swap  = an executable fuego-suite SwapPairCatalog pair
+#                         (ACTIVE or ADAPTER); xfg-swapd takes it via evm_chains
 #                 wallet = ERC20 wallet layer only
 #   confirmBlocks advisory confirmation depth before a tx is trusted
 #
@@ -212,7 +213,7 @@ chains:
     gasToken: ETH
     color: "#61DFFF"
     icon: assets/coin-icons/linea.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: zksync
@@ -224,7 +225,7 @@ chains:
     gasToken: ETH
     color: "#8C8DFC"
     icon: assets/coin-icons/zksync.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: hyperevm
@@ -236,7 +237,7 @@ chains:
     gasToken: HYPE
     color: "#97FCE4"
     icon: assets/coin-icons/hyperevm.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: ink
@@ -248,7 +249,7 @@ chains:
     gasToken: ETH
     color: "#7132F5"
     icon: assets/coin-icons/ink.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: rsk
@@ -260,7 +261,7 @@ chains:
     gasToken: RBTC
     color: "#E9B64E"
     icon: assets/coin-icons/rootstock.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 15
 
   - key: gnosis
@@ -272,7 +273,7 @@ chains:
     gasToken: XDAI
     color: "#1D6C4E"
     icon: assets/coin-icons/gnosis.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: flare
@@ -284,7 +285,7 @@ chains:
     gasToken: FLR
     color: "#E6413E"
     icon: assets/coin-icons/flare.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: kaia
@@ -296,7 +297,7 @@ chains:
     gasToken: KAIA
     color: "#FF1D01"
     icon: assets/coin-icons/kaia.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: scroll
@@ -308,7 +309,7 @@ chains:
     gasToken: ETH
     color: "#EBC28E"
     icon: assets/coin-icons/scroll.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: abstract
@@ -320,7 +321,7 @@ chains:
     gasToken: ETH
     color: "#202020"
     icon: assets/coin-icons/abstract.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: plume
@@ -332,7 +333,7 @@ chains:
     gasToken: PLUME
     color: "#FF3D00"
     icon: assets/coin-icons/plume.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: soneium
@@ -344,7 +345,7 @@ chains:
     gasToken: ETH
     color: "#937DFF"
     icon: assets/coin-icons/soneium.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: doma
@@ -356,7 +357,7 @@ chains:
     gasToken: ETH
     color: "#4F46E5"
     icon: assets/coin-icons/doma.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: beam
@@ -368,7 +369,7 @@ chains:
     gasToken: BEAM
     color: "#0BDBB5"
     icon: assets/coin-icons/beam.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: moonriver
@@ -380,7 +381,7 @@ chains:
     gasToken: MOVR
     color: "#F5B700"
     icon: assets/coin-icons/moonriver.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: peaq
@@ -392,7 +393,7 @@ chains:
     gasToken: PEAQ
     color: "#7A2BF5"
     icon: assets/coin-icons/peaq.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1
 
   - key: tempo
@@ -404,7 +405,7 @@ chains:
     gasToken: ''
     color: "#111111"
     icon: assets/coin-icons/tempo.png
-    tier: wallet
+    tier: wallet   # no native coin; HashedTimelock.lock() only escrows native value
     confirmBlocks: 1
 
   - key: sei
@@ -416,5 +417,5 @@ chains:
     gasToken: SEI
     color: "#9E1F19"
     icon: assets/coin-icons/sei.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 1

@@ -100,7 +100,12 @@ class SwapChain {
   );
 
   bool get executable => protocol && configured && ready;
+
+  /// Settlement asset; fourteen chains share `ETH`, so it cannot identify one.
   String get ticker => assetTicker.isNotEmpty ? assetTicker : symbol;
+
+  /// The per-chain ticker [ChainInfo] and [SwapInfo.pairName] are keyed by.
+  String get pairTicker => SwapPairSdk.tryFromId(id)?.ticker ?? symbol;
 }
 
 class SwapDaemonClient {
@@ -812,13 +817,13 @@ class SwapInfo {
   /// Ticker for the wire `pair` id, keyed the same way as every [ChainInfo]
   /// map so colour/icon/decimals/explorer lookups all resolve.
   ///
-  /// Derived from [SwapPairSdk] rather than a local id table: a hardcoded
-  /// 0-11 map silently returned `PAIR_12`..`PAIR_26` for ten wired pairs
-  /// (GLEEC, RHC, AVAX, CRO, BOB, UNI, XPL, PLS, MON, OP) and returned
-  /// `POLYGON` for id 11, which no [ChainInfo] map is keyed by.
-  String get pairName => pairSymbol.isNotEmpty
-      ? pairSymbol
-      : (SwapPairSdk.tryFromId(pair)?.ticker ?? 'PAIR_$pair');
+  /// The id wins over the daemon's `pairName`: that field is the catalog
+  /// symbol (`ZKSYNC`, `OPTIMISM`, `KMD_SPV`), not the ticker [ChainInfo] is
+  /// keyed by, and a decimals miss falls back to XFG's 7, misreporting an
+  /// 18-decimal amount by 10^11.
+  String get pairName =>
+      SwapPairSdk.tryFromId(pair)?.ticker ??
+      (pairSymbol.isNotEmpty ? pairSymbol : 'PAIR_$pair');
 
   String get lockTypeLabel => lockTypeName;
   bool get isPtlc => lockType == 1;

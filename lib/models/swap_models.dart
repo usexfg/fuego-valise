@@ -1,36 +1,57 @@
+import 'erc20_token.dart';
+
 /// Swap and DEX models aligned with fuego-sdk types.
 /// Maps 1:1 with Rust SDK types.rs SwapPair, SwapOffer, SwapStatus, etc.
 
-/// Supported swap pair IDs matching fuego-suite.
-/// IDs match C++ `SwapPair`; gaps are non-EVM pairs not mirrored here yet.
+/// Wire ids from fuego-suite `src/SwapDaemon/SwapPairCatalog.h` (append-only).
+/// Absent ids are catalog pairs with no executable client: SIA(17), DOGE(20),
+/// DASH(21), ZEC(22), ZANO(24), TON(27), DOT(28).
 enum SwapPairSdk {
-  sol(0, 'SOL', 'XFG/SOL'),
-  eth(1, 'ETH', 'XFG/ETH'),
-  xmr(2, 'XMR', 'XFG/XMR'),
-  bch(3, 'BCH', 'XFG/BCH'),
-  arb(4, 'ARB', 'XFG/ARB'),
-  base(5, 'BASE', 'XFG/BASE'),
-  kmd(6, 'KMD', 'XFG/KMD'),
-  bnb(7, 'BNB', 'XFG/BNB'),
-  dcr(8, 'DCR', 'XFG/DCR'),
-  btc(9, 'BTC', 'XFG/BTC'),
-  ltc(10, 'LTC', 'XFG/LTC'),
-  poly(11, 'POLY', 'XFG/POLY'),
-  gleec(12, 'GLEEC', 'XFG/GLEEC'),
-  robinhood(13, 'RHC', 'XFG/RHC'),
-  avax(14, 'AVAX', 'XFG/AVAX'),
-  cro(15, 'CRO', 'XFG/CRO'),
-  bob(16, 'BOB', 'XFG/BOB'),
-  unichain(18, 'UNI', 'XFG/UNI'),
-  plasma(19, 'XPL', 'XFG/XPL'),
-  pulsex(23, 'PLS', 'XFG/PLS'),
-  monad(25, 'MON', 'XFG/MON'),
-  optimism(26, 'OP', 'XFG/OP');
+  sol(0, 'SOL', 'XFG/SOL', ChainTypeSdk.solana),
+  eth(1, 'ETH', 'XFG/ETH', ChainTypeSdk.ethereum),
+  xmr(2, 'XMR', 'XFG/XMR', ChainTypeSdk.monero),
+  bch(3, 'BCH', 'XFG/BCH', ChainTypeSdk.bitcoinCash),
+  arb(4, 'ARB', 'XFG/ARB', ChainTypeSdk.arbitrum),
+  base(5, 'BASE', 'XFG/BASE', ChainTypeSdk.base),
+  kmd(6, 'KMD', 'XFG/KMD', ChainTypeSdk.komodo),
+  bnb(7, 'BNB', 'XFG/BNB', ChainTypeSdk.bnb),
+  dcr(8, 'DCR', 'XFG/DCR', ChainTypeSdk.decred),
+  btc(9, 'BTC', 'XFG/BTC', ChainTypeSdk.bitcoin),
+  ltc(10, 'LTC', 'XFG/LTC', ChainTypeSdk.litecoin),
+  poly(11, 'POLY', 'XFG/POLY', ChainTypeSdk.polygon),
+  gleec(12, 'GLEEC', 'XFG/GLEEC', ChainTypeSdk.gleec),
+  robinhood(13, 'RHC', 'XFG/RHC', ChainTypeSdk.robinhood),
+  avax(14, 'AVAX', 'XFG/AVAX', ChainTypeSdk.avax),
+  cro(15, 'CRO', 'XFG/CRO', ChainTypeSdk.cro),
+  bob(16, 'BOB', 'XFG/BOB', ChainTypeSdk.bob),
+  unichain(18, 'UNI', 'XFG/UNI', ChainTypeSdk.unichain),
+  plasma(19, 'XPL', 'XFG/XPL', ChainTypeSdk.plasma),
+  pulsex(23, 'PLS', 'XFG/PLS', ChainTypeSdk.pulsex),
+  monad(25, 'MON', 'XFG/MON', ChainTypeSdk.monad),
+  optimism(26, 'OP', 'XFG/OP', ChainTypeSdk.optimism),
+  linea(29, 'LINEA', 'XFG/LINEA', ChainTypeSdk.linea),
+  zksync(30, 'ZKS', 'XFG/ZKS', ChainTypeSdk.zksync),
+  hyperevm(31, 'HYPER', 'XFG/HYPER', ChainTypeSdk.hyperevm),
+  ink(32, 'INK', 'XFG/INK', ChainTypeSdk.ink),
+  rsk(33, 'RSK', 'XFG/RSK', ChainTypeSdk.rsk),
+  gnosis(34, 'GNO', 'XFG/GNO', ChainTypeSdk.gnosis),
+  flare(35, 'FLR', 'XFG/FLR', ChainTypeSdk.flare),
+  kaia(36, 'KAIA', 'XFG/KAIA', ChainTypeSdk.kaia),
+  scroll(37, 'SCR', 'XFG/SCR', ChainTypeSdk.scroll),
+  abstract(38, 'ABS', 'XFG/ABS', ChainTypeSdk.abstract),
+  plume(39, 'PLUME', 'XFG/PLUME', ChainTypeSdk.plume),
+  soneium(40, 'SONEIUM', 'XFG/SONEIUM', ChainTypeSdk.soneium),
+  doma(41, 'DOMA', 'XFG/DOMA', ChainTypeSdk.doma),
+  beam(42, 'BEAM', 'XFG/BEAM', ChainTypeSdk.beam),
+  moonriver(43, 'MOVR', 'XFG/MOVR', ChainTypeSdk.moonriver),
+  peaq(44, 'PEAQ', 'XFG/PEAQ', ChainTypeSdk.peaq),
+  sei(45, 'SEI', 'XFG/SEI', ChainTypeSdk.sei);
 
   final int id;
   final String ticker;
   final String displayName;
-  const SwapPairSdk(this.id, this.ticker, this.displayName);
+  final ChainTypeSdk chain;
+  const SwapPairSdk(this.id, this.ticker, this.displayName, this.chain);
 
   static SwapPairSdk fromId(int id) => SwapPairSdk.values.firstWhere(
     (p) => p.id == id,
@@ -73,53 +94,58 @@ enum SwapLockTypeSdk {
   bool get isHtlc => this == htlc;
 }
 
-/// Supported chains for SPV verification.
+/// Supported chains for SPV verification. Ids 0-12 are the Rust SDK
+/// `ChainType` discriminants walletd's `/verify_payment` accepts; later ids
+/// are wallet-side only. Append-only.
 enum ChainTypeSdk {
   fuego(0, 'XFG', 'Fuego'),
   solana(1, 'SOL', 'Solana'),
-  ethereum(2, 'ETH', 'Ethereum'),
+  ethereum(2, 'ETH', 'Ethereum', EvmChainKey.eth),
   monero(3, 'XMR', 'Monero'),
   bitcoinCash(4, 'BCH', 'Bitcoin Cash'),
-  arbitrum(5, 'ARB', 'Arbitrum'),
-  base(6, 'BASE', 'Base'),
+  arbitrum(5, 'ARB', 'Arbitrum', EvmChainKey.arb),
+  base(6, 'BASE', 'Base', EvmChainKey.base),
   komodo(7, 'KMD', 'Komodo'),
-  bnb(8, 'BNB', 'BNB Chain'),
+  bnb(8, 'BNB', 'BNB Chain', EvmChainKey.bsc),
   decred(9, 'DCR', 'Decred'),
   bitcoin(10, 'BTC', 'Bitcoin'),
   litecoin(11, 'LTC', 'Litecoin'),
-  polygon(12, 'POLY', 'Polygon'),
-  avax(13, 'AVAX', 'Avalanche'),
-  gleec(14, 'GLEEC', 'Gleec Chain'),
-  robinhood(15, 'RHC', 'Robinhood Chain'),
-  cro(16, 'CRO', 'Cronos'),
-  bob(17, 'BOB', 'BOB'),
-  unichain(18, 'UNI', 'Unichain'),
-  plasma(19, 'XPL', 'Plasma'),
-  pulsex(20, 'PLS', 'PulseChain'),
-  monad(21, 'MON', 'Monad'),
-  optimism(22, 'OP', 'Optimism');
+  polygon(12, 'POLY', 'Polygon', EvmChainKey.poly),
+  avax(13, 'AVAX', 'Avalanche', EvmChainKey.avax),
+  gleec(14, 'GLEEC', 'Gleec Chain', EvmChainKey.gleec),
+  robinhood(15, 'RHC', 'Robinhood Chain', EvmChainKey.rh),
+  cro(16, 'CRO', 'Cronos', EvmChainKey.cro),
+  bob(17, 'BOB', 'BOB', EvmChainKey.bob),
+  unichain(18, 'UNI', 'Unichain', EvmChainKey.uni),
+  plasma(19, 'XPL', 'Plasma', EvmChainKey.xpl),
+  pulsex(20, 'PLS', 'PulseChain', EvmChainKey.pls),
+  monad(21, 'MON', 'Monad', EvmChainKey.monad),
+  optimism(22, 'OP', 'Optimism', EvmChainKey.op),
+  linea(23, 'LINEA', 'Linea', EvmChainKey.linea),
+  zksync(24, 'ZKS', 'ZKsync Era', EvmChainKey.zksync),
+  hyperevm(25, 'HYPER', 'HyperEVM', EvmChainKey.hyperevm),
+  ink(26, 'INK', 'Ink', EvmChainKey.ink),
+  rsk(27, 'RSK', 'Rootstock', EvmChainKey.rsk),
+  gnosis(28, 'GNO', 'Gnosis', EvmChainKey.gnosis),
+  flare(29, 'FLR', 'Flare', EvmChainKey.flare),
+  kaia(30, 'KAIA', 'Kaia', EvmChainKey.kaia),
+  scroll(31, 'SCR', 'Scroll', EvmChainKey.scroll),
+  abstract(32, 'ABS', 'Abstract', EvmChainKey.abstract),
+  plume(33, 'PLUME', 'Plume', EvmChainKey.plume),
+  soneium(34, 'SONEIUM', 'Soneium', EvmChainKey.soneium),
+  doma(35, 'DOMA', 'Doma', EvmChainKey.doma),
+  beam(36, 'BEAM', 'Beam', EvmChainKey.beam),
+  moonriver(37, 'MOVR', 'Moonriver', EvmChainKey.moonriver),
+  peaq(38, 'PEAQ', 'peaq', EvmChainKey.peaq),
+  sei(39, 'SEI', 'Sei', EvmChainKey.sei);
 
   final int id;
   final String symbol;
   final String name;
-  const ChainTypeSdk(this.id, this.symbol, this.name);
+  final EvmChainKey? evm;
+  const ChainTypeSdk(this.id, this.symbol, this.name, [this.evm]);
 
-  bool get isEvm =>
-      this == ChainTypeSdk.ethereum ||
-      this == ChainTypeSdk.arbitrum ||
-      this == ChainTypeSdk.base ||
-      this == ChainTypeSdk.bnb ||
-      this == ChainTypeSdk.polygon ||
-      this == ChainTypeSdk.avax ||
-      this == ChainTypeSdk.gleec ||
-      this == ChainTypeSdk.robinhood ||
-      this == ChainTypeSdk.cro ||
-      this == ChainTypeSdk.bob ||
-      this == ChainTypeSdk.unichain ||
-      this == ChainTypeSdk.plasma ||
-      this == ChainTypeSdk.pulsex ||
-      this == ChainTypeSdk.monad ||
-      this == ChainTypeSdk.optimism;
+  bool get isEvm => evm != null;
   bool get isBtcFamily =>
       this == ChainTypeSdk.bitcoinCash ||
       this == ChainTypeSdk.komodo ||

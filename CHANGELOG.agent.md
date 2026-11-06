@@ -1,5 +1,33 @@
 # CHANGELOG.agent.md
 
+## [2026-11-06] DeXFG: promote the 17 catalog generic-adapter EVM chains to swap tier
+
+fuego-suite's `SwapPairCatalog.h` already carries LINEA … SEI as executable ADAPTER pairs
+(ids 29-45), registered through `evm_chains`. The wallet listed them as ERC20-only. Tempo
+stays wallet tier: it has no native coin and `HashedTimelock.lock()` escrows only native
+value. Contract deployment is out of scope.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 145 | `chains.yaml`: 17 chains `tier: wallet` → `swap`; regenerate `chain_registry.g.dart` | Claude Code | 2026-11-06 | Done; `kWalletTierKeys` is now `{tempo}` |
+| 146 | `SwapPairSdk` ids 29-45 and `ChainTypeSdk` ids 23-39; each pair carries its chain, each chain its `EvmChainKey` | Claude Code | 2026-11-06 | Done; removes `DexCubit._chainForPair` and `DexScreen._evmChainKey` switch tables |
+| 147 | `SwapInfo.pairName` resolves by wire id before the daemon's `pairName` | Claude Code | 2026-11-06 | Done; the daemon sends catalog symbols (`ZKSYNC`, `OPTIMISM`, `KMD_SPV`), so `ctrAmountDecimal` fell back to XFG's 7 decimals for 8 existing pairs and would have for 8 new ones |
+| 148 | `SwapChain.pairTicker` for peer-swap chips and filter | Claude Code | 2026-11-06 | Done; 14 pairs settle in ETH, so `ticker` labelled 14 chips "ETH" and the filter matched only Ethereum |
+| 149 | `ChainInfo`: desc, info, PTLC and explorer entries; `swapableChains` derived from `SwapPairSdk` | Claude Code | 2026-11-06 | Done; 15 explorers verified. DOMA (tx path unverified) and PEAQ (docs disagree on primary explorer) left out and listed as known gaps |
+| 150 | Tests: id table to 45, daemon-symbol regression, chains.yaml ↔ `SwapPairSdk` lock, `pairTicker` | Claude Code | 2026-11-06 | Done; corrected `swap_daemon_client_test` fixture that sent `pair: 45` with `pairName: 'TON'` (TON is 27) |
+| 151 | `AGENTS.md` swap section rewritten against suite `a2df2f3` | Claude Code | 2026-11-06 | Done |
+| 152 | PEAQ price feed id | — | — | TODO; `coingecko:peaq-2` untested, network to DeFiLlama/CoinGecko blocked in this session. Until then xfg-swapd refuses new PEAQ swaps |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `flutter test` (Flutter 3.44.4) | ✅ 103 passed, 0 failed |
+| `flutter analyze` | ✅ 0 errors, 0 warnings; no findings on changed lines |
+| `dart format --set-exit-if-changed lib/` | ✅ 0 changed |
+| `dart run tool/gen_chains.dart --check` | ✅ up to date |
+| Submodule pin | ⚠️ `c787f7f` is not fetchable from `usexfg/fuego-suite`; verified against suite master `a2df2f3` |
+
 ## [2026-10-04] Merge Colin's owner-bound commitment keys into the audit branch
 
 Merge `origin/feat/owner-bound-commitment-keys` (`51598e6`) into `origin/claude/okoc-valise-daemon-audit-1niqzp` (`5f32382`), fork `75034c0`. 4 files / 25 hunks. Performed in a scratch worktree; the dirty working tree was not touched. **Not pushed.**

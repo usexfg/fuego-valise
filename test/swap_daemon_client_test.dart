@@ -407,7 +407,7 @@ void main() {
       final swap = SwapInfo.fromJson({
         'swapId': 'swap-2',
         'state': 17,
-        'pair': 45,
+        'pair': 27,
         'pairName': 'TON',
         'xfgAmount': 7,
         'xfgAmountAtomic': '18446744073709551615',
