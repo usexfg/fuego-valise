@@ -11,8 +11,72 @@ import '../models/chain_registry.g.dart';
 import 'evm_account_service.dart';
 import 'swap_daemon_client.dart';
 
+/// Electrum servers and a checkpoint an SPV client of xfg-swapd can trust:
+/// three servers run by different operators and a block from the node
+/// software's own sources.
+class UtxoSpvDefaults {
+  final List<String> servers;
+  final int checkpointHeight;
+  final String checkpointHash;
+  final int defaultRpcPort;
+
+  const UtxoSpvDefaults({
+    required this.servers,
+    required this.checkpointHeight,
+    required this.checkpointHash,
+    required this.defaultRpcPort,
+  });
+}
+
 /// Manages xfg-swapd configuration and process lifecycle.
 class SwapConfigService {
+  /// Bitcoin-family chains xfg-swapd can swap: a full node serves both
+  /// roles; SPV serves Bob only (it cannot fund Alice's lock).
+  static const List<String> utxoSwapChains = ['btc', 'ltc', 'bch'];
+
+  /// Servers from the Electrum, Electrum-LTC and Electron Cash server lists;
+  /// checkpoints are Bitcoin Core 28.1 and Litecoin Core 0.21.4 assume-valid
+  /// blocks and a BCHN 28.0.1 checkpoint (the same values as xfg-swapd's
+  /// example config).
+  static const Map<String, UtxoSpvDefaults> utxoSpvDefaults = {
+    'btc': UtxoSpvDefaults(
+      servers: [
+        'electrum.blockstream.info:50002',
+        'electrum.bitaroo.net:50002',
+        'bitcoin.lu.ke:50002',
+      ],
+      checkpointHeight: 856760,
+      checkpointHash:
+          '000000000000000000011c5890365bdbe5d25b97ce0057589acaef4f1a57263f',
+      defaultRpcPort: 8332,
+    ),
+    'ltc': UtxoSpvDefaults(
+      servers: [
+        'electrum-ltc.bysh.me:50002',
+        'electrum.ltc.xurious.com:50002',
+        'backup.electrum-ltc.org:443',
+      ],
+      checkpointHeight: 2772730,
+      checkpointHash:
+          '80cdb35c080484df5bf384b311fde3c4694d3405765bc0f596e9eb369ff286e5',
+      defaultRpcPort: 9332,
+    ),
+    'bch': UtxoSpvDefaults(
+      servers: [
+        'bch.imaginary.cash:50002',
+        'electroncash.dk:50002',
+        'bch.loping.net:50002',
+      ],
+      checkpointHeight: 845891,
+      checkpointHash:
+          '0000000000000000017012058e7b67032926f1f20f96d1a2cd66abff9aaf8244',
+      defaultRpcPort: 8332,
+    ),
+  };
+
+  static const int minimumSpvServers = 3;
+  static const int defaultSpvQuorum = 2;
+
   static final Set<String> _evmSwapChains = kChains
       .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
       .map((chain) => chain.key)
@@ -312,20 +376,18 @@ class SwapConfigService {
         continue;
       }
 
-      config['${chain}_mode'] = 'spv';
-      config['${chain}_wif'] = credential;
-      for (var index = 0; index < cfg.servers.length && index < 16; index++) {
-        config['${chain}_spv_server_$index'] = cfg.servers[index];
+      if (utxoSwapChains.contains(chain)) {
+        _addUtxoChain(config, chain, cfg, credential);
+        continue;
       }
-      if (cfg.minServers != null) {
-        config['${chain}_spv_min_servers'] = cfg.minServers!;
+      if (chain == 'kmd' || chain == 'dcr') {
+        throw ArgumentError(
+          '${chain.toUpperCase()} swaps are refused: SPV has no header '
+          'validator for it and its full-node path has not passed an '
+          'end-to-end gate',
+        );
       }
-      if (cfg.checkpointHeight != null && cfg.checkpointHeight! > 0) {
-        config['${chain}_spv_checkpoint_height'] = cfg.checkpointHeight!;
-      }
-      if (cfg.checkpointHash != null && cfg.checkpointHash!.isNotEmpty) {
-        config['${chain}_spv_checkpoint_hash'] = cfg.checkpointHash!;
-      }
+      throw ArgumentError('$chain cannot be configured for swaps in Valise');
     }
 
     if (evmChains.isNotEmpty) config['evm_chains'] = evmChains;
@@ -336,6 +398,161 @@ class SwapConfigService {
       config['xfg_secret_key'] = xfgSecretKey;
     }
     return config;
+  }
+
+  static void _addUtxoChain(
+    Map<String, dynamic> config,
+    String chain,
+    SwapChainConfig cfg,
+    String wif,
+  ) {
+    final wifError = validateWif(wif, chain);
+    if (wifError != null) {
+      throw ArgumentError('${chain.toUpperCase()} WIF: $wifError');
+    }
+    config['${chain}_wif'] = wif;
+    final nodeUrl = cfg.rpcUrl?.trim() ?? '';
+    if (nodeUrl.isNotEmpty) {
+      _addUtxoFullNode(config, chain, cfg, nodeUrl);
+    } else {
+      _addUtxoSpv(config, chain, cfg);
+    }
+  }
+
+  // The node RPC speaks plain HTTP with a password, so it must stay on this
+  // machine.
+  static void _addUtxoFullNode(
+    Map<String, dynamic> config,
+    String chain,
+    SwapChainConfig cfg,
+    String nodeUrl,
+  ) {
+    final uri = Uri.tryParse(nodeUrl);
+    if (uri == null ||
+        uri.scheme != 'http' ||
+        !isLoopbackHost(uri.host) ||
+        !uri.hasPort) {
+      throw ArgumentError(
+        '${chain.toUpperCase()} full node needs http://127.0.0.1:<port>',
+      );
+    }
+    final user = cfg.rpcUser?.trim() ?? '';
+    final password = cfg.rpcPassword ?? '';
+    if (user.isEmpty || password.isEmpty) {
+      throw ArgumentError(
+        '${chain.toUpperCase()} full node needs its RPC user and password',
+      );
+    }
+    config['${chain}_rpc_host'] = uri.host;
+    config['${chain}_rpc_port'] = uri.port;
+    config['${chain}_rpc_user'] = user;
+    config['${chain}_rpc_pass'] = password;
+    config['${chain}_network'] = 'main';
+  }
+
+  static void _addUtxoSpv(
+    Map<String, dynamic> config,
+    String chain,
+    SwapChainConfig cfg,
+  ) {
+    final ticker = chain.toUpperCase();
+    final servers = cfg.servers.map((s) => s.trim()).toList();
+    final hosts = servers.map(electrumServerHost).toSet();
+    if (servers.length < minimumSpvServers ||
+        hosts.length != servers.length ||
+        hosts.contains('')) {
+      throw ArgumentError(
+        '$ticker SPV needs at least $minimumSpvServers Electrum servers '
+        '(host:port) on different hosts',
+      );
+    }
+    final quorum = cfg.minServers ?? defaultSpvQuorum;
+    if (quorum < 2 || quorum > servers.length) {
+      throw ArgumentError(
+        '$ticker SPV quorum must be between 2 and ${servers.length}',
+      );
+    }
+    final checkpointHeight = cfg.checkpointHeight ?? 0;
+    final checkpointHash = cfg.checkpointHash?.trim() ?? '';
+    if (checkpointHeight <= 0 ||
+        !RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(checkpointHash)) {
+      throw ArgumentError(
+        '$ticker SPV needs a checkpoint height and its 64-character block hash',
+      );
+    }
+    config['${chain}_mode'] = 'spv';
+    for (var index = 0; index < servers.length && index < 16; index++) {
+      config['${chain}_spv_server_$index'] = servers[index];
+    }
+    config['${chain}_spv_min_servers'] = quorum;
+    config['${chain}_spv_checkpoint_height'] = checkpointHeight;
+    config['${chain}_spv_checkpoint_hash'] = checkpointHash.toLowerCase();
+  }
+
+  /// The host of an Electrum server spec ("[ssl://|tcp://]host:port[#pin]").
+  static String electrumServerHost(String spec) {
+    var rest = spec;
+    for (final scheme in ['ssl://', 'tcp://']) {
+      if (rest.startsWith(scheme)) rest = rest.substring(scheme.length);
+    }
+    final pin = rest.indexOf('#');
+    if (pin >= 0) rest = rest.substring(0, pin);
+    final colon = rest.lastIndexOf(':');
+    if (colon <= 0 || colon == rest.length - 1) return '';
+    if (int.tryParse(rest.substring(colon + 1)) == null) return '';
+    return rest.substring(0, colon).toLowerCase();
+  }
+
+  static bool isLoopbackHost(String host) =>
+      host == '127.0.0.1' || host == 'localhost' || host == '::1';
+
+  /// The JSON object in `xfg-swapd --generate-spv-config` output, which
+  /// carries `//` comments (JSONC).
+  static Map<String, dynamic> parseGeneratedConfig(String output) {
+    final start = output.indexOf('{');
+    final end = output.lastIndexOf('}');
+    if (start < 0 || end <= start) {
+      throw const FormatException('no configuration object in the output');
+    }
+    final decoded = jsonDecode(
+      _withoutLineComments(output.substring(start, end + 1)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('configuration is not a JSON object');
+    }
+    return decoded;
+  }
+
+  static String _withoutLineComments(String jsonc) {
+    final out = StringBuffer();
+    var inString = false;
+    var escaped = false;
+    for (var i = 0; i < jsonc.length; i++) {
+      final c = jsonc[i];
+      if (inString) {
+        out.write(c);
+        if (escaped) {
+          escaped = false;
+        } else if (c == r'\') {
+          escaped = true;
+        } else if (c == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        inString = true;
+        out.write(c);
+      } else if (c == '/' && i + 1 < jsonc.length && jsonc[i + 1] == '/') {
+        while (i < jsonc.length && jsonc[i] != '\n') {
+          i++;
+        }
+        out.write('\n');
+      } else {
+        out.write(c);
+      }
+    }
+    return out.toString();
   }
 
   static bool _isEvmAddress(String value) =>
@@ -352,34 +569,30 @@ class SwapConfigService {
     }
   }
 
+  /// Compressed-key WIF for a Bitcoin-family chain: every HTLC script
+  /// commits to the compressed public key, so xfg-swapd refuses others.
   static String? validateWif(String wif, String chain) {
     if (wif.isEmpty) return 'WIF is required';
-    if (wif.length == 64 && RegExp(r'^[0-9a-fA-F]+$').hasMatch(wif))
-      return null;
-    if (wif.length < 50 || wif.length > 60) return 'Invalid WIF length';
     if (!RegExp(
       r'^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$',
     ).hasMatch(wif)) {
       return 'WIF contains invalid Base58 characters';
     }
+    if (wif.length != 52) {
+      return 'Must be a 52-character compressed-key WIF';
+    }
     switch (chain.toLowerCase()) {
       case 'btc':
       case 'bch':
-        if (!wif.startsWith('5') &&
-            !wif.startsWith('K') &&
-            !wif.startsWith('L'))
-          return 'Must start with 5, K, or L';
-        break;
+        if (!wif.startsWith('K') && !wif.startsWith('L')) {
+          return 'Must start with K or L (compressed key)';
+        }
+        return null;
       case 'ltc':
-        if (!wif.startsWith('6') && !wif.startsWith('T'))
-          return 'Must start with 6 or T';
-        break;
-      case 'kmd':
-        if (!wif.startsWith('7') && !wif.startsWith('U'))
-          return 'Must start with 7 or U';
-        break;
+        if (!wif.startsWith('T')) return 'Must start with T (compressed key)';
+        return null;
     }
-    return null;
+    return '$chain has no WIF-keyed swap transport';
   }
 
   Future<bool> startDaemon({String? configPath, bool testnet = false}) async {
@@ -438,9 +651,6 @@ class SwapConfigService {
   }
 
   bool get isRunning => _swapDaemon != null && _swapDaemon!.pid > 0;
-
-  static String addressFromWif(String wif, String chain) =>
-      '(derive from $chain WIF)';
 }
 
 class SwapChainConfig {
@@ -450,6 +660,8 @@ class SwapChainConfig {
   final int? checkpointHeight;
   final String? checkpointHash;
   final String? rpcUrl;
+  final String? rpcUser;
+  final String? rpcPassword;
   final int? chainId;
   final String? htlcRegistry;
   final String? ptlcRegistry;
@@ -465,6 +677,8 @@ class SwapChainConfig {
     this.checkpointHeight,
     this.checkpointHash,
     this.rpcUrl,
+    this.rpcUser,
+    this.rpcPassword,
     this.chainId,
     this.htlcRegistry,
     this.ptlcRegistry,
@@ -481,6 +695,8 @@ class SwapChainConfig {
     if (checkpointHeight != null) 'checkpointHeight': checkpointHeight,
     if (checkpointHash != null) 'checkpointHash': checkpointHash,
     if (rpcUrl != null) 'rpcUrl': rpcUrl,
+    if (rpcUser != null) 'rpcUser': rpcUser,
+    if (rpcPassword != null) 'rpcPassword': rpcPassword,
     if (chainId != null) 'chainId': chainId,
     if (htlcRegistry != null) 'htlcRegistry': htlcRegistry,
     if (ptlcRegistry != null) 'ptlcRegistry': ptlcRegistry,
@@ -499,6 +715,8 @@ class SwapChainConfig {
     checkpointHeight: j['checkpointHeight'] as int?,
     checkpointHash: j['checkpointHash'] as String?,
     rpcUrl: j['rpcUrl'] as String?,
+    rpcUser: j['rpcUser'] as String?,
+    rpcPassword: j['rpcPassword'] as String?,
     chainId: j['chainId'] as int?,
     htlcRegistry: j['htlcRegistry'] as String?,
     ptlcRegistry: j['ptlcRegistry'] as String?,

@@ -189,4 +189,164 @@ void main() {
       );
     });
   });
+
+  group('Bitcoin-family chains', () {
+    const btcWif = 'KwntMbt59tTsj8xqpqYqRRWufyjGunvhSyeMo3NTYpFYzZbXJ5Hp';
+    const ltcWif = 'T3d9oMBFZGSUVybiNUVhdn4HcqNayswbGBYcer117nRiWT8Gph6i';
+    final btcDefaults = SwapConfigService.utxoSpvDefaults['btc']!;
+
+    Map<String, dynamic> build(String chain, SwapChainConfig cfg) =>
+        SwapConfigService.buildConfig(chains: {chain: cfg}, network: 'mainnet');
+
+    test('a local full node serves Alice and Bob', () {
+      final config = build(
+        'btc',
+        const SwapChainConfig(
+          wif: btcWif,
+          rpcUrl: 'http://127.0.0.1:8332',
+          rpcUser: 'swap',
+          rpcPassword: 'secret',
+        ),
+      );
+      expect(config['btc_rpc_host'], '127.0.0.1');
+      expect(config['btc_rpc_port'], 8332);
+      expect(config['btc_rpc_user'], 'swap');
+      expect(config['btc_rpc_pass'], 'secret');
+      expect(config['btc_network'], 'main');
+      expect(config['btc_wif'], btcWif);
+      expect(config.containsKey('btc_mode'), isFalse);
+    });
+
+    test('a full node RPC must be local and authenticated', () {
+      expect(
+        () => build(
+          'btc',
+          const SwapChainConfig(
+            wif: btcWif,
+            rpcUrl: 'http://192.168.1.5:8332',
+            rpcUser: 'swap',
+            rpcPassword: 'secret',
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => build(
+          'btc',
+          const SwapChainConfig(wif: btcWif, rpcUrl: 'http://127.0.0.1:8332'),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('SPV writes three servers, a quorum of two and a checkpoint', () {
+      final config = build(
+        'ltc',
+        SwapChainConfig(
+          wif: ltcWif,
+          servers: SwapConfigService.utxoSpvDefaults['ltc']!.servers,
+          checkpointHeight:
+              SwapConfigService.utxoSpvDefaults['ltc']!.checkpointHeight,
+          checkpointHash:
+              SwapConfigService.utxoSpvDefaults['ltc']!.checkpointHash,
+        ),
+      );
+      expect(config['ltc_mode'], 'spv');
+      expect(config['ltc_spv_server_2'], 'backup.electrum-ltc.org:443');
+      expect(config['ltc_spv_min_servers'], 2);
+      expect(config['ltc_spv_checkpoint_height'], 2772730);
+      expect(config.containsKey('ltc_rpc_host'), isFalse);
+    });
+
+    test('SPV the daemon would never trust is refused', () {
+      SwapChainConfig spv({
+        List<String>? servers,
+        int? quorum,
+        int? height,
+        String? hash,
+      }) => SwapChainConfig(
+        wif: btcWif,
+        servers: servers ?? btcDefaults.servers,
+        minServers: quorum,
+        checkpointHeight: height ?? btcDefaults.checkpointHeight,
+        checkpointHash: hash ?? btcDefaults.checkpointHash,
+      );
+      expect(
+        () => build('btc', spv(servers: ['electrum.blockstream.info:50002'])),
+        throwsArgumentError,
+      );
+      expect(
+        () => build(
+          'btc',
+          spv(servers: ['a.example:1', 'a.example:2', 'ssl://A.example:3']),
+        ),
+        throwsArgumentError,
+      );
+      expect(() => build('btc', spv(quorum: 1)), throwsArgumentError);
+      expect(() => build('btc', spv(height: 0)), throwsArgumentError);
+      expect(() => build('btc', spv(hash: 'abc')), throwsArgumentError);
+    });
+
+    test('KMD, DCR and chains without a transport are refused', () {
+      for (final chain in ['kmd', 'dcr', 'doge']) {
+        expect(
+          () => build(chain, SwapChainConfig(wif: btcWif, servers: const [])),
+          throwsArgumentError,
+        );
+      }
+    });
+
+    test('only compressed-key WIFs are accepted', () {
+      expect(SwapConfigService.validateWif(btcWif, 'btc'), isNull);
+      expect(SwapConfigService.validateWif(btcWif, 'bch'), isNull);
+      expect(SwapConfigService.validateWif(ltcWif, 'ltc'), isNull);
+      expect(
+        SwapConfigService.validateWif(
+          '5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ',
+          'btc',
+        ),
+        isNotNull,
+      );
+      expect(SwapConfigService.validateWif(btcWif, 'ltc'), isNotNull);
+      expect(SwapConfigService.validateWif(btcWif, 'kmd'), isNotNull);
+    });
+
+    test('Electrum server hosts are compared without scheme or port', () {
+      expect(
+        SwapConfigService.electrumServerHost('ssl://Electrum.Example:50002'),
+        'electrum.example',
+      );
+      expect(SwapConfigService.electrumServerHost('no-port'), '');
+    });
+  });
+
+  group('SwapConfigService.parseGeneratedConfig', () {
+    test('reads the generator output despite its comments', () {
+      const output = '''
+Generating...
+{
+  // ── BTC ──
+  "btc_mode": "spv",
+  "btc_spv_server_0": "electrum.blockstream.info:50002",
+  "note": "https://kept//inside",
+  "btc_wif": "KwntMbt59tTsj8xqpqYqRRWufyjGunvhSyeMo3NTYpFYzZbXJ5Hp",  // P2PKH address: 1abc
+  "evm_chains": {}
+}
+''';
+      final config = SwapConfigService.parseGeneratedConfig(output);
+      expect(config['btc_mode'], 'spv');
+      expect(config['note'], 'https://kept//inside');
+      expect(
+        config['btc_wif'],
+        'KwntMbt59tTsj8xqpqYqRRWufyjGunvhSyeMo3NTYpFYzZbXJ5Hp',
+      );
+    });
+
+    test('refuses output without a configuration object', () {
+      expect(
+        () => SwapConfigService.parseGeneratedConfig('error'),
+        throwsFormatException,
+      );
+    });
+  });
 }

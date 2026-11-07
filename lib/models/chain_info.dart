@@ -120,34 +120,37 @@ class ChainInfo {
   static final Map<String, Map<String, String>> info = {
     'BTC': {
       'type': 'UTXO',
-      'connect': 'Full node RPC (bitcoind with a wallet)',
+      'connect': 'Full node RPC (bitcoind with a wallet) or Electrum SPV',
       'user':
-          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
-          'Valise) and the transport has not passed its end-to-end gate.',
+          'Swap Settings: a local full node buys or sells XFG; SPV (three '
+          'Electrum servers) only sells XFG. Not swappable until the transport '
+          'passes its end-to-end gate.',
       'htlc': 'P2WSH SegWit',
     },
     'LTC': {
       'type': 'UTXO',
-      'connect': 'Full node RPC (litecoind with a wallet)',
+      'connect': 'Full node RPC (litecoind with a wallet) or Electrum SPV',
       'user':
-          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
-          'Valise) and the transport has not passed its end-to-end gate.',
+          'Swap Settings: a local full node buys or sells XFG; SPV (three '
+          'Electrum servers) only sells XFG. Not swappable until the transport '
+          'passes its end-to-end gate.',
       'htlc': 'P2WSH SegWit',
     },
     'KMD': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
+      'connect': 'Full node RPC (komodod)',
       'user':
-          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
-          'Valise) and the transport has not passed its end-to-end gate.',
+          'Not swappable: SPV has no Equihash header validator and the '
+          'full-node path has not passed an end-to-end gate.',
       'htlc': 'P2SH',
     },
     'BCH': {
       'type': 'UTXO',
-      'connect': 'Full node RPC (BCHN with a wallet)',
+      'connect': 'Full node RPC (BCHN with a wallet) or Electrum SPV',
       'user':
-          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
-          'Valise) and the transport has not passed its end-to-end gate.',
+          'Swap Settings: a local full node buys or sells XFG; SPV (three '
+          'Electrum servers) only sells XFG. Not swappable until the transport '
+          'passes its end-to-end gate.',
       'htlc': 'P2SH',
     },
     'ETH': {
@@ -192,18 +195,18 @@ class ChainInfo {
     },
     'SOL': {
       'type': 'Non-EVM',
-      'connect': 'Solana JSON-RPC (public)',
+      'connect': 'Solana JSON-RPC (local node)',
       'user':
-          'Needs a funded key and the HashedTimelock registry on this chain '
-          '(Swap Settings); public RPC used by default.',
+          'Needs a funded keypair, a local RPC at 127.0.0.1 and the deployed '
+          'HTLC program ID (Swap Settings).',
       'htlc': 'On-chain HTLC program',
     },
     'DCR': {
       'type': 'UTXO',
-      'connect': 'Neutrino SPV (built-in) or dcrd RPC',
+      'connect': 'Full node RPC (dcrd + dcrwallet)',
       'user':
-          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
-          'Valise) and the transport has not passed its end-to-end gate.',
+          'Not swappable: SPV has no BLAKE-256 header validator and the '
+          'full-node path cannot yet prove claim depth.',
       'htlc': 'P2SH',
     },
     'XMR': {

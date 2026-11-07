@@ -1,5 +1,32 @@
 # CHANGELOG.agent.md
 
+## [2026-11-07] DeXFG remediation (Valise): full-node UTXO config, SPV that xfg-swapd trusts, KMD/DCR removed
+
+**Started**: 2026-11-07
+**Agent**: Claude Code
+**Status**: DONE; takes effect against an xfg-swapd built from ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9` (the pinned usexfg/fuego-suite `a2df2f3` predates the daemon side)
+**Scope**: `lib/services/swap_config_service.dart`, `lib/screens/settings/swap_settings_screen.dart`, `lib/models/chain_info.dart`, `test/swap_config_service_test.dart`
+
+Implements fuego `docs/dexfg/SWAP_REMEDIATION_PLAN.md` 1.x (full node from Valise), 2.3 and 2.4 for Valise.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 1.x | BTC, LTC, BCH: "Full node" mode writes `<chain>_rpc_host/_rpc_port/_rpc_user/_rpc_pass/_network`; the RPC must be on this machine (plain HTTP with a password) and authenticated | Claude Code | 2026-11-07 | DONE |
+| 2.4 | "SPV" mode (sells XFG only) requires three Electrum servers on different hosts, a quorum of 2..n and a checkpoint height and hash; defaults are three servers from the Electrum, Electrum-LTC and Electron Cash lists and the checkpoints xfg-swapd's example uses | Claude Code | 2026-11-07 | DONE |
+| 2.3 | KMD and DCR are no longer offered in Swap Settings; `buildConfig` refuses them and every chain without a transport instead of writing an SPV section | Claude Code | 2026-11-07 | DONE |
+| fix | `validateWif` accepted uncompressed WIFs (`5…`, `6…`) that xfg-swapd refuses; it now accepts 52-character compressed WIFs only (K/L, T) | Claude Code | 2026-11-07 | DONE |
+| fix | "Generate Fresh WIFs" JSON-decoded the generator's output, which carries `//` comments, so it always failed; `parseGeneratedConfig` strips comments outside strings | Claude Code | 2026-11-07 | DONE |
+| fix | Unused placeholder `addressFromWif` (returned "(derive from … WIF)") removed. Chain info text: BTC/LTC/BCH configurable here; KMD/DCR reasons; Solana needs a local RPC and the program ID, not a "HashedTimelock registry" | Claude Code | 2026-11-07 | DONE |
+
+Not changed: R7 (keys into xfg-swapd's encrypted keystore) still waits for the suite pin to carry the keystore. Stored KMD/DCR keys in the OS keychain are left in place.
+
+### Sign-off
+
+| Gate | Status | Signed | Date |
+|------|--------|--------|------|
+| `flutter test` | 117/117 | Claude Code | 2026-11-07 |
+| `flutter analyze` | 0 errors, 0 warnings (793 infos, 794 before) | Claude Code | 2026-11-07 |
+
 ## [2026-11-07] DeXFG remediation (Valise): suite repin, generated pair catalog, live readiness
 
 **Started**: 2026-11-07
