@@ -1,5 +1,16 @@
 # CHANGELOG.agent.md
 
+## [2026-11-07] DeXFG review (Valise): SPV quorum wording
+
+**Started**: 2026-11-07
+**Agent**: Claude Code
+**Status**: DONE; matches xfg-swapd's quorum (ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9`)
+**Scope**: `lib/screens/settings/swap_settings_screen.dart`
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| review | xfg-swapd now requires agreement from at least the quorum and more than half of the configured servers; the Swap Settings quorum label says so | Claude Code | 2026-11-07 | DONE |
+
 ## [2026-11-07] DeXFG remediation (Valise): role-aware swap readiness
 
 **Started**: 2026-11-07

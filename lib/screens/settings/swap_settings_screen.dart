@@ -1000,7 +1000,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
 
   List<Widget> _buildSpvFields(String chain) => [
     _labeledField(
-      'Quorum (servers that must agree, at least 2)',
+      'Quorum (servers that must agree: at least 2 and more than half of the servers)',
       _quorumControllers[chain]!,
       keyboard: TextInputType.number,
     ),
