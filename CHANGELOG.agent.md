@@ -1,5 +1,23 @@
 # CHANGELOG.agent.md
 
+## [2026-11-07] DeXFG remediation (Valise): forward the maker-signed AFK fill result (F32)
+
+**Started**: 2026-11-07
+**Agent**: Claude Code
+**Status**: DONE; AFK stays disabled in xfg-swapd and fuegod
+**Scope**: `lib/services/swap_daemon_client.dart`, `lib/bloc/dex/dex_cubit.dart`, `test/swap_daemon_client_test.dart`
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| F32 | The AFK taker forwards `offer_id`, `ctr_address`, `ctr_claim_pubkey`, `created_at` and `maker_signature` from `/getswaprequests` to `initiate_swap` unchanged, so xfg-swapd can check the offer maker's signature; an unsigned result is refused before any lock | Claude Code | 2026-11-07 | DONE |
+
+### Sign-off
+
+| Gate | Status | Signed | Date |
+|------|--------|--------|------|
+| `flutter test` | 117/117 | Claude Code | 2026-11-07 |
+| `flutter analyze` | 0 errors, 0 warnings | Claude Code | 2026-11-07 |
+
 ## [2026-11-07] DeXFG remediation (Valise): full-node UTXO config, SPV that xfg-swapd trusts, KMD/DCR removed
 
 **Started**: 2026-11-07

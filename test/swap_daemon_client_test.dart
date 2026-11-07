@@ -258,6 +258,9 @@ void main() {
           hashLock: 'lock',
           preSig: 'pre-signature',
           ctrAddress: 'counterparty-address',
+          offerId: 'offer-1',
+          createdAt: 1700000000,
+          makerSignature: 'signature',
         ),
         throwsA(tokenFailure),
       );

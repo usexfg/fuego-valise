@@ -340,17 +340,25 @@ class SwapDaemonClient {
     required String hashLock,
     required String preSig,
     required String ctrAddress,
+    required String offerId,
+    required int createdAt,
+    required String makerSignature,
+    String ctrClaimPubKey = '',
     bool requirePtlc = false,
   }) {
     if (swapId.isEmpty ||
         ourSwapSecretKey.isEmpty ||
         adaptorPoint.isEmpty ||
         hashLock.isEmpty ||
-        preSig.isEmpty) {
+        preSig.isEmpty ||
+        offerId.isEmpty ||
+        makerSignature.isEmpty) {
       throw const FormatException(
-        'AFK swap is missing maker-bound lock material',
+        'AFK swap is missing maker-signed lock material',
       );
     }
+    // xfg-swapd checks the maker's signature over exactly these values, so
+    // they pass through unchanged, empty ones included.
     return _initiateSwap(
       pair: pair,
       xfgAmount: xfgAmount,
@@ -364,8 +372,14 @@ class SwapDaemonClient {
       adaptorPoint: adaptorPoint,
       hashLock: hashLock,
       preSig: preSig,
-      ctrAddress: ctrAddress,
       requirePtlc: requirePtlc,
+      signedFillResult: {
+        'offer_id': offerId,
+        'ctr_address': ctrAddress,
+        'ctr_claim_pubkey': ctrClaimPubKey,
+        'created_at': createdAt,
+        'maker_signature': makerSignature,
+      },
     );
   }
 
@@ -386,6 +400,7 @@ class SwapDaemonClient {
     bool requirePtlc = false,
     String? ptlcPoint,
     int? lockType,
+    Map<String, dynamic> signedFillResult = const {},
   }) async {
     await _requireControlTokenForMutation();
     await _requireReadyChain(pair);
@@ -422,6 +437,7 @@ class SwapDaemonClient {
       params['ptlc_point'] = ptlcPoint;
     }
     if (lockType != null) params['lock_type'] = lockType;
+    params.addAll(signedFillResult);
     final result =
         await _rpc('initiate_swap', params, true) as Map<String, dynamic>;
     return result['swap_id'] as String;
