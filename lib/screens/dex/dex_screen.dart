@@ -1574,6 +1574,9 @@ class _DexScreenState extends State<DexScreen>
     for (final chain in daemonChains) {
       if (pair == null || chain.id != pair.id) continue;
       if (chain.executable) return 'Ready in xfg-swapd';
+      if (chain.readyAs('bob')) {
+        return 'Ready to sell XFG in xfg-swapd (SPV); buying XFG needs a full node';
+      }
       if (chain.readinessError.isNotEmpty) return chain.readinessError;
       return chain.configured
           ? 'Not ready in xfg-swapd'

@@ -270,6 +270,51 @@ void main() {
       expect(methods, isEmpty);
     });
 
+    test('a chain ready only for Bob admits Bob and refuses Alice', () async {
+      final initiated = <String>[];
+      final transport = ScriptedClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        switch (body['method']) {
+          case 'status':
+            return _result({'network': 'mainnet', 'profile': 'mainnet'});
+          case 'list_chains':
+            return _result({
+              'chains': [
+                {
+                  ..._readyChain(ready: false),
+                  'readinessError':
+                      'ETH SPV: cannot fund a lock; Alice needs a full node',
+                  'readyRoles': ['bob'],
+                },
+              ],
+            });
+          case 'initiate_swap':
+            final params = body['params'] as Map<String, dynamic>;
+            initiated.add(params['role'] as String);
+            return _result({'swap_id': 'bob-swap'});
+          default:
+            fail('Unexpected method ${body['method']}');
+        }
+      });
+      final client = SwapDaemonClient(
+        expectedNetwork: 'mainnet',
+        token: List.filled(64, 'a').join(),
+        httpClient: transport,
+      );
+      Future<String> initiate(String role) => client.initiatePeerSwap(
+        pair: 'eth',
+        xfgAmount: '1',
+        ctrAmount: '1',
+        peer: '127.0.0.1:18901',
+        expectedPeerPubkey: List.filled(64, '2').join(),
+        role: role,
+      );
+
+      await expectLater(initiate('alice'), throwsA(isA<SwapRpcException>()));
+      expect(await initiate('bob'), 'bob-swap');
+      expect(initiated, ['bob']);
+    });
+
     test('formats a bare IPv6 loopback control endpoint', () async {
       Uri? requestUri;
       final client = SwapDaemonClient(

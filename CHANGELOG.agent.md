@@ -1,5 +1,16 @@
 # CHANGELOG.agent.md
 
+## [2026-11-07] DeXFG remediation (Valise): role-aware swap readiness
+
+**Started**: 2026-11-07
+**Agent**: Claude Code
+**Status**: DONE; takes effect with an xfg-swapd that reports `readyRoles` (ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9`)
+**Scope**: `lib/services/swap_daemon_client.dart`, `lib/screens/dex/dex_screen.dart`, `test/swap_daemon_client_test.dart`
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 2.5 | `SwapChain.readyRoles` from `list_chains`; the pre-initiate check admits a role the daemon is ready for (an SPV chain admits Bob, refuses Alice), and chain info says "Ready to sell XFG (SPV); buying XFG needs a full node" | Claude Code | 2026-11-07 | DONE; `flutter test` 118/118 |
+
 ## [2026-11-07] DeXFG remediation (Valise): forward the maker-signed AFK fill result (F32)
 
 **Started**: 2026-11-07

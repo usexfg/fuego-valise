@@ -69,6 +69,10 @@ class SwapChain {
   final bool ready;
   final String readinessError;
 
+  /// Roles xfg-swapd is ready to start a swap in ('alice' buys XFG and locks
+  /// the counterparty coin, 'bob' sells XFG). SPV serves 'bob' only.
+  final List<String> readyRoles;
+
   const SwapChain({
     required this.id,
     required this.key,
@@ -82,6 +86,7 @@ class SwapChain {
     required this.configured,
     required this.ready,
     required this.readinessError,
+    this.readyRoles = const [],
   });
 
   factory SwapChain.fromJson(Map<String, dynamic> json) => SwapChain(
@@ -97,9 +102,15 @@ class SwapChain {
     configured: _boolValue(json['configured']),
     ready: _boolValue(json['ready']),
     readinessError: json['readinessError']?.toString() ?? '',
+    readyRoles: (json['readyRoles'] as List<dynamic>? ?? const [])
+        .map((role) => role.toString())
+        .toList(growable: false),
   );
 
   bool get executable => protocol && configured && ready;
+
+  bool readyAs(String role) =>
+      protocol && configured && (ready || readyRoles.contains(role));
 
   /// Settlement asset; fourteen chains share `ETH`, so it cannot identify one.
   String get ticker => assetTicker.isNotEmpty ? assetTicker : symbol;
@@ -294,11 +305,11 @@ class SwapDaemonClient {
       .where((chain) => chain.executable)
       .toList(growable: false);
 
-  Future<SwapChain> _requireReadyChain(String pair) async {
+  Future<SwapChain> _requireReadyChain(String pair, String role) async {
     final chains = await listChains();
     for (final chain in chains) {
       if (chain.key == pair) {
-        if (!chain.configured || !chain.ready) {
+        if (!chain.readyAs(role)) {
           final detail = chain.readinessError.isEmpty
               ? 'adapter is not configured and ready'
               : chain.readinessError;
@@ -403,7 +414,7 @@ class SwapDaemonClient {
     Map<String, dynamic> signedFillResult = const {},
   }) async {
     await _requireControlTokenForMutation();
-    await _requireReadyChain(pair);
+    await _requireReadyChain(pair, role);
     _validateAtomicAmount(xfgAmount, _maxUint64, 'XFG amount');
     _validateAtomicAmount(ctrAmount, _maxUint256, 'Counterparty amount');
     _validatePeerEndpoint(peer);
