@@ -1,4 +1,5 @@
 import 'erc20_token.dart';
+import 'swap_pair_catalog.g.dart';
 
 /// Swap and DEX models aligned with fuego-sdk types.
 /// Maps 1:1 with Rust SDK types.rs SwapPair, SwapOffer, SwapStatus, etc.
@@ -53,10 +54,13 @@ enum SwapPairSdk {
   final ChainTypeSdk chain;
   const SwapPairSdk(this.id, this.ticker, this.displayName, this.chain);
 
-  static SwapPairSdk fromId(int id) => SwapPairSdk.values.firstWhere(
-    (p) => p.id == id,
-    orElse: () => SwapPairSdk.eth,
-  );
+  /// Unknown ids are refused: a record for a pair this wallet cannot
+  /// represent must never be shown as an ETH swap.
+  static SwapPairSdk fromId(int id) =>
+      tryFromId(id) ?? (throw FormatException('unknown swap pair id $id'));
+
+  /// This pair's row in xfg-swapd's catalog (generated from fuego-suite).
+  SwapPairCatalogEntry get catalog => kSwapPairCatalog[id];
 
   static SwapPairSdk? tryFromId(int id) {
     for (final p in SwapPairSdk.values) {

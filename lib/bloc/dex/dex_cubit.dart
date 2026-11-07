@@ -146,6 +146,19 @@ class DexState {
   }
 }
 
+/// Parses one daemon row; a row naming a pair id this wallet does not know is
+/// dropped (and logged) instead of failing the whole list.
+Iterable<T> _parseKnownPair<T>(
+  dynamic row,
+  T Function(Map<String, dynamic>) parse,
+) sync* {
+  try {
+    yield parse(row as Map<String, dynamic>);
+  } on FormatException catch (e) {
+    debugPrint('DexCubit: skipped row: ${e.message}');
+  }
+}
+
 class DexCubit extends Cubit<DexState> {
   final http.Client _http;
   String _baseUrl = '';
@@ -403,7 +416,7 @@ class DexCubit extends Cubit<DexState> {
     );
     return results
         .expand((result) => result['offers'] as List<dynamic>? ?? const [])
-        .map((offer) => SwapOfferSdk.fromJson(offer as Map<String, dynamic>))
+        .expand((offer) => _parseKnownPair(offer, SwapOfferSdk.fromJson))
         .where((offer) => offer.offerId.isNotEmpty)
         .toList();
   }
@@ -443,7 +456,7 @@ class DexCubit extends Cubit<DexState> {
         'limit': 50,
       });
       final trades = (r['trades'] as List<dynamic>? ?? [])
-          .map((t) => SwapTradeSdk.fromJson(t as Map<String, dynamic>))
+          .expand((t) => _parseKnownPair(t, SwapTradeSdk.fromJson))
           .toList();
       emit(state.copyWith(recentTrades: trades));
     } catch (e) {
@@ -481,7 +494,7 @@ class DexCubit extends Cubit<DexState> {
     try {
       final r = await _post('/getactiveswaps', {});
       final swaps = (r['swaps'] as List<dynamic>? ?? [])
-          .map((s) => SwapStatusSdk.fromJson(s as Map<String, dynamic>))
+          .expand((s) => _parseKnownPair(s, SwapStatusSdk.fromJson))
           .toList();
       emit(state.copyWith(activeSwaps: swaps));
     } catch (e) {

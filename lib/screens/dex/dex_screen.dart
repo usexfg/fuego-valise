@@ -1560,8 +1560,33 @@ class _DexScreenState extends State<DexScreen>
 
   // ── Chain Info Dialog ────────────────────────────────────────────
 
+  /// xfg-swapd's own readiness verdict for the pair, when the daemon is
+  /// reachable; the static description only stands in when it is not.
+  static String _liveSetupStatus(
+    String ticker,
+    List<SwapChain> daemonChains,
+    String fallback,
+  ) {
+    SwapPairSdk? pair;
+    for (final candidate in SwapPairSdk.values) {
+      if (candidate.ticker == ticker) pair = candidate;
+    }
+    for (final chain in daemonChains) {
+      if (pair == null || chain.id != pair.id) continue;
+      if (chain.executable) return 'Ready in xfg-swapd';
+      if (chain.readinessError.isNotEmpty) return chain.readinessError;
+      return chain.configured
+          ? 'Not ready in xfg-swapd'
+          : 'Not configured in xfg-swapd';
+    }
+    return fallback.isEmpty
+        ? 'xfg-swapd not reachable'
+        : '$fallback (xfg-swapd not reachable)';
+  }
+
   void _showChainInfo() {
     final selected = context.read<DexCubit>().state.selectedPair.ticker;
+    final daemonChains = context.read<DexCubit>().state.swapChains;
     final entries = ChainInfo.info.entries.toList()
       ..sort((a, b) {
         if (a.key == selected) return -1;
@@ -1737,7 +1762,14 @@ class _DexScreenState extends State<DexScreen>
                           const SizedBox(height: 8),
                           _infoRow('Connect', info['connect'] ?? ''),
                           _infoRow('HTLC', info['htlc'] ?? ''),
-                          _infoRow('Setup', info['user'] ?? ''),
+                          _infoRow(
+                            'Setup',
+                            _liveSetupStatus(
+                              e.key,
+                              daemonChains,
+                              info['user'] ?? '',
+                            ),
+                          ),
                         ],
                       ],
                     ),

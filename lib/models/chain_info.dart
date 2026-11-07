@@ -120,68 +120,90 @@ class ChainInfo {
   static final Map<String, Map<String, String>> info = {
     'BTC': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (bitcoind with a wallet)',
+      'user':
+          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
+          'Valise) and the transport has not passed its end-to-end gate.',
       'htlc': 'P2WSH SegWit',
     },
     'LTC': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (litecoind with a wallet)',
+      'user':
+          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
+          'Valise) and the transport has not passed its end-to-end gate.',
       'htlc': 'P2WSH SegWit',
     },
     'KMD': {
       'type': 'UTXO',
       'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'user':
+          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
+          'Valise) and the transport has not passed its end-to-end gate.',
       'htlc': 'P2SH',
     },
     'BCH': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (BCHN with a wallet)',
+      'user':
+          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
+          'Valise) and the transport has not passed its end-to-end gate.',
       'htlc': 'P2SH',
     },
     'ETH': {
       'type': 'EVM',
       'connect': 'Ethereum JSON-RPC (Infura/Alchemy)',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'ARB': {
       'type': 'EVM L2',
       'connect': 'Arbitrum JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'BASE': {
       'type': 'EVM L2',
       'connect': 'Base JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'BNB': {
       'type': 'EVM',
       'connect': 'BSC JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'POLY': {
       'type': 'EVM',
       'connect': 'Polygon JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'SOL': {
       'type': 'Non-EVM',
       'connect': 'Solana JSON-RPC (public)',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'On-chain HTLC program',
     },
     'DCR': {
       'type': 'UTXO',
       'connect': 'Neutrino SPV (built-in) or dcrd RPC',
-      'user': 'No setup needed for SPV mode.',
+      'user':
+          'Not swappable yet: xfg-swapd needs a full node (not configurable in '
+          'Valise) and the transport has not passed its end-to-end gate.',
       'htlc': 'P2SH',
     },
     'XMR': {

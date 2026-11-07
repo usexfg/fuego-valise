@@ -1,5 +1,36 @@
 # CHANGELOG.agent.md
 
+## [2026-11-07] DeXFG remediation (Valise): suite repin, generated pair catalog, live readiness
+
+**Started**: 2026-11-07
+**Agent**: Claude Code
+**Status**: DONE except R7 (Valise half) — see below
+**Scope**: `fuego-suite` gitlink, `tool/gen_swap_pair_catalog.dart` (new), `lib/models/swap_pair_catalog.g.dart` (generated), `lib/models/swap_models.dart`, `lib/bloc/dex/dex_cubit.dart`, `lib/screens/dex/dex_screen.dart`, `lib/models/chain_info.dart`, `test/swap_pair_catalog_test.dart` (new), `.github/workflows/fuego-wallet-ci.yml`
+
+Implements fuego `docs/dexfg/SWAP_REMEDIATION_PLAN.md` 0.6, R2 and R8 for Valise.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 0.6 | `fuego-suite` repinned from `c787f7f` (served by no remote; `git submodule update` failed) to `a2df2f3`, usexfg/fuego-suite master, which carries catalog ids 29-45 | Claude Code | 2026-11-07 | DONE |
+| R2 | `tool/gen_swap_pair_catalog.dart` generates `kSwapPairCatalog` from the pinned `SwapPairCatalog.h`; `SwapPairSdk.catalog` binds each pair to its row; `SwapPairSdk.fromId` throws on unknown ids instead of returning ETH, and the DEX list parsers drop such rows one by one; CI checks out the submodule and runs `--check` | Claude Code | 2026-11-07 | DONE; `swap_pair_catalog_test` 5/5 |
+| R8 | Chain info "Setup" row shows xfg-swapd's own verdict (`Ready`, its `readinessError`, or not configured); static text only when the daemon is unreachable. Static text corrected: BTC/LTC/BCH/KMD/DCR are not swappable yet (full node not configurable in Valise; transport gate open); EVM needs a funded key and the registry | Claude Code | 2026-11-07 | DONE |
+| R7 | Write keys into xfg-swapd's encrypted keystore instead of plaintext `swap_config.json` | — | — | NOT DONE: Valise builds xfg-swapd from the pinned suite, and keystore support exists only on ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9`, not on usexfg/fuego-suite. Valise already holds the keys in the OS keychain (FlutterSecureStorage); the plaintext copy remains for the daemon until the suite pin carries the keystore |
+
+Also: `test/swap_pair_expansion_test.dart` reformatted; as committed in `b0395a0` it failed `dart format --set-exit-if-changed`.
+
+Found, not changed:
+- Valise has no wallet pair for DOGE (20), DASH (21), ZEC (22); the test names them.
+- Valise writes UTXO chains only in SPV mode; Phase 1's full-node path (btc_rpc_host, btc_network, ...) is not configurable from Valise.
+- At pin `a2df2f3` the catalog has no GATED level; the regenerated table will carry it after the suite change lands upstream and the pin moves.
+
+### Sign-off
+
+| Gate | Status | Signed | Date |
+|------|--------|--------|------|
+| `flutter analyze` | 0 errors, 0 warnings | Claude Code | 2026-11-07 |
+| `flutter test` | PASS, 108/108 | Claude Code | 2026-11-07 |
+| `dart run tool/gen_chains.dart --check`, `gen_swap_pair_catalog.dart --check` | PASS | Claude Code | 2026-11-07 |
+
 ## [2026-11-06] DeXFG: promote the 17 catalog generic-adapter EVM chains to swap tier
 
 fuego-suite's `SwapPairCatalog.h` already carries LINEA … SEI as executable ADAPTER pairs

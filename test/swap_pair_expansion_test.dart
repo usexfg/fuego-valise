@@ -64,17 +64,20 @@ void main() {
   });
 
   group('chains.yaml swap tier and SwapPairSdk agree', () {
-    test('every EVM pair is swap tier and every swap-tier chain has a pair', () {
-      final pairKeys = {
-        for (final p in SwapPairSdk.values)
-          if (p.chain.evm != null) p.chain.evm!.key,
-      };
-      final swapTierKeys = {
-        for (final c in kChains)
-          if (c.tier == 'swap') c.key,
-      };
-      expect(pairKeys, swapTierKeys);
-    });
+    test(
+      'every EVM pair is swap tier and every swap-tier chain has a pair',
+      () {
+        final pairKeys = {
+          for (final p in SwapPairSdk.values)
+            if (p.chain.evm != null) p.chain.evm!.key,
+        };
+        final swapTierKeys = {
+          for (final c in kChains)
+            if (c.tier == 'swap') c.key,
+        };
+        expect(pairKeys, swapTierKeys);
+      },
+    );
 
     test('Tempo stays wallet tier: it has no native coin to escrow', () {
       expect(kChainByKey['tempo']!.tier, 'wallet');
