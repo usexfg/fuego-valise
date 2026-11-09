@@ -592,3 +592,14 @@ Decision taken: gate the owner-bound derivation behind an env flag, default OFF.
 | `owner_bound` at the real pin `524454d` | ✅ absent; `deriveCommitmentKeys` present in `TransactionExtra.cpp`, `TransfersConsumer.cpp`, `WalletGreen.cpp` |
 | All tasks done | Gate implemented, tested both ways, documented in `AGENTS.md`, verified green |
 | Scope | `transaction_builder.rs`, `main.rs`, `phase7_vectors.rs`, `AGENTS.md`, this file. No scanner behaviour change |
+
+## [2026-11-08] Remove legacy commitment derivation
+
+Owner-bound only. Gate and legacy form removed. Submodule pin advanced to suite commit with matching discovery and the legacy fallback removed. No commitment outputs exist on-network.
+
+- `transaction_builder.rs`: `commitment_key` always owner-bound; gate deleted.
+- `scanner.rs`: legacy commitment fallback and test removed.
+- `phase7_vectors.rs`: default-derivation test and gate helpers removed.
+- `main.rs`: env-gate init removed.
+- `AGENTS.md`: updated.
+- `fuego-suite` pin: `c787f7fd` → suite commit with legacy removal.

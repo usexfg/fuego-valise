@@ -491,10 +491,8 @@ impl UtxoScanner {
                     received += output.amount;
                 }
                 OutputTarget::Commitment(commit) => {
-                    // Owner-bound first: recover WHICH registered spend key produced
-                    // this output rather than assuming one, then derive the scalar
-                    // with that key's secret. Falls back to the legacy ECDH-only
-                    // derivation so pre-v11 deposits stay discoverable.
+                    // Owner-bound only: recover which registered spend key produced
+                    // this output, then derive the scalar with that key's secret.
                     let mut resolved: Option<([u8; 32], [u8; 32])> = None;
 
                     if let Some(base) = fuego_crypto::underive_public_key(
@@ -544,19 +542,7 @@ impl UtxoScanner {
 
                     let (key_scalar, key_image) = match resolved {
                         Some(r) => r,
-                        None => {
-                            // Pre-v11 output. The scalar depends only on the ECDH
-                            // secret, which is exactly what the owner-bound form
-                            // removes; these funds must stay spendable so they are
-                            // not stranded.
-                            let deposit_secret =
-                                fuego_crypto::ring::derive_deposit_secret(&derivation, i as u32);
-                            let ck = fuego_crypto::ring::derive_commitment_keys(&deposit_secret);
-                            if ck.commit_key != commit.commit_key {
-                                continue;
-                            }
-                            (ck.key_scalar, ck.key_image)
-                        }
+                        None => continue, // not owner-bound; legacy form removed
                     };
                     if state.spent_images.contains(&key_image)
                         || state.commitments.iter().any(|c| c.key_image == key_image)
@@ -926,48 +912,6 @@ mod subaddress_tests {
             commit_key,
             "scanner must recover the real spend scalar, not a placeholder"
         );
-    }
-
-    /// A legacy pre-v11 commitment output must still be found, so existing funds
-    /// are not stranded by the owner-bound change.
-    #[test]
-    fn still_finds_legacy_commitment_output() {
-        let s = scanner();
-        let keys = s.wallet_keys();
-
-        let r = fuego_crypto::Keypair::from_secret([0x22u8; 32]);
-        let d = fuego_crypto::generate_key_derivation(
-            &fuego_crypto::PublicKey(keys.view_public),
-            &r.secret,
-        )
-        .unwrap();
-        let legacy = fuego_crypto::ring::derive_commitment_keys(
-            &fuego_crypto::ring::derive_deposit_secret(&d, 0),
-        );
-
-        let mut extra = vec![0x01];
-        extra.extend_from_slice(&r.public);
-        let prefix = TransactionPrefix {
-            version: 1,
-            unlock_time: 0,
-            inputs: Vec::new(),
-            outputs: vec![TxOutput {
-                amount: 128,
-                target: OutputTarget::Commitment(crate::serialization::CommitmentOutputTarget {
-                    commit_key: legacy.commit_key,
-                    term: crate::serialization::HEAT_TERM,
-                    amount_commitment: [0u8; 32],
-                    amount_proof: [0u8; crate::serialization::AMOUNT_PROOF_LEN],
-                }),
-            }],
-            extra,
-        };
-
-        s.scan_tx_prefix(&[8; 32], &prefix, 100).unwrap();
-
-        let found = s.commitments();
-        assert_eq!(found.len(), 1, "legacy commitment output must stay discoverable");
-        assert_eq!(found[0].key_scalar, legacy.key_scalar);
     }
 
     fn assert_spendable(s: &UtxoScanner) {
