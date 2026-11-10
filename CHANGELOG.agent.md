@@ -625,3 +625,15 @@ Replaced plain u64 add/sub on mint, AMM, LP, CD, claim, and send paths with chec
 ## [2026-11-09] FV-03: no plaintext private keys in swap config
 
 Persisted `swap_config.json` is stripped of `private_key`, `*_wif`, `sol_keypair`, `xfg_secret_key`, and XMR keys. Secrets stay in FlutterSecureStorage. Launch writes a short-lived owner-only runtime config and deletes it when the daemon stops. Added a stripSecrets test.
+
+## [2026-11-10] Format Dart sources for CI green
+
+Applied `dart format` to `lib/services/daemon_manager.dart` and `lib/services/swap_config_service.dart` to satisfy `dart format --set-exit-if-changed` in the Analyze job of Fuego Wallet CI. Pure whitespace/line-break changes; no logic. Unblocked macOS and Linux builds which depend on Analyze.
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 120 | Format two Dart service files | Grok Agent | 2026-11-10 | Done; CI format check now passes |
+
+### Sign-off
+
+Formatting only. No crypto or protocol changes.
