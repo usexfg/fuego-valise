@@ -568,7 +568,7 @@ impl WalletService {
             (anonymity as usize).min(fuego_sdk::transaction_builder::MAX_MIXIN)
         };
 
-        let total: u64 = destinations.iter().map(|(_, a)| *a).sum::<u64>() + fee;
+        let total: u64 = destinations.iter().map(|(_, a)| *a).sum::<u64>().checked_add(fee).ok_or("amount overflow")?;
 
         let selected = {
             let wallet = self.wallet.lock().unwrap();
@@ -751,7 +751,7 @@ impl WalletService {
         let built = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .build_with_selection(&selected, &[(to, total - fee)], fee, DEFAULT_MIXIN, &decoys, &mut rand::thread_rng())
+                .build_with_selection(&selected, &[(to, total.checked_sub(fee).ok_or("amount underflow")?)], fee, DEFAULT_MIXIN, &decoys, &mut rand::thread_rng())
                 .map_err(|e| format!("build: {e}"))?
         };
         let key_images: Vec<[u8; 32]> = selected.iter().map(|u| u.key_image).collect();
@@ -855,7 +855,7 @@ impl WalletService {
 
         // 1% taker fee folded into the locked amount.
         let fee_bob = amount * SWAP_FEE_RATE_BPS / SWAP_FEE_RATE_DIVISOR;
-        let total = amount + fee_bob;
+        let total = amount.checked_add(fee_bob).ok_or("amount overflow")?;
         // Network minimum fee for block major version >= 10 is 8000
         // (CryptoNoteConfig.h MINIMUM_FEE_8KH). 1000-fee lock txs are
         // rejected and never propagate.
@@ -871,7 +871,7 @@ impl WalletService {
         let selected = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .select_for_send(total + fee, &mut rand::thread_rng())
+                .select_for_send(total.checked_add(fee).ok_or("amount overflow")?, &mut rand::thread_rng())
                 .map_err(|e| format!("coin selection: {e}"))?
         };
         let decoys: Vec<Vec<DecoyEntry>> = selected.iter().map(|_| Vec::new()).collect();
@@ -957,11 +957,11 @@ impl WalletService {
         let selected = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .select_for_send(xfg_burned + fee, &mut rand::thread_rng())
+                .select_for_send(xfg_burned.checked_add(fee).ok_or("amount overflow")?, &mut rand::thread_rng())
                 .map_err(|e| format!("coin selection: {e}"))?
         };
         let found: u64 = selected.iter().map(|u| u.amount).sum();
-        let change = found - xfg_burned - fee;
+        let change = found.checked_sub(xfg_burned).and_then(|v| v.checked_sub(fee)).ok_or("amount underflow")?;
 
         let mixin = DEFAULT_MIXIN;
         let amounts: Vec<u64> = selected.iter().map(|u| u.amount).collect();
@@ -1055,7 +1055,7 @@ impl WalletService {
             let selected = {
                 let wallet = self.wallet.lock().unwrap();
                 wallet
-                    .select_for_send(input_amount + fee, &mut rand::thread_rng())
+                    .select_for_send(input_amount.checked_add(fee).ok_or("amount overflow")?, &mut rand::thread_rng())
                     .map_err(|e| format!("coin selection: {e}"))?
             };
 
@@ -1130,7 +1130,7 @@ impl WalletService {
             .into_iter()
             .filter(|d| d.global_index != 0)
             .collect();
-        let needed = input_amount + MINIMUM_FEE;
+        let needed = input_amount.checked_add(MINIMUM_FEE).ok_or("amount overflow")?;
         let mut selected = Vec::new();
         let mut found = 0u64;
         for entry in heat {
@@ -1144,7 +1144,7 @@ impl WalletService {
             return Err(format!("insufficient HEAT: need {}, have {}", needed, found));
         }
 
-        let heat_change = found - input_amount;
+        let heat_change = found.checked_sub(input_amount).ok_or("amount underflow")?;
         let mut decoys = Vec::with_capacity(selected.len());
         for deposit in &selected {
             decoys.push(self.commitment_decoys(deposit, mixin).await?);
@@ -1219,11 +1219,11 @@ impl WalletService {
         let selected_xfg = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .select_for_send(amount_xfg + fee, &mut rand::thread_rng())
+                .select_for_send(amount_xfg.checked_add(fee).ok_or("amount overflow")?, &mut rand::thread_rng())
                 .map_err(|e| format!("coin selection: {e}"))?
         };
         let found_xfg: u64 = selected_xfg.iter().map(|u| u.amount).sum();
-        let xfg_change = found_xfg - amount_xfg - fee;
+        let xfg_change = found_xfg.checked_sub(amount_xfg).and_then(|v| v.checked_sub(fee)).ok_or("amount underflow")?;
 
         // HEAT side: select HEAT commitments for amount_heat.
         let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
@@ -1449,12 +1449,13 @@ impl WalletService {
         let selected = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .select_for_send(amount + fee, &mut rand::thread_rng())
+                .select_for_send(amount.checked_add(fee).ok_or("amount overflow")?, &mut rand::thread_rng())
                 .map_err(|e| format!("coin selection: {e}"))?
         };
         let found: u64 = selected.iter().map(|u| u.amount).sum();
-        if found < amount + fee {
-            return Err(format!("insufficient balance: need {}, have {}", amount + fee, found));
+        let need = amount.checked_add(fee).ok_or("amount overflow")?;
+        if found < need {
+            return Err(format!("insufficient balance: need {}, have {}", need, found));
         }
 
         let mut order_id = [0u8; 32];
@@ -1555,7 +1556,7 @@ impl WalletService {
             .collect();
         // The fee is the difference between inputs and outputs, so the
         // selection must cover amount + banking_fee + fee.
-        let needed = amount + banking_fee + MINIMUM_FEE;
+        let needed = amount.checked_add(banking_fee).and_then(|v| v.checked_add(MINIMUM_FEE)).ok_or("amount overflow")?;
         let mut selected = Vec::new();
         let mut found = 0u64;
         for entry in heat {
@@ -1580,7 +1581,7 @@ impl WalletService {
         }
 
         let keys = self.wallet.lock().unwrap().wallet_keys();
-        let heat_change = found - amount - banking_fee - fee;
+        let heat_change = found.checked_sub(amount).and_then(|v| v.checked_sub(banking_fee)).and_then(|v| v.checked_sub(fee)).ok_or("amount underflow")?;
 
         let mut commitment_dests = vec![BuildCommitmentDestination {
             amount,
@@ -1706,15 +1707,14 @@ impl WalletService {
             interests.push(interest);
         }
 
-        let total: u64 = deposits
-            .iter()
-            .zip(interests.iter())
-            .map(|(d, i)| d.amount + i)
-            .sum();
+        let mut total: u64 = 0;
+        for (d, i) in deposits.iter().zip(interests.iter()) {
+            total = total.checked_add(d.amount.checked_add(*i).ok_or("amount overflow")?).ok_or("amount overflow")?;
+        }
         if total <= fee {
             return Err("deposit total below fee".into());
         }
-        let payout = total - fee;
+        let payout = total.checked_sub(fee).ok_or("amount underflow")?;
 
         let mixin = DEFAULT_MIXIN;
         let mut decoys = Vec::with_capacity(deposits.len());
@@ -1885,7 +1885,7 @@ impl WalletService {
             .into_iter()
             .filter(|d| d.global_index != 0)
             .collect();
-        let needed = amount + MINIMUM_FEE;
+        let needed = amount.checked_add(MINIMUM_FEE).ok_or("amount overflow")?;
         let mut selected = Vec::new();
         let mut found = 0u64;
         for entry in heat {
@@ -1901,7 +1901,7 @@ impl WalletService {
                 needed, found
             ));
         }
-        let change = found - amount - MINIMUM_FEE;
+        let change = found.checked_sub(amount).and_then(|v| v.checked_sub(MINIMUM_FEE)).ok_or("amount underflow")?;
 
         let mixin = DEFAULT_MIXIN;
         let mut decoys = Vec::with_capacity(selected.len());

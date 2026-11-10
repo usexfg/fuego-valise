@@ -613,3 +613,7 @@ Owner-bound only. Gate and legacy form removed. Submodule pin advanced to suite 
 ## [2026-11-09] FV-06: reject BUY limit orders
 
 `place_limit_order` only selects XFG key inputs. BUY requires HEAT commitment inputs. Reject side 0 until that path exists. SELL unchanged.
+
+## [2026-11-09] FV-05: checked arithmetic on value paths
+
+Replaced plain u64 add/sub on mint, AMM, LP, CD, claim, and send paths with checked_add/checked_sub. Overflow or underflow returns an error instead of wrapping.
