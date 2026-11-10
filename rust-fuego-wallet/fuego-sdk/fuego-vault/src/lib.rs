@@ -105,28 +105,12 @@ impl Vault {
         Ok(())
     }
 
-    pub fn verify_recovery(&self, request: &RecoveryRequest) -> Result<bool, String> {
-        if !request.is_complete() {
-            return Err("Recovery request not complete: not enough signatures".to_string());
-        }
-        for sig in &request.signatures {
-            if !self.guardians.contains(&sig.guardian_address) {
-                return Err(format!("Signature from non-guardian: {}", sig.guardian_address));
-            }
-        }
-        Ok(true)
+    pub fn verify_recovery(&self, _request: &RecoveryRequest) -> Result<bool, String> {
+        Err("recovery disabled: threshold signatures not implemented".into())
     }
 
-    pub fn finalize_recovery(&mut self, request: RecoveryRequest) -> Result<(), String> {
-        self.verify_recovery(&request)?;
-        let mut hasher = Keccak256::new();
-        hasher.update(self.master_seed);
-        hasher.update(request.new_public_key);
-        let new_seed: [u8; 32] = hasher.finalize().into();
-        self.master_seed = new_seed;
-        self.guardians.clear();
-        self.recovery_threshold = 0;
-        Ok(())
+    pub fn finalize_recovery(&mut self, _request: RecoveryRequest) -> Result<(), String> {
+        Err("recovery disabled: threshold signatures not implemented".into())
     }
 
     pub fn initiate_recovery(&self, new_public_key: [u8; 32]) -> RecoveryRequest {

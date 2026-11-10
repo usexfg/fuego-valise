@@ -617,3 +617,7 @@ Owner-bound only. Gate and legacy form removed. Submodule pin advanced to suite 
 ## [2026-11-09] FV-05: checked arithmetic on value paths
 
 Replaced plain u64 add/sub on mint, AMM, LP, CD, claim, and send paths with checked_add/checked_sub. Overflow or underflow returns an error instead of wrapping.
+
+## [2026-11-09] FV-07: disable incomplete vault recovery
+
+`verify_recovery` and `finalize_recovery` now return an error. The prior path did not verify signatures, did not bind them to the recovery message, and derived the new seed from `master_seed || new_public_key`. Disabled until real threshold signatures exist.
