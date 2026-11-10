@@ -21,6 +21,10 @@ class SwapConfigService {
   Process? _swapDaemon;
   String? _configPath;
   String? _swapdPath;
+  Map<String, SwapChainConfig>? _lastChains;
+  String? _lastNetwork;
+  String? _lastXfgSecret;
+  String? _runtimeConfigPath;
 
   Future<String> _dataDir() async {
     final dir = await getApplicationSupportDirectory();
@@ -192,17 +196,69 @@ class SwapConfigService {
     required String network,
     String? xfgSecretKey,
   }) async {
-    final config = buildConfig(
+    _lastChains = chains;
+    _lastNetwork = network;
+    _lastXfgSecret = xfgSecretKey;
+    final config = stripSecrets(buildConfig(
       chains: chains,
       network: network,
       xfgSecretKey: xfgSecretKey,
-    );
+    ));
     final path = await configPath();
     await _writeOwnerOnlyFile(
       path,
       const JsonEncoder.withIndent('  ').convert(config),
     );
     return path;
+  }
+
+  /// Full config for a single launch. Owner-only, not the persisted file.
+  /// Caller deletes it after xfg-swapd has read it.
+  Future<String> writeRuntimeConfig({
+    required Map<String, SwapChainConfig> chains,
+    required String network,
+    String? xfgSecretKey,
+  }) async {
+    final config = buildConfig(
+      chains: chains,
+      network: network,
+      xfgSecretKey: xfgSecretKey,
+    );
+    final dir = await _dataDir();
+    final path = '$dir/swap_config.runtime.json';
+    await _writeOwnerOnlyFile(
+      path,
+      const JsonEncoder.withIndent('  ').convert(config),
+    );
+    return path;
+  }
+
+  static const _secretKeys = {
+    'private_key',
+    'sol_keypair',
+    'xfg_secret_key',
+    'xmr_spend_key',
+    'xmr_view_key',
+  };
+
+  static bool _isSecretKey(String key) =>
+      _secretKeys.contains(key) || key.endsWith('_wif');
+
+  /// Remove raw private keys. Addresses, RPCs, registries, and modes stay.
+  static Map<String, dynamic> stripSecrets(Map<String, dynamic> config) {
+    final out = <String, dynamic>{};
+    for (final entry in config.entries) {
+      if (_isSecretKey(entry.key)) continue;
+      final value = entry.value;
+      if (value is Map<String, dynamic>) {
+        out[entry.key] = stripSecrets(value);
+      } else if (value is Map) {
+        out[entry.key] = stripSecrets(Map<String, dynamic>.from(value));
+      } else {
+        out[entry.key] = value;
+      }
+    }
+    return out;
   }
 
   static Map<String, dynamic> buildConfig({
@@ -382,10 +438,30 @@ class SwapConfigService {
     return null;
   }
 
-  Future<bool> startDaemon({String? configPath, bool testnet = false}) async {
+  Future<bool> startDaemon({
+    String? configPath,
+    Map<String, SwapChainConfig>? chains,
+    String? network,
+    String? xfgSecretKey,
+    bool testnet = false,
+  }) async {
     final binary = findSwapdBinary();
     if (binary == null) return false;
-    final cfgPath = configPath ?? await this.configPath();
+    String? runtimePath;
+    final String cfgPath;
+    final launchChains = chains ?? _lastChains;
+    final launchNetwork = network ?? _lastNetwork;
+    final launchXfg = xfgSecretKey ?? _lastXfgSecret;
+    if (launchChains != null && launchNetwork != null) {
+      runtimePath = await writeRuntimeConfig(
+        chains: launchChains,
+        network: launchNetwork,
+        xfgSecretKey: launchXfg,
+      );
+      cfgPath = runtimePath;
+    } else {
+      cfgPath = configPath ?? await this.configPath();
+    }
     if (!File(cfgPath).existsSync()) return false;
     try {
       final tokenPath = await ensureControlTokenFile();
@@ -404,8 +480,12 @@ class SwapConfigService {
       ]);
       if (exitedImmediately != null) {
         _swapDaemon = null;
+        if (runtimePath != null) {
+          try { await File(runtimePath).delete(); } catch (_) {}
+        }
         return false;
       }
+      _runtimeConfigPath = runtimePath;
       unawaited(_swapDaemon!.stdout.drain<void>());
       unawaited(_swapDaemon!.stderr.drain<void>());
       unawaited(
@@ -422,6 +502,11 @@ class SwapConfigService {
   }
 
   Future<void> stopDaemon() async {
+    final runtime = _runtimeConfigPath;
+    _runtimeConfigPath = null;
+    if (runtime != null) {
+      try { await File(runtime).delete(); } catch (_) {}
+    }
     final p = _swapDaemon;
     _swapDaemon = null;
     if (p == null) return;

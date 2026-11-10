@@ -189,4 +189,33 @@ void main() {
       );
     });
   });
+
+  group('SwapConfigService.stripSecrets', () {
+    test('persisted config has no raw private keys', () {
+      final full = SwapConfigService.buildConfig(
+        chains: const {
+          'eth': SwapChainConfig(
+            wif: _privateKey,
+            rpcUrl: 'http://127.0.0.1:8545',
+            chainId: 1,
+            htlcRegistry: _registry,
+          ),
+        },
+        network: 'mainnet',
+        xfgSecretKey: _privateKey,
+      );
+      full['btc_wif'] = '5fakewif';
+      full['sol_keypair'] = 'base58keypair';
+      final stripped = SwapConfigService.stripSecrets(full);
+      final encoded = stripped.toString();
+      expect(stripped.containsKey('xfg_secret_key'), isFalse);
+      expect(stripped.containsKey('btc_wif'), isFalse);
+      expect(stripped.containsKey('sol_keypair'), isFalse);
+      final eth = (stripped['evm_chains'] as Map)['eth'] as Map;
+      expect(eth.containsKey('private_key'), isFalse);
+      expect(eth['rpc_url'], 'http://127.0.0.1:8545');
+      expect(eth['address'], startsWith('0x'));
+      expect(encoded.contains(_privateKey), isFalse);
+    });
+  });
 }

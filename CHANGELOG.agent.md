@@ -621,3 +621,7 @@ Replaced plain u64 add/sub on mint, AMM, LP, CD, claim, and send paths with chec
 ## [2026-11-09] FV-07: disable incomplete vault recovery
 
 `verify_recovery` and `finalize_recovery` now return an error. The prior path did not verify signatures, did not bind them to the recovery message, and derived the new seed from `master_seed || new_public_key`. Disabled until real threshold signatures exist.
+
+## [2026-11-09] FV-03: no plaintext private keys in swap config
+
+Persisted `swap_config.json` is stripped of `private_key`, `*_wif`, `sol_keypair`, `xfg_secret_key`, and XMR keys. Secrets stay in FlutterSecureStorage. Launch writes a short-lived owner-only runtime config and deletes it when the daemon stops. Added a stripSecrets test.

@@ -433,10 +433,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       setState(() => _isStarting = false);
       return;
     }
-    final ok = await _swapService.startDaemon(
-      configPath: configPath,
-      testnet: _isTestnet,
-    );
+    final ok = await _swapService.startDaemon(testnet: _isTestnet);
     setState(() {
       _swapdRunning = ok;
       _isStarting = false;
