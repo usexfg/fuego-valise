@@ -166,12 +166,19 @@ jobs:
             sleep 10
           done
 
+      - name: Build iOS FFI libraries
+        run: |
+          cd rust-fuego-wallet
+          cargo build --release -p fuego-ffi --target x86_64-apple-ios
+          cargo build --release -p fuego-ffi --target aarch64-apple-ios-sim
+          cargo build --release -p fuego-ffi --target aarch64-apple-ios
+
       - name: Build for simulator
         run: flutter build ios --simulator --debug
 
       - name: Upload iOS App
         uses: actions/upload-artifact@v4
         with:
-          name: fuego-wallet-ios
-          path: build/ios/iphoneos/fuego-valise-iOS.ipa
+          name: fuego-wallet-ios-simulator
+          path: build/ios/iphonesimulator/Runner.app
           retention-days: 30
