@@ -1436,6 +1436,11 @@ impl WalletService {
         if side > 1 {
             return Err("side must be 0 (BUY) or 1 (SELL)".into());
         }
+        // BUY must spend HEAT commitment inputs. This path only selects XFG
+        // key inputs. Reject until the HEAT selection path exists.
+        if side == 0 {
+            return Err("BUY limit orders are not implemented: HEAT commitment inputs required".into());
+        }
 
         let fee = MINIMUM_FEE;
         let mixin = DEFAULT_MIXIN;
