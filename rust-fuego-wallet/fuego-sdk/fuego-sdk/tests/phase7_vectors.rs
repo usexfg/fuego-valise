@@ -1,7 +1,3 @@
-
-fn with_owner_bound<T>(f: impl FnOnce() -> T) -> T {
-    f()
-}
 //! Phase 7 tests: AFK locks, HEAT mint, CDs, commitment spends.
 //! Cross-language: the C++ harness verified the adaptor signature scheme
 //! (check_adaptor_signature) and the transaction serialization
@@ -21,7 +17,6 @@ use fuego_sdk::transaction_builder::{
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::sync::{Mutex, MutexGuard, OnceLock};
 
 fn make_output(amount: u64, secret: [u8; 32], global_index: u32) -> SpendableOutput {
     let mut p = GeP3::default();
@@ -261,7 +256,7 @@ fn heat_mint_transaction() {
             serialize_tx(&built.tx),
             "serialize roundtrip"
         );
-    })
+    }
 
 }
 
@@ -507,7 +502,7 @@ fn print_cross_language_artifacts() {
             "c378b4976fcc2c2cc1f9e0e0c7dbdb2a3ee04bc77589497fe188568481dc826d"
         );
         let _ = view_sec;
-    })
+    }
 
 }
 
@@ -777,7 +772,7 @@ fn heat_send_recipient_view_key() {
             OutputTarget::Commitment(c) => assert_owner_bound(&c.commit_key, &d_own, 1, &spend_pub, &spend_sec),
             _ => panic!("expected commitment output"),
         }
-    })
+    }
 
 }
 
@@ -878,7 +873,7 @@ fn heat_send_pays_fee_in_xfg() {
             hex::encode(built.tx_hash),
             "f374318536f4fcc391afba6af872817e2bf3308beb17d2993481a319401d094b"
         );
-    })
+    }
 
 }
 

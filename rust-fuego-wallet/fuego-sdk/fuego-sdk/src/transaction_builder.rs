@@ -17,7 +17,7 @@ use crate::serialization::{
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
 use fuego_crypto::ring::{
-    check_ring_signature, derive_commitment_keys, derive_deposit_secret,
+    check_ring_signature,
     derive_owner_bound_commit_key, derive_public_key, derive_secret_key, generate_key_derivation,
     generate_key_image, generate_ring_signature, secret_key_to_public_key, hash_to_scalar,
 };
