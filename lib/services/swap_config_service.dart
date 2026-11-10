@@ -226,6 +226,8 @@ class SwapConfigService {
     );
     final dir = await _dataDir();
     final path = '$dir/swap_config.runtime.json';
+    // Drop any residue from a prior crash before writing a new runtime file.
+    try { await File(path).delete(); } catch (_) {}
     await _writeOwnerOnlyFile(
       path,
       const JsonEncoder.withIndent('  ').convert(config),
