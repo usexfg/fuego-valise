@@ -140,3 +140,7 @@ Merge `origin/feat/owner-bound-commitment-keys` (`51598e6`) into `origin/claude/
 | `flutter analyze --fatal-warnings --no-fatal-infos` / `flutter test` | ✅ / ✅ 59 |
 | `dart format --set-exit-if-changed lib/ test/` | ❌ 94/108 files, same on master; not reformatted in this PR |
 | iOS link, Android NDK link, desktop bundles | — CI on the PR |
+
+## [2026-11-10] FV-09: network-aware address prefix
+
+FFI and vault address creation no longer hardcode the mainnet prefix. `fuego_make_address_for_network` and `fuego_vault_get_address_for_network` take a testnet flag. Dart threads it through, and the vault service re-derives the cached address when the provider switches network. Mainnet still starts with `fire`, testnet with `TEST`.

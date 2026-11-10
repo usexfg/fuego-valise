@@ -1,4 +1,4 @@
-use fuego_crypto::{Keypair, Address, make_address};
+use fuego_crypto::{Keypair, Address, make_address_with_prefix, ADDRESS_BASE58_PREFIX, TESTNET_ADDRESS_BASE58_PREFIX};
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
 use std::fs;
@@ -71,9 +71,15 @@ impl Vault {
     /// (index n's view key is index n+1's spend key). Only for recovering
     /// funds sent to them; never hand one out.
     pub fn get_address(&self, index: u32) -> Address {
+        self.get_address_for_network(index, false)
+    }
+
+    /// `testnet` selects the testnet address prefix. Mainnet is the default.
+    pub fn get_address_for_network(&self, index: u32, testnet: bool) -> Address {
         let spend_kp = self.derive_keypair(index);
         let view_kp = self.derive_keypair(index + 1);
-        make_address(&spend_kp.public, &view_kp.public)
+        let prefix = if testnet { TESTNET_ADDRESS_BASE58_PREFIX } else { ADDRESS_BASE58_PREFIX };
+        make_address_with_prefix(&spend_kp.public, &view_kp.public, prefix)
     }
 
     pub fn set_display_name(&mut self, name: String) {
@@ -256,5 +262,20 @@ impl AtomicSwap {
 
     pub fn extract_secret(_pre_sig: &[u8], _final_sig: &[u8], _adaptor_point: &[u8]) -> Result<Vec<u8>, String> {
         Ok(vec![0u8; 32])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn address_prefix_follows_network() {
+        let vault = Vault::generate();
+        let main = vault.get_address(0);
+        let test = vault.get_address_for_network(0, true);
+        assert!(main.0.starts_with("fire"), "mainnet prefix");
+        assert!(test.0.starts_with("TEST"), "testnet prefix");
+        assert_ne!(main.0, test.0);
     }
 }
