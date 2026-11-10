@@ -166,12 +166,27 @@ jobs:
             sleep 10
           done
 
+      - name: Build fuego-ffi staticlibs for iOS targets
+        # Runner's "Build fuego-ffi" script phase normally builds these, but
+        # `flutter build ios` migrates the Xcode project (SPM integration) and
+        # CI runs showed the phase never executing on the runner, so the
+        # force_load linker inputs (target/<triple>/release/libfuego_ffi.a)
+        # are missing. Build them up-front here; cargo fast-paths when current.
+        run: |
+          set -euo pipefail
+          manifest="rust-fuego-wallet/Cargo.toml"
+          for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+            echo "Building fuego-ffi for $target..."
+            (env -u SDKROOT cargo build --release --manifest-path "$manifest" -p fuego-ffi --target "$target")
+          done
+          ls -lh rust-fuego-wallet/target/*/release/libfuego_ffi.a
+
       - name: Build for simulator
         run: flutter build ios --simulator --debug
 
       - name: Upload iOS App
         uses: actions/upload-artifact@v4
         with:
-          name: fuego-wallet-ios
-          path: build/ios/iphoneos/fuego-valise-iOS.ipa
+          name: fuego-wallet-ios-simulator
+          path: build/ios/iphonesimulator/*.app
           retention-days: 30
