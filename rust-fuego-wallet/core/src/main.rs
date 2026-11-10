@@ -220,11 +220,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(p) => Some(read_auth_token_file(p)?),
                 None => None,
             };
-            if auth_token.is_none() {
-                log::warn!("walletd running without auth token; any local process can reach it");
-            }
+            let auth_token = auth_token.ok_or(
+                "auth token required: pass --auth-token-file. refusing to serve unauthenticated",
+            )?;
             let bind = format!("{}:{}", cli.host, cli.port);
-            server::run_server(slot, &daemon_url, &bind, auth_token).await?;
+            server::run_server(slot, &daemon_url, &bind, Some(auth_token)).await?;
         }
 
         Commands::Status => {

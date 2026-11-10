@@ -603,3 +603,9 @@ Owner-bound only. Gate and legacy form removed. Submodule pin advanced to suite 
 - `main.rs`: env-gate init removed.
 - `AGENTS.md`: updated.
 - `fuego-suite` pin: `c787f7fd` → suite commit with legacy removal.
+
+## [2026-11-09] FV-02: walletd auth fail-closed
+
+- Rust serve refuses to start without `--auth-token-file`.
+- `require_token` rejects missing or empty token.
+- Dart `DaemonManager` fails closed instead of starting an unauthenticated daemon.
