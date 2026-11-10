@@ -199,11 +199,9 @@ class SwapConfigService {
     _lastChains = chains;
     _lastNetwork = network;
     _lastXfgSecret = xfgSecretKey;
-    final config = stripSecrets(buildConfig(
-      chains: chains,
-      network: network,
-      xfgSecretKey: xfgSecretKey,
-    ));
+    final config = stripSecrets(
+      buildConfig(chains: chains, network: network, xfgSecretKey: xfgSecretKey),
+    );
     final path = await configPath();
     await _writeOwnerOnlyFile(
       path,
@@ -227,7 +225,9 @@ class SwapConfigService {
     final dir = await _dataDir();
     final path = '$dir/swap_config.runtime.json';
     // Drop any residue from a prior crash before writing a new runtime file.
-    try { await File(path).delete(); } catch (_) {}
+    try {
+      await File(path).delete();
+    } catch (_) {}
     await _writeOwnerOnlyFile(
       path,
       const JsonEncoder.withIndent('  ').convert(config),
@@ -483,7 +483,9 @@ class SwapConfigService {
       if (exitedImmediately != null) {
         _swapDaemon = null;
         if (runtimePath != null) {
-          try { await File(runtimePath).delete(); } catch (_) {}
+          try {
+            await File(runtimePath).delete();
+          } catch (_) {}
         }
         return false;
       }
@@ -507,7 +509,9 @@ class SwapConfigService {
     final runtime = _runtimeConfigPath;
     _runtimeConfigPath = null;
     if (runtime != null) {
-      try { await File(runtime).delete(); } catch (_) {}
+      try {
+        await File(runtime).delete();
+      } catch (_) {}
     }
     final p = _swapDaemon;
     _swapDaemon = null;

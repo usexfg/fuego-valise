@@ -780,7 +780,9 @@ class DaemonManager {
       }
       args.addAll(['--auth-token-file', authTokenFile]);
     } catch (e) {
-      throw StateError('walletd auth token required; refusing to start unauthenticated: $e');
+      throw StateError(
+        'walletd auth token required; refusing to start unauthenticated: $e',
+      );
     }
 
     try {
@@ -1065,7 +1067,9 @@ class DaemonManager {
       }
       args.addAll(['--auth-token-file', authTokenFile]);
     } catch (e) {
-      throw StateError('unifyd auth token required; refusing to start unauthenticated: $e');
+      throw StateError(
+        'unifyd auth token required; refusing to start unauthenticated: $e',
+      );
     }
     if (pwFile != null) {
       args.addAll(['--container-password-file', pwFile]);
