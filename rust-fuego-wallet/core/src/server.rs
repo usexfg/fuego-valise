@@ -765,10 +765,24 @@ fn require_token(
     headers: &axum::http::HeaderMap,
 ) -> Option<axum::response::Response> {
     let Some(expected) = state.auth_token.as_deref() else {
-        return None;
+        return Some((
+            axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({
+                "error": "unauthorized",
+                "hint": "server has no auth token configured"
+            })),
+        )
+            .into_response());
     };
     if expected.is_empty() {
-        return None;
+        return Some((
+            axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({
+                "error": "unauthorized",
+                "hint": "server has empty auth token"
+            })),
+        )
+            .into_response());
     }
     let ok = bearer_token(headers).is_some_and(|t| token_matches(expected, t));
     if ok {

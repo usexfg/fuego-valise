@@ -41,6 +41,7 @@ class WalletProvider extends ChangeNotifier {
   }) : _rpcService = rpcService ?? FuegoRPCService(),
        _securityService = securityService ?? SecurityService(),
        _vault = vault {
+    _vault?.setTestnet(_networkConfig.isTestnet);
     _initConnectivity();
   }
 
@@ -467,6 +468,7 @@ class WalletProvider extends ChangeNotifier {
 
   Future<void> updateNetworkConfig(NetworkConfig config) async {
     _networkConfig = config;
+    _vault?.setTestnet(config.isTestnet);
     _rpcService.updateNetworkConfig(config);
     if (_nodeUrl != null) {
       final uri = Uri.parse(_nodeUrl!);

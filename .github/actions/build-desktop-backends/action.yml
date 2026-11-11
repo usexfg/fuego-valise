@@ -1,6 +1,6 @@
 name: Build desktop backends
 description: >-
-  Builds fuego_walletd + fuego-ffi (Rust) and fuegod, xfg-swapd, unifyd from
+  Builds fuego_walletd + fuego-ffi (Rust) and fuegod, xfg-swapd, unified from
   the pinned fuego-suite submodule into ./backends. Needs a checkout with
   submodules: recursive and a Rust toolchain. Run before `flutter build`.
 
@@ -34,7 +34,7 @@ runs:
           cp rust-fuego-wallet/target/release/libfuego_ffi.so backends/
         fi
 
-    - name: Build fuegod, xfg-swapd, unifyd
+    - name: Build fuegod, xfg-swapd, unified
       shell: bash
       run: |
         set -euo pipefail
@@ -57,12 +57,12 @@ runs:
           exit 1
         fi
         cp "$FUEGOD" "$SWAPD" backends/
-        # unifyd is part of the required desktop bundle (AGENTS.md); never ship without it.
+        # unified is part of the required desktop bundle (AGENTS.md); never ship without it.
         cmake --build fuego-suite/build --target PaymentGateService
-        UNIFYD="$(find_bin unifyd)"
-        if [ -z "$UNIFYD" ]; then
-          echo "::error::unifyd missing after the PaymentGateService build"
+        UNIFIED="$(find_bin unified)"
+        if [ -z "$UNIFIED" ]; then
+          echo "::error::unified missing after the PaymentGateService build"
           exit 1
         fi
-        cp "$UNIFYD" backends/
+        cp "$UNIFIED" backends/
         ls -la backends

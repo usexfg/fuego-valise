@@ -115,19 +115,6 @@ fn load_or_create_seed(wallet_dir: &PathBuf) -> Result<[u8; 32], Box<dyn std::er
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // Commitment-output derivation is gated and defaults OFF, which is what
-    // keeps us interoperable with the pinned daemon (it only discovers the
-    // legacy form). Log the resolved value so an operator who set the env var
-    // can confirm it took effect.
-    fuego_sdk::transaction_builder::init_owner_bound_commitments_from_env();
-    if fuego_sdk::transaction_builder::owner_bound_commitments_enabled() {
-        log::warn!(
-            "FUEGO_OWNER_BOUND_COMMITMENTS is ON: HEAT/CD outputs will use the owner-bound \
-             derivation, which the pinned daemon cannot discover. Only enable this against a \
-             daemon that ships a matching discovery rule (suite `keyderiv`)."
-        );
-    }
-
     let cli = Cli::parse();
     let wallet_dir = default_wallet_dir();
     std::fs::create_dir_all(&wallet_dir)?;
@@ -233,11 +220,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(p) => Some(read_auth_token_file(p)?),
                 None => None,
             };
-            if auth_token.is_none() {
-                log::warn!("walletd running without auth token; any local process can reach it");
-            }
+            let auth_token = auth_token.ok_or(
+                "auth token required: pass --auth-token-file. refusing to serve unauthenticated",
+            )?;
             let bind = format!("{}:{}", cli.host, cli.port);
-            server::run_server(slot, &daemon_url, &bind, auth_token).await?;
+            server::run_server(slot, &daemon_url, &bind, Some(auth_token)).await?;
         }
 
         Commands::Status => {

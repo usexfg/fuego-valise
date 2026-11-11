@@ -780,8 +780,8 @@ class DaemonManager {
       }
       args.addAll(['--auth-token-file', authTokenFile]);
     } catch (e) {
-      debugPrint(
-        '[daemon] walletd auth token unavailable; API will be unauthenticated: $e',
+      throw StateError(
+        'walletd auth token required; refusing to start unauthenticated: $e',
       );
     }
 
@@ -1067,8 +1067,8 @@ class DaemonManager {
       }
       args.addAll(['--auth-token-file', authTokenFile]);
     } catch (e) {
-      debugPrint(
-        '[daemon] unifyd auth token unavailable; API will be unauthenticated: $e',
+      throw StateError(
+        'unifyd auth token required; refusing to start unauthenticated: $e',
       );
     }
     if (pwFile != null) {
