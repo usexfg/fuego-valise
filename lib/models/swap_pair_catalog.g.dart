@@ -62,7 +62,7 @@ const List<SwapPairCatalogEntry> kSwapPairCatalog = [
     'cryptonote',
     0,
     12,
-    'active',
+    'gated',
   ),
   SwapPairCatalogEntry(
     3,
@@ -106,7 +106,7 @@ const List<SwapPairCatalogEntry> kSwapPairCatalog = [
     'utxo',
     0,
     8,
-    'active',
+    'gated',
   ),
   SwapPairCatalogEntry(
     7,
@@ -119,17 +119,7 @@ const List<SwapPairCatalogEntry> kSwapPairCatalog = [
     18,
     'active',
   ),
-  SwapPairCatalogEntry(
-    8,
-    'DCR',
-    'dcr',
-    'DCR',
-    'Decred',
-    'utxo',
-    0,
-    8,
-    'active',
-  ),
+  SwapPairCatalogEntry(8, 'DCR', 'dcr', 'DCR', 'Decred', 'utxo', 0, 8, 'gated'),
   SwapPairCatalogEntry(
     9,
     'BTC',
@@ -250,7 +240,7 @@ const List<SwapPairCatalogEntry> kSwapPairCatalog = [
     'utxo',
     0,
     8,
-    'active',
+    'gated',
   ),
   SwapPairCatalogEntry(
     21,
@@ -261,7 +251,7 @@ const List<SwapPairCatalogEntry> kSwapPairCatalog = [
     'utxo',
     0,
     8,
-    'active',
+    'gated',
   ),
   SwapPairCatalogEntry(
     22,
@@ -272,7 +262,7 @@ const List<SwapPairCatalogEntry> kSwapPairCatalog = [
     'utxo',
     0,
     8,
-    'active',
+    'gated',
   ),
   SwapPairCatalogEntry(
     23,

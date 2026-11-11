@@ -10,6 +10,7 @@ import 'package:solana/base58.dart' as solana_base58;
 import '../models/chain_registry.g.dart';
 import 'evm_account_service.dart';
 import 'swap_daemon_client.dart';
+import 'swap_keystore.dart';
 
 /// Electrum servers and a checkpoint an SPV client of xfg-swapd can trust:
 /// three servers run by different operators and a block from the node
@@ -82,9 +83,13 @@ class SwapConfigService {
       .map((chain) => chain.key)
       .toSet();
 
+  final SwapKeystore _keystore;
   Process? _swapDaemon;
   String? _configPath;
   String? _swapdPath;
+
+  SwapConfigService({SwapKeystore? keystore})
+    : _keystore = keystore ?? SwapKeystore();
 
   Future<String> _dataDir() async {
     final dir = await getApplicationSupportDirectory();
@@ -100,8 +105,8 @@ class SwapConfigService {
 
   String configPathSync() {
     if (_configPath != null) return _configPath!;
-    // Deliberately not system temp: this file holds chain private keys and
-    // the XFG spend key. World-readable temp dirs are unacceptable.
+    // Deliberately not system temp: the file names the keystore that holds
+    // chain private keys and the XFG spend key.
     final dir = Directory(Platform.resolvedExecutable).parent.path;
     _configPath = '$dir/swap_config.json';
     return _configPath!;
@@ -256,17 +261,39 @@ class SwapConfigService {
     required String network,
     String? xfgSecretKey,
   }) async {
-    final config = buildConfig(
-      chains: chains,
-      network: network,
-      xfgSecretKey: xfgSecretKey,
+    final sealed = SwapKeystore.seal(
+      buildConfig(chains: chains, network: network, xfgSecretKey: xfgSecretKey),
     );
+    final config = await _storeSecrets(sealed);
     final path = await configPath();
     await _writeOwnerOnlyFile(
       path,
       const JsonEncoder.withIndent('  ').convert(config),
     );
     return path;
+  }
+
+  Future<String> keystorePath() async => '${await _dataDir()}/swap_keystore';
+
+  /// Writes [sealed]'s secrets into xfg-swapd's keystore and returns the
+  /// configuration that names it; no plaintext key reaches swap_config.json.
+  Future<Map<String, dynamic>> _storeSecrets(SealedSwapConfig sealed) async {
+    final path = await keystorePath();
+    if (sealed.secrets.isEmpty) {
+      final stale = File(path);
+      if (stale.existsSync()) stale.deleteSync();
+      return sealed.config;
+    }
+    final binary = findSwapdBinary();
+    if (binary == null) {
+      throw StateError('xfg-swapd is needed to write its key store');
+    }
+    await _keystore.write(
+      swapdBinary: binary,
+      path: path,
+      secrets: sealed.secrets,
+    );
+    return {...sealed.config, 'keystore': path};
   }
 
   static Map<String, dynamic> buildConfig({
@@ -610,7 +637,13 @@ class SwapConfigService {
         if (testnet) '--testnet',
         '--service',
       ];
-      _swapDaemon = await Process.start(binary, arguments);
+      _swapDaemon = await Process.start(
+        binary,
+        arguments,
+        environment: {
+          SwapKeystore.passphraseEnvironment: await _keystore.passphrase(),
+        },
+      );
       final exitedImmediately = await Future.any<int?>([
         _swapDaemon!.exitCode,
         Future<int?>.delayed(const Duration(milliseconds: 300), () => null),

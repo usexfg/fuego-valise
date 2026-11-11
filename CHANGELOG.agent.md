@@ -1,5 +1,18 @@
 # CHANGELOG.agent.md
 
+## [2026-11-11] DeXFG cross-curve delivery (Valise): suite pin, catalog, keystore (X9, R7)
+
+**Started**: 2026-11-10
+**Agent**: Claude Code
+**Status**: DONE; pinned to usexfg/fuego-suite `db3f5b5e` (branch `claude/fuego-docs-atomic-swaps-0ta1n9`, usexfg/fuego-suite pull request 78). Re-pin to the merge commit once that pull request lands
+**Scope**: `fuego-suite` (submodule pin), `lib/models/swap_pair_catalog.g.dart` (generated), `lib/services/swap_keystore.dart` (new), `lib/services/swap_config_service.dart`, `test/swap_keystore_test.dart` (new)
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| X9 pin | Suite pin moved from `a2df2f3` to `db3f5b5e`: point locks for BTC, LTC, BCH, EVM and SOL, the sigma_fun cross-curve proof, the daemon keystore. The daemon build now needs cargo, which the desktop backend build already installs for the wallet crates | Claude Code | 2026-11-11 | DONE |
+| X9 catalog | `swap_pair_catalog.g.dart` regenerated: BTC, LTC and BCH are active; XMR, KMD, DCR, DOGE, DASH and ZEC now read gated, as the daemon has refused them since the catalog gained that level (the committed file predated it) | Claude Code | 2026-11-11 | DONE; `gen_swap_pair_catalog.dart --check` passes |
+| R7 | Chain keys, node RPC passwords and the XFG swap key no longer reach `swap_config.json`. `SwapKeystore.seal` replaces each with a `keystore:<name>` reference; the values go into xfg-swapd's own encrypted keystore, written through `xfg-swapd --keystore-put` over stdin and swapped in only when complete. The keystore passphrase is generated once, kept in the OS keychain and handed to the daemon in its environment. A secret the daemon could not substitute (spaces, quotes, backslashes, non-ASCII) is refused when the configuration is built | Claude Code | 2026-11-11 | DONE; 5 new tests, all 123 pass. Not covered by a test: the keystore write and daemon start against a real xfg-swapd binary |
+
 ## [2026-11-07] DeXFG review (Valise): SPV quorum wording
 
 **Started**: 2026-11-07
