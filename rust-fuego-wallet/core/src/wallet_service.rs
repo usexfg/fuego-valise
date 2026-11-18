@@ -2020,6 +2020,35 @@ impl WalletService {
         self.wallet.lock().unwrap().balance()
     }
 
+    /// Spendable and locked HEAT in atomic units.
+    ///
+    /// HEAT outputs (`term == HEAT_TERM`) spend immediately. Finite-term
+    /// outputs are CDs: their HEAT is locked until the maturity height, then it
+    /// is claimable and counts as spendable again.
+    pub async fn heat_balance(&self) -> (u64, u64) {
+        let wallet = self.wallet.lock().unwrap();
+        let height = wallet.height();
+        let mut unlocked = 0u64;
+        let mut locked = 0u64;
+        for output in wallet.heat_outputs() {
+            if output.global_index != 0 {
+                unlocked = unlocked.saturating_add(output.amount);
+            }
+        }
+        for deposit in wallet.deposits() {
+            if deposit.global_index == 0 {
+                continue;
+            }
+            let maturity = deposit.block_height.saturating_add(deposit.term as u64);
+            if maturity <= height {
+                unlocked = unlocked.saturating_add(deposit.amount);
+            } else {
+                locked = locked.saturating_add(deposit.amount);
+            }
+        }
+        (unlocked, locked)
+    }
+
     pub fn sync_status(&self) -> SyncStatus {
         SyncStatus {
             current_height: self.wallet.lock().unwrap().height(),

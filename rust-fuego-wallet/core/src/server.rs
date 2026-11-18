@@ -245,10 +245,15 @@ async fn handle_wallet_method(
         "getBalance" | "getbalance" => {
             let wallet = need(wallet)?.lock().await;
             let balance = wallet.balance_full().await;
+            let (heat_unlocked, heat_locked) = wallet.heat_balance().await;
             Ok(serde_json::json!({
                 "availableBalance": balance.confirmed,
                 "lockedAmount": balance.pending + balance.immature,
                 "blockCount": wallet.height().await,
+                // Atomic HEAT. Presence of these keys is the version signal the
+                // GUI uses to tell "no HEAT" from "walletd cannot report HEAT".
+                "unlockedHeatBalance": heat_unlocked,
+                "lockedHeatBalance": heat_locked,
             }))
         }
         "getAddress" | "getAddresses" | "get_address" => {
@@ -1136,6 +1141,23 @@ mod dispatch_tests {
         assert!(handle_slot_method(&slot, "get_legacy_wallet", &mut serde_json::json!({})).await.unwrap().unwrap().is_null());
         assert!(handle_slot_method(&slot, "getBalance", &mut serde_json::json!({})).await.is_none());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn get_balance_reports_heat_separately_from_xfg() {
+        let dir = std::env::temp_dir().join(format!("fuego-heatbal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let wallet = Mutex::new(svc);
+
+        let balance = call(&wallet, "getBalance", serde_json::json!({})).await.unwrap();
+        // A fresh wallet holds nothing, but it must still answer for HEAT: the
+        // GUI treats a missing key as "this walletd cannot read HEAT".
+        assert_eq!(balance["unlockedHeatBalance"], 0);
+        assert_eq!(balance["lockedHeatBalance"], 0);
+        assert_eq!(balance["availableBalance"], 0);
+        assert!(balance["blockCount"].is_u64());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]

@@ -11,7 +11,8 @@ import 'peer_swap_screen.dart';
 import '../../services/price_history_service.dart';
 import '../../services/web3_multi_chain_service.dart';
 import '../../utils/theme.dart';
-import '../../widgets/fuego_chart.dart';
+import '../../widgets/trading/trading_chart.dart';
+import '../../widgets/trading/trading_style.dart';
 import '../tokens/token_overview_screen.dart';
 import '../../utils/xfg_ticker.dart';
 
@@ -66,80 +67,78 @@ class _DexScreenState extends State<DexScreen>
   Widget build(BuildContext context) {
     final screenH = MediaQuery.of(context).size.height;
     return BlocBuilder<DexCubit, DexState>(
-      builder: (context, state) => Column(
-        children: [
-          // Top: chart
-          if (_candles != null && _candles!.isNotEmpty)
-            SizedBox(
-              height: screenH * 0.35,
-              child: FuegoChart(
-                candles: _candles!,
-                pair: 'XFG/${state.selectedPair.ticker}',
+      builder: (context, state) => ColoredBox(
+        color: TradingStyle.background,
+        child: Column(
+          children: [
+            // XFG USD history — not the selected pair. The book below is the pair.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: TradingChart(
+                candles: _candles ?? const [],
+                loading: _candles == null,
+                plotHeight: screenH < 700 ? 148 : 168,
               ),
             ),
-          if (_candles == null || _candles!.isEmpty)
-            Container(
-              height: screenH * 0.35,
-              color: AppTheme.surfaceColor,
-              child: const Center(
+            _buildPairBar(state),
+            if (state.error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 child: Text(
-                  'No chart data',
-                  style: TextStyle(color: AppTheme.textMuted),
+                  state.error!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.errorColor,
+                    fontSize: 11,
+                  ),
                 ),
               ),
-            ),
-          _buildPairBar(state),
-          if (state.error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Text(
-                state.error!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.errorColor,
-                  fontSize: 11,
+            if (state.lastResult != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: Text(
+                  state.lastResult!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.successColor,
+                    fontSize: 11,
+                  ),
                 ),
               ),
-            ),
-          if (state.lastResult != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Text(
-                state.lastResult!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.successColor,
-                  fontSize: 11,
-                ),
+            _buildTabBar(),
+            // Bottom half: tabs area scrolls internally, takes remaining space
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildOrderbook(state),
+                  _buildTradeForm(state),
+                  const PeerSwapScreen(),
+                  _buildRecentTrades(state),
+                ],
               ),
             ),
-          _buildTabBar(),
-          // Bottom half: tabs area scrolls internally, takes remaining space
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildOrderbook(state),
-                _buildTradeForm(state),
-                const PeerSwapScreen(),
-                _buildRecentTrades(state),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildTabBar() => Container(
-    color: AppTheme.surfaceColor,
+    color: TradingStyle.panel,
     child: TabBar(
       controller: _tabController,
-      labelColor: AppTheme.primaryColor,
-      unselectedLabelColor: AppTheme.textMuted,
-      indicatorColor: AppTheme.primaryColor,
+      labelColor: TradingStyle.text,
+      unselectedLabelColor: TradingStyle.muted,
+      indicatorColor: TradingStyle.accent,
       labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       tabs: const [
         Tab(text: 'Orderbook'),
@@ -151,8 +150,9 @@ class _DexScreenState extends State<DexScreen>
   );
 
   Widget _buildPairBar(DexState state) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    color: AppTheme.surfaceColor,
+    height: 44,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    color: TradingStyle.panel,
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -188,8 +188,8 @@ class _DexScreenState extends State<DexScreen>
           Text(
             'XFG',
             style: TextStyle(
-              color: AppTheme.primaryColor,
-              fontSize: 15,
+              color: TradingStyle.text,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -334,35 +334,35 @@ class _DexScreenState extends State<DexScreen>
             icon: const Icon(
               Icons.info_outline,
               size: 18,
-              color: AppTheme.textMuted,
+              color: TradingStyle.muted,
             ),
             onPressed: _showChainInfo,
             tooltip: 'Chain details',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
           IconButton(
             icon: const Icon(
               Icons.verified_outlined,
               size: 18,
-              color: AppTheme.primaryColor,
+              color: TradingStyle.accent,
             ),
             onPressed: _showPtlcGuide,
             tooltip: 'PTLC guide',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
           const SizedBox(width: 4),
           if (!state.isConnected)
-            const Icon(Icons.cloud_off, color: AppTheme.errorColor, size: 16)
+            const Icon(Icons.cloud_off, color: TradingStyle.loss, size: 16)
           else
-            const Icon(
-              Icons.cloud_done,
-              color: AppTheme.successColor,
-              size: 16,
-            ),
+            const Icon(Icons.cloud_done, color: TradingStyle.gain, size: 16),
           const SizedBox(width: 4),
           IconButton(
             icon: const Icon(
               Icons.refresh,
               size: 18,
-              color: AppTheme.primaryColor,
+              color: TradingStyle.accent,
             ),
             onPressed: () => context.read<DexCubit>().refresh(),
             padding: EdgeInsets.zero,
@@ -698,11 +698,7 @@ class _DexScreenState extends State<DexScreen>
             children: [
               Text(
                 'OFFERS (${state.offers.length})',
-                style: const TextStyle(
-                  color: AppTheme.primaryColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TradingStyle.caption(size: 10),
               ),
               const Spacer(),
               Text(
