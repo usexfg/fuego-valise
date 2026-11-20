@@ -92,7 +92,7 @@ Activation values, exhaustive:
 This is now implemented history, not an outstanding plan. Do not repeat any item.
 
 - No new `SwapPair` id. The 18 wallet EVMs do not get ids here.
-- No DASH/DOGE/ZEC settings screen, no DASH/DOGE/ZEC HTLC deploy, no Optimism clones.
+- No DASH/DOGE/ZEC settings screen, no DASH/DOGE/ZEC HTLC deploy, no ZEC/DOGE/DASH needs, no Optimism clones.
 - No new fuegod or xfg-swapd RPC. There is no `getswapcatalog` on this pin. Adding one is a suite protocol change. Numeric ids on `/getswapoffers`, `/getswapprice`, `/getswaptrades` are already the efficient call. A catalog RPC is a follow-up so the UI can learn "this process did not register ZEC", which a static file cannot know.
 - No self-hosted GitHub runner. One job on the existing `ubuntu-22.04` pool.
 - No C++ `unified` beside the Valise binary. Unchanged.
