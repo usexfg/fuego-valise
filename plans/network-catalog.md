@@ -343,7 +343,6 @@ Do not do these now.
 
 All three live in the generated backlog section `Needs Valise wiring`.
 
-
 ### Staged in suite (id reserved, registerChain refused)
 
 **ZANO (24)** — CryptoNote sources exist (`ZanoChainClient`). SwapDaemon logs and does not register. Not an XMR drop-in: shared view key / adaptor path is unfinished. Divisor 1e12. Left: finish suite registration, then a pin bump, then the generator will refuse `ready` until that pin actually registers it.
