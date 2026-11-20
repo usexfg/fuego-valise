@@ -1,6 +1,12 @@
 # Network catalog — one list, two owners
 
-Status: plan, not implemented. Branch context: `feat/portfolio-home` @ suite pin `524454dd43ccf77ec58ff6f525e105a83a1c5a5d`.
+Status: **implemented.** Branch: `feat/network-catalog`. Suite pin: `524454dd43ccf77ec58ff6f525e105a83a1c5a5d`.
+
+Post-implementation notes:
+
+- GLEEC (`SwapPair` 12, wallet ticker `GLEEC`, yaml `gleec`, name `Gleec Chain`) joined the ready set and is in `SwapPairSdk` now. It was hand-written before. The ready set is 23, not 22.
+- `SwapPairSdk.fromId` throws on unknown ids. `tryFromId` returns null.
+- `dex_cubit` offer/trade/status parsing uses `tryFromJson` and filters nulls.
 
 Do not complete inactive pairs in this work. Do not assign new `SwapPair` IDs. Do not treat `/home/ar/fuego`'s live `xfg-swapd` catalog as the contract. That binary is ahead of the pin.
 
@@ -12,7 +18,7 @@ The user-visible outcome: the pair picker is a filter over one catalog, not a ha
 
 ## Why the current lists disagree
 
-Nothing is missing a "22". Six catalogs overlap, and two of them use a different integer than the wire.
+Six catalogs overlap, and two of them use a different integer than the wire. (DART enum is now generated from the catalog.)
 
 | List | Where | What it counts | ID space |
 |---|---|---|---|
@@ -21,15 +27,15 @@ Nothing is missing a "22". Six catalogs overlap, and two of them use a different
 | registration | `SwapDaemon.cpp` | client registered only if host/SPV is set; ZANO/TON/SIA/DOT refuse even then | runtime, per process |
 | `chains.yaml` | repo root | 33 EVMs only. Comment says non-EVM stay hand-written | chain key, not SwapPair |
 | `EvmChainKey` | `lib/models/erc20_token.dart` | same 33, hand-copied | chainId |
-| `SwapPairSdk` | `lib/models/swap_models.dart` | 22. Comment claims 1:1 with Rust. That comment is false | C++ IDs, gaps omitted |
+| `SwapPairSdk` | `lib/models/network_catalog.g.dart` | 23 ready (incl. GLEEC) | C++ ids, gaps omitted |
 | `ChainTypeSdk` | same file | 23, including Fuego | **a second integer space. Fuego=0, Solana=1, Optimism=22. Not wire IDs.** |
 | Rust `SwapPair` | `fuego-sdk/.../types.rs` | 0–11 only | wire IDs, truncated |
 | Rust `ChainType` | `fuego-sdk/.../chain/mod.rs` | 13, no numeric id | symbol |
-| `ChainInfo.swapableChains` | `lib/models/chain_info.dart` | the same 22 tickers again | ticker |
+| `ChainInfo.swapableChains` | `lib/models/chain_info.dart` | the same tickers again | ticker |
 
-DeXFG's picker is `SwapPairSdk.values` (`lib/screens/dex/dex_screen.dart`). Peer swap is `ChainInfo.swapableChains`. Settings EVM rows are `chains.yaml` where `tier == swap`. Those three can drift without a compile error.
+DeXFG's picker is `SwapPairSdk.values` (`lib/screens/dex/dex_screen.dart`). Peer swap is `ChainInfo.swapableChains`, now the generated ready tickers. Settings EVM rows are `kReadyEvmKeys`. All three read the generated catalog.
 
-`SwapPairSdk.fromId` maps an unknown id to ETH. `ChainTypeSdk.fromId` maps an unknown id to Fuego. Both are wrong. An unknown id is an unknown id.
+`SwapPairSdk.fromId` throws on an unknown id. `ChainTypeSdk.fromId` maps an unknown id to Fuego, but that is a local proof-adapter id and is not documented as a wire id.
 
 Wire calls that matter (`getswapoffers`, `getswapprice`, `getswaptrades`) already send the numeric `SwapPair` id to fuegod on 18180. The Rust SDK is not on that path. It is a second implementation of the same integers, checked only for the methods `fuegod-wire-check` happens to round-trip. FFI pair helpers stop at POLY=11.
 
@@ -73,7 +79,7 @@ Activation values, exhaustive:
 
 | Value | Meaning | Picker |
 |---|---|---|
-| `ready` | Pin can register it, and Valise already wires it. Today's 22. | yes |
+| `ready` | Pin can register it, and Valise already wires it. 23, incl. GLEEC. | yes |
 | `needs_wallet_wiring` | Pin can register it. Valise has no settings/RPC path yet. ZEC, DOGE, DASH. | no |
 | `staged_in_suite` | Id reserved. `registerChain` is refused. ZANO, TON, SIA, DOT. | no |
 | `wallet_only` | No `SwapPair` id. ERC-20 / account layer only. The 18. | no |
@@ -83,10 +89,12 @@ Activation values, exhaustive:
 
 ## What this pass does not do
 
+This is now implemented history, not an outstanding plan. Do not repeat any item.
+
 - No new `SwapPair` id. The 18 wallet EVMs do not get ids here.
 - No ZEC/DOGE/DASH settings screen, no HTLC deploy, no Optimism clones.
 - No new fuegod or xfg-swapd RPC. There is no `getswapcatalog` on this pin. Adding one is a suite protocol change. Numeric ids on `/getswapoffers`, `/getswapprice`, `/getswaptrades` are already the efficient call. A catalog RPC is a follow-up so the UI can learn "this process did not register ZEC", which a static file cannot know.
-- No self-hosted GitHub runner. One job on the existing `ubuntu-22.04` / `ubuntu-24.04` pool.
+- No self-hosted GitHub runner. One job on the existing `ubuntu-22.04` pool.
 - No C++ `unified` beside the Valise binary. Unchanged.
 - Do not copy pair ids out of `/home/ar/fuego`'s newer swapd. If those ids are wanted, they land in suite first, then the pin moves, then the generator notices.
 
@@ -112,7 +120,7 @@ Phase 2, a separate suite PR, not this pass: suite emits `networks.json` from th
 
 ### D2. What the picker shows
 
-**Recommend:** executable only (`activation: ready`). That remains 22 pairs until a later task sets ZEC (or anyone else) to `ready`. The other rows are visible in the generated backlog, not as disabled trade buttons. A disabled row that cannot lock is the same false catalog in a different widget.
+**Recommend:** executable only (`activation: ready`). That remains 23 pairs until a later task sets ZEC (or anyone else) to `ready`. The other rows are visible in the generated backlog, not as disabled trade buttons. A disabled row that cannot lock is the same false catalog in a different widget.
 
 ### D3. Rust in the same change
 
@@ -173,7 +181,7 @@ Until that grep is done, call sites may keep a generated view type, but its iden
 | Lock / claim / refund | xfg-swapd | 18902 | uint8, and only if that process registered the client |
 | Wallet proxy | fuego_walletd | 18189 | not a pair list |
 
-`_loadOffersFromFuegod` currently issues one `getswapoffers` per `SwapPairSdk` value. After this, it issues one per `activation: ready` row. Do not add a batch RPC in this pass. 22 short local calls are not the defect. The defect is those 22 being a private list.
+`_loadOffersFromFuegod` currently issues one `getswapoffers` per `SwapPairSdk` value. After this, it issues one per `activation: ready` row. Do not add a batch RPC in this pass. 23 short local calls are not the defect. The defect was those pairs being a private list.
 
 xfg-swapd registration remains config-gated. A `ready` row means "this pin is capable and the wallet knows how to ask." It does not mean the local process has a funded key. Settings already own that. Do not paint a ready pair as live on 18902 unless a health probe says the client registered. If no such probe exists, say so in the UI copy only when the user opens swap settings — do not invent a status field.
 
@@ -225,7 +233,7 @@ Non-EVM ready pairs (BTC, LTC, BCH, KMD, DCR, SOL, XMR) get rows too, so the fil
 
 ## Steps
 
-Each step is one PR-sized change. Do not start step 2 until D1–D4 above are confirmed.
+Each step is one PR-sized change. Step 1 is implemented. The open-question decisions are recorded as post-implementation notes at the top of this file. Do not re-open D1–D4 unless something here breaks the repo contract.
 
 ### Step 1 — Generator and backlog, no UI switch
 
@@ -233,9 +241,9 @@ Context: catalogs listed above. Pin `524454d`. Do not edit `SwapDaemon` sources.
 
 Tasks:
 
-- Add the parser and `chains.yaml` rows for every pin id, with activation set so the ready set equals today's `SwapPairSdk` tickers. ZEC/DOGE/DASH are `needs_wallet_wiring`. ZANO/TON/SIA/DOT are `staged_in_suite`. The 18 EVMs stay `wallet_only`; Tempo, zkSync, Abstract, RSK also get `blocked` notes in the backlog text, not a new activation unless the schema needs it. A note field is enough.
+- Add the parser and `chains.yaml` rows for every pin id, with activation set so the ready set equals the first implementation's `SwapPairSdk` tickers. ZEC/DOGE/DASH are `needs_wallet_wiring`. ZANO/TON/SIA/DOT are `staged_in_suite`. The 18 EVMs stay `wallet_only`; Tempo, zkSync, Abstract, RSK also get `blocked` notes in the backlog text, not a new activation unless the schema needs it. A note field is enough.
 - Emit Dart catalog, Rust include, `docs/networks.backlog.md`.
-- Tests: ready tickers equal the current 22; every pin id appears once; SIA divisor recorded; RHC/UNI/XPL/MON recorded as display aliases the C++ parser does not accept; unknown id is not ETH.
+- Tests: ready tickers equal `SwapPairSdk.values`; every pin id appears once; SIA divisor recorded; RHC/UNI/XPL/MON recorded as display aliases the C++ parser does not accept; unknown id is not ETH.
 - Wire `dart run tool/gen_networks.dart --check` into `.github/workflows/fuego-wallet-ci.yml` as job `network-catalog`. No new runner, no fuegod build. The existing `fuegod-wire-check` job stays.
 
 Exit: CI job green. UI still uses the old enums. Generated ready set matches them.
@@ -255,7 +263,7 @@ Tasks:
 - Delete `ChainInfo.swapableChains` once grep shows no readers.
 - Leave `ChainTypeSdk` call sites compiling via a thin generated adapter if step 3 is not in this PR. The adapter's id must not be documented as a wire id.
 
-Exit: picker count still 22, but the source is the catalog. A unit test fails if someone adds a `SwapPairSdk` value that is not `ready`, or a `ready` row the picker cannot see.
+Exit: picker count is 23 (incl. GLEEC), but the source is the catalog. A unit test fails if someone adds a `SwapPairSdk` value that is not `ready`, or a `ready` row the picker cannot see.
 
 Rollback: revert the call-site switch. Step 1 files can stay.
 
@@ -282,7 +290,7 @@ Tasks:
 
 - Remove hand `SwapPairSdk` if the generated type replaced it. If the name `SwapPairSdk` is kept, it is the generated type, not a hand list.
 - Remove `ChainTypeSdk`'s integer after the producer grep in the contract section. If a producer exists, this step stops and the plan is amended.
-- Update `test/swap_pair_expansion_test.dart` so it does not re-encode the 22 by hand. It should read the catalog.
+- Update `test/swap_pair_expansion_test.dart` so it does not re-encode the tickers by hand. It now checks the generated catalog directly.
 - Fix the comment in `swap_models.dart` that says the Dart enum is 1:1 with Rust. That sentence is how the next drift starts.
 - One paragraph in `AGENTS.md` under the swap section: pair identity is the suite `SwapPair` uint8; Valise presentation is `chains.yaml`; the generated catalog is the join; do not add a pair id in Dart.
 
@@ -329,7 +337,7 @@ Generated into `docs/networks.backlog.md` so it cannot rot. The content below is
 
 Do not do these now.
 
-**ZEC (22)** — `ZecChainClient`, transparent UTXO, P2SH. No ZEC SPV in this tree. Claim/refund need a zcashd-style node with `-txindex` and a WIF. `msPerBlock` 150000. Divisor 1e8 zatoshis. Valise still has `wired: false` and no `SwapPairSdk` arm. Left: settings RPC/WIF, catalog `activation: ready` only after that screen exists, picker follows. Not an enum patch by itself.
+**ZEC (22)** — `ZecChainClient`, transparent UTXO, P2SH. No ZEC SPV in this tree. Claim/refund need a zcashd-style node with `-txindex` and a WIF. `msPerBlock` 150000. Divisor 1e8 zatoshis. Valise still has `wired: false` and no settings screen. Left: settings RPC/WIF, catalog `activation: ready` only after that screen exists. Not an enum patch by itself.
 
 **DOGE (20)** — same shape as ZEC. `DogeChainClient` registers iff `dogeHost` is set. No SPV branch in the registration block. Divisor 1e8. Same Valise gap.
 
@@ -369,7 +377,7 @@ Even for `ready` pairs, do not send display tickers to `swapPairFromString`. Mis
 - `dart test test/chains_registry_test.dart test/swap_pair_expansion_test.dart` plus the new catalog test
 - `cargo test -p fuego-sdk --lib swap_pair` after step 3
 - `rg -n "enum SwapPairSdk|swapableChains|XfgPoly = 11" lib rust-fuego-wallet` returns nothing after step 4
-- Picker widget test: item count equals catalog `ready` length, and that length is 22 until an activation flip is an explicit, reviewed yaml change
+- Picker widget test: item count equals catalog `ready` length, and that length is 23 until an activation flip is an explicit, reviewed yaml change
 
 A green `fuegod-wire-check` does not prove the catalog. It does not iterate pairs.
 
