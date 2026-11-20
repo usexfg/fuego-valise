@@ -524,6 +524,31 @@ Tempo is excluded: `gasToken` is empty, so there is no native asset to lock.
 3. Repeat per chain. Batch the standard EVMs; keep zkSync/Abstract/RSK
    separate until their proof gate passes.
 
+### Backlog C. Wallet surface for every ready pair
+
+Today Valise has a wallet for XFG (vault + `fuego_walletd`) and the 33 EVMs
+(ERC-20 layer). The other ready pairs are swap-only: a key and a swap flow,
+not a balance/send/receive screen. Making every pair a wallet is separate
+work, and the shape differs by family.
+
+- **UTXO with SPV (BTC, LTC, BCH, KMD, DCR)**: `xfg-swapd` already owns the
+  Electrum/Neutrino connection. Add wallet methods over that same connection
+  (derive addresses from the WIF, list UTXOs, build/sign/broadcast) or a
+  Rust SDK wallet trait. No new chain client.
+- **Full-node UTXO (DOGE, DASH, ZEC)**: same shape, but through the user's
+  node RPC (`listunspent`, `createrawtransaction`, `sendrawtransaction`).
+  The swap settings card is the config source. ZEC stays transparent-only.
+- **XMR**: `monero-wallet-rpc` is already required for swap proofs. Expose
+  balance/transfers/send from it; never store XMR keys in Valise.
+- **SOL**: local ed25519 key, JSON-RPC balance/history, build and sign a
+  transfer (and SPL token transfer). A new wallet module; no HTLC change.
+- **EVM**: already present. Add native gas balance to the same view if it is
+  missing.
+
+Rule: a pair gets a wallet screen only when address derivation and the send
+path are tested against that chain's own node/RPC. A balance read from a
+third-party API is not a wallet.
+
 ## Verification
 
 - `dart run tool/gen_networks.dart --check`
