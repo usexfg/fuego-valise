@@ -92,7 +92,7 @@ Activation values, exhaustive:
 This is now implemented history, not an outstanding plan. Do not repeat any item.
 
 - No new `SwapPair` id. The 18 wallet EVMs do not get ids here.
-- No ZEC/DOGE/DASH settings screen, no HTLC deploy, no Optimism clones.
+- No ZEC/DOGE/DASH settings screen, no ZEC/DOGE/DASH HTLC deploy, no Optimism clones.
 - No new fuegod or xfg-swapd RPC. There is no `getswapcatalog` on this pin. Adding one is a suite protocol change. Numeric ids on `/getswapoffers`, `/getswapprice`, `/getswaptrades` are already the efficient call. A catalog RPC is a follow-up so the UI can learn "this process did not register ZEC", which a static file cannot know.
 - No self-hosted GitHub runner. One job on the existing `ubuntu-22.04` pool.
 - No C++ `unified` beside the Valise binary. Unchanged.
@@ -337,11 +337,11 @@ Generated into `docs/networks.backlog.md` so it cannot rot. The content below is
 
 Do not do these now.
 
-**ZEC (22)** — `ZecChainClient`, transparent UTXO, P2SH. No ZEC SPV in this tree. Claim/refund need a zcashd-style node with `-txindex` and a WIF. `msPerBlock` 150000. Divisor 1e8 zatoshis. Valise still has `wired: false` and no settings screen. Left: settings RPC/WIF, catalog `activation: ready` only after that screen exists. Not an enum patch by itself.
+**ZEC (22)** — `ZecChainClient`, transparent UTXO, P2SH. No ZEC SPV in this tree. Claim/refund need a zcashd-style node with `-txindex` and a WIF. `msPerBlock` 150000. Divisor 1e8 zatoshis. Valise still has no ZEC settings screen. Left: settings RPC/WIF, catalog `activation: ready` only after that screen exists. Not an enum patch by itself.
 
-**DOGE (20)** — same shape as ZEC. `DogeChainClient` registers iff `dogeHost` is set. No SPV branch in the registration block. Divisor 1e8. Same Valise gap.
+**DOGE (20)** — `DogeChainClient` registers iff `dogeHost` is set. No SPV branch. Divisor 1e8. Valise has no settings screen.
 
-**DASH (21)** — `DashChainClient`, host required, divisor 1e8, `msPerBlock` 260000. Same Valise gap.
+**DASH (21)** — `DashChainClient`, host required, divisor 1e8, `msPerBlock` 260000. Valise has no settings screen.
 
 ### Staged in suite (id reserved, registerChain refused)
 
