@@ -621,11 +621,12 @@ networks:
     gasToken: DOGE
     color: "#C2A633"
     icon: assets/coin-icons/doge.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 6
     swap_pair_id: 20
-    activation: needs_wallet_wiring
-    note: "DogeChainClient registers when dogeHost is set. No SPV branch. Valise has no settings path."
+    activation: ready
+    enum_name: doge
+    note: "Full node only: dogecoind -txindex. No SPV. Claim/refund need RPC."
 
   - key: dash
     ticker: DASH
@@ -635,11 +636,12 @@ networks:
     gasToken: DASH
     color: "#008CE7"
     icon: assets/coin-icons/dash.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 6
     swap_pair_id: 21
-    activation: needs_wallet_wiring
-    note: "DashChainClient registers when dashHost is set. Valise has no settings path."
+    activation: ready
+    enum_name: dash
+    note: "Full node only: dashd -txindex. No SPV. Claim/refund need RPC."
 
   - key: zec
     ticker: ZEC
@@ -649,11 +651,12 @@ networks:
     gasToken: ZEC
     color: "#F4B728"
     icon: assets/coin-icons/zec.png
-    tier: wallet
+    tier: swap
     confirmBlocks: 6
     swap_pair_id: 22
-    activation: needs_wallet_wiring
-    note: "Transparent ZecChainClient only. No SPV. Claim/refund need zcashd with -txindex and a WIF."
+    activation: ready
+    enum_name: zec
+    note: "Transparent t-address only. zcashd -txindex. No SPV and no shielded funds."
 
   - key: zano
     ticker: ZANO

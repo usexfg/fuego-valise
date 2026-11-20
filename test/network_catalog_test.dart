@@ -7,7 +7,7 @@ void main() {
     expect(SwapPairSdk.values.map((p) => p.id), [
       for (final row in kReadyNetworks) row.swapPairId,
     ]);
-    expect(SwapPairSdk.values, hasLength(22));
+    expect(SwapPairSdk.values, hasLength(25));
     expect(SwapPairSdk.values.map((p) => p.ticker).toSet(), {
       'SOL',
       'ETH',
@@ -31,6 +31,9 @@ void main() {
       'PLS',
       'MON',
       'OP',
+      'DOGE',
+      'DASH',
+      'ZEC',
     });
   });
 
@@ -41,9 +44,9 @@ void main() {
         .toList();
     expect(ids.toSet(), hasLength(ids.length));
     expect(ids, containsAll(List<int>.generate(29, (i) => i)));
-    expect(SwapPairSdk.tryFromId(22), isNull);
     expect(SwapPairSdk.tryFromId(17), isNull);
-    expect(() => SwapPairSdk.fromId(22), throwsArgumentError);
+    expect(SwapPairSdk.tryFromId(22), SwapPairSdk.zec);
+    expect(() => SwapPairSdk.fromId(29), throwsArgumentError);
     expect(SwapPairSdk.fromId(1), SwapPairSdk.eth);
   });
 
@@ -87,8 +90,13 @@ void main() {
     }
     expect(
       kNetworkCatalog.map((row) => row.key),
-      containsAll(['tempo', 'zksync', 'abstract', 'rsk', 'zec']),
+      containsAll(['tempo', 'zksync', 'abstract', 'rsk']),
     );
-    expect(networkBySwapPairId(22)!.activation, 'needs_wallet_wiring');
+    expect(networkBySwapPairId(22)!.activation, 'ready');
+    expect(networkBySwapPairId(20)!.activation, 'ready');
+    expect(networkBySwapPairId(21)!.activation, 'ready');
+    expect(networkBySwapPairId(20)!.wireName, 'DOGE');
+    expect(networkBySwapPairId(21)!.wireName, 'DASH');
+    expect(networkBySwapPairId(22)!.wireName, 'ZEC');
   });
 }

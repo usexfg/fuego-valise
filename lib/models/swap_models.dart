@@ -67,7 +67,10 @@ enum ChainTypeSdk {
   plasma(19, 'XPL', 'Plasma'),
   pulsex(20, 'PLS', 'PulseChain'),
   monad(21, 'MON', 'Monad'),
-  optimism(22, 'OP', 'Optimism');
+  optimism(22, 'OP', 'Optimism'),
+  doge(23, 'DOGE', 'Dogecoin'),
+  dash(24, 'DASH', 'Dash'),
+  zcash(25, 'ZEC', 'Zcash');
 
   final int id;
   final String symbol;
@@ -96,6 +99,15 @@ enum ChainTypeSdk {
       this == ChainTypeSdk.decred ||
       this == ChainTypeSdk.bitcoin ||
       this == ChainTypeSdk.litecoin;
+
+  /// UTXO chains whose taker proof is a signed message over P2PKH.
+  /// DOGE/DASH/ZEC are not SPV and not in Rust `ChainType`, but the proof
+  /// shape is the same signed-message form.
+  bool get isSignedMessageUtxo =>
+      isBtcFamily ||
+      this == ChainTypeSdk.doge ||
+      this == ChainTypeSdk.dash ||
+      this == ChainTypeSdk.zcash;
 
   static ChainTypeSdk fromId(int id) => ChainTypeSdk.values.firstWhere(
     (c) => c.id == id,

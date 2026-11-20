@@ -13,6 +13,14 @@ class SwapConfigService {
 
   static final Set<String> _evmSwapChains = kReadyEvmKeys;
 
+  /// UTXO chains with no SPV branch. The pin registers these only when
+  /// `<key>_rpc_host` is set, and signs from `<key>_wif`.
+  static const Map<String, int> _fullNodeSwapChains = {
+    'doge': 22556,
+    'dash': 9998,
+    'zec': 8232,
+  };
+
   Process? _swapDaemon;
   String? _configPath;
   String? _swapdPath;
@@ -111,6 +119,15 @@ class SwapConfigService {
           config['${daemonPrefix}_rpc_host'] = uri.host;
           config['${daemonPrefix}_rpc_port'] = uri.port;
         }
+      } else if (_fullNodeSwapChains.containsKey(chain)) {
+        // No SPV branch exists for these clients. A host is the registration
+        // switch; `_mode=spv` would be a lie and is ignored by the daemon.
+        config['${chain}_rpc_host'] = cfg.rpcHost ?? '127.0.0.1';
+        config['${chain}_rpc_port'] =
+            cfg.rpcPort ?? _fullNodeSwapChains[chain]!;
+        if (cfg.rpcUser != null) config['${chain}_rpc_user'] = cfg.rpcUser!;
+        if (cfg.rpcPass != null) config['${chain}_rpc_pass'] = cfg.rpcPass!;
+        config['${chain}_wif'] = cfg.wif;
       } else if (!isEvm && !isSol) {
         config['${chain}_mode'] = 'spv';
         config['${chain}_wif'] = cfg.wif;
@@ -220,6 +237,12 @@ class SwapChainConfig {
   final String? checkpointHash;
   final String? rpcUrl;
 
+  /// Full-node RPC (DOGE/DASH/ZEC). [rpcUrl] is the EVM/SOL form.
+  final String? rpcHost;
+  final int? rpcPort;
+  final String? rpcUser;
+  final String? rpcPass;
+
   const SwapChainConfig({
     required this.wif,
     this.servers = const [],
@@ -227,6 +250,10 @@ class SwapChainConfig {
     this.checkpointHeight,
     this.checkpointHash,
     this.rpcUrl,
+    this.rpcHost,
+    this.rpcPort,
+    this.rpcUser,
+    this.rpcPass,
   });
 
   Map<String, dynamic> toJson() => {
@@ -236,6 +263,10 @@ class SwapChainConfig {
     if (checkpointHeight != null) 'checkpointHeight': checkpointHeight,
     if (checkpointHash != null) 'checkpointHash': checkpointHash,
     if (rpcUrl != null) 'rpcUrl': rpcUrl,
+    if (rpcHost != null) 'rpcHost': rpcHost,
+    if (rpcPort != null) 'rpcPort': rpcPort,
+    if (rpcUser != null) 'rpcUser': rpcUser,
+    if (rpcPass != null) 'rpcPass': rpcPass,
   };
 
   factory SwapChainConfig.fromJson(Map<String, dynamic> j) => SwapChainConfig(
@@ -247,5 +278,9 @@ class SwapChainConfig {
     checkpointHeight: j['checkpointHeight'] as int?,
     checkpointHash: j['checkpointHash'] as String?,
     rpcUrl: j['rpcUrl'] as String?,
+    rpcHost: j['rpcHost'] as String?,
+    rpcPort: j['rpcPort'] as int?,
+    rpcUser: j['rpcUser'] as String?,
+    rpcPass: j['rpcPass'] as String?,
   );
 }

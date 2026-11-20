@@ -72,5 +72,47 @@ void main() {
       expect(config['op_chain_id'], 10);
       expect(config['xfg_secret_key'], 'xfg-secret');
     });
+
+    test('writes full-node RPC and WIF for DOGE', () {
+      final config = SwapConfigService.buildConfig(
+        chains: const {
+          'doge': SwapChainConfig(
+            wif: _privateKey,
+            rpcHost: '127.0.0.1',
+            rpcPort: 22556,
+            rpcUser: 'rpcuser',
+            rpcPass: 'rpcpass',
+          ),
+        },
+      );
+
+      expect(config['doge_rpc_host'], '127.0.0.1');
+      expect(config['doge_rpc_port'], 22556);
+      expect(config['doge_rpc_user'], 'rpcuser');
+      expect(config['doge_rpc_pass'], 'rpcpass');
+      expect(config['doge_wif'], _privateKey);
+      expect(config, isNot(contains('doge_mode')));
+      expect(config, isNot(contains('doge_spv_server_0')));
+    });
+
+    test('full-node defaults: ZEC host and port when only a WIF is set', () {
+      final config = SwapConfigService.buildConfig(
+        chains: const {'zec': SwapChainConfig(wif: _privateKey)},
+      );
+
+      expect(config['zec_rpc_host'], '127.0.0.1');
+      expect(config['zec_rpc_port'], 8232);
+      expect(config['zec_wif'], _privateKey);
+      expect(config, isNot(contains('zec_mode')));
+    });
+
+    test('DASH uses port 9998 by default', () {
+      final config = SwapConfigService.buildConfig(
+        chains: const {'dash': SwapChainConfig(wif: _privateKey)},
+      );
+
+      expect(config['dash_rpc_port'], 9998);
+      expect(config['dash_wif'], _privateKey);
+    });
   });
 }

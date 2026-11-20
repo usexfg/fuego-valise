@@ -24,6 +24,18 @@ final List<String> _evmSwapChainKeys = _evmSwapChains
     .toList(growable: false);
 final List<String> _rpcSwapChainKeys = [..._evmSwapChainKeys, 'sol'];
 
+/// Full-node UTXO pairs: no SPV branch in the pin, so the daemon registers
+/// them only when a host is configured.
+const Map<String, int> _fullNodeDefaults = {
+  'doge': 22556,
+  'dash': 9998,
+  'zec': 8232,
+};
+final List<String> _fullNodeSwapChainKeys = [
+  for (final row in kReadyNetworks)
+    if (_fullNodeDefaults.containsKey(row.key)) row.key,
+];
+
 final Map<String, String> _defaultRpcUrls = {
   for (final chain in _evmSwapChains) chain.key: chain.rpc,
   'sol': 'https://api.mainnet-beta.solana.com',
@@ -62,6 +74,14 @@ final Map<String, Map<String, String>> _chainInfo = {
       'desc': 'EVM HTLC (web3)',
       'type': 'evm',
     },
+  for (final row in kReadyNetworks)
+    if (_fullNodeDefaults.containsKey(row.key))
+      row.key: {
+        'name': row.name,
+        'icon': row.ticker.substring(0, 1),
+        'desc': 'Full-node RPC HTLC',
+        'type': 'fullnode',
+      },
   'sol': {
     'name': 'Solana',
     'icon': 'S',
@@ -89,6 +109,10 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
   final Map<String, TextEditingController> _serverControllers = {};
   final Map<String, List<String>> _serverLists = {};
   final Map<String, TextEditingController> _rpcControllers = {};
+  final Map<String, TextEditingController> _fullNodeHostControllers = {};
+  final Map<String, TextEditingController> _fullNodePortControllers = {};
+  final Map<String, TextEditingController> _fullNodeUserControllers = {};
+  final Map<String, TextEditingController> _fullNodePassControllers = {};
   bool _swapdRunning = false;
   bool _isStarting = false;
   final _xfgSecretController = TextEditingController();
@@ -109,6 +133,17 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         _rpcControllers[chain] = TextEditingController(
           text: _defaultRpcUrls[chain]!,
         );
+    }
+    for (final chain in _fullNodeSwapChainKeys) {
+      _wifControllers[chain] = TextEditingController();
+      _fullNodeHostControllers[chain] = TextEditingController(
+        text: '127.0.0.1',
+      );
+      _fullNodePortControllers[chain] = TextEditingController(
+        text: '${_fullNodeDefaults[chain]}',
+      );
+      _fullNodeUserControllers[chain] = TextEditingController();
+      _fullNodePassControllers[chain] = TextEditingController();
     }
     _wifControllers['xmr'] = TextEditingController();
     _rpcControllers['xmr_daemon'] = TextEditingController(text: '127.0.0.1');
@@ -147,6 +182,20 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
       if (rpcUrl != null && rpcUrl.isNotEmpty)
         _rpcControllers[chain]!.text = rpcUrl;
     }
+    for (final chain in _fullNodeSwapChainKeys) {
+      final wif = await _secureStorage.read(key: 'swap_wif_$chain');
+      if (wif != null && wif.isNotEmpty) _wifControllers[chain]!.text = wif;
+      final host = await _secureStorage.read(key: 'swap_rpc_host_$chain');
+      if (host != null && host.isNotEmpty)
+        _fullNodeHostControllers[chain]!.text = host;
+      final port = await _secureStorage.read(key: 'swap_rpc_port_$chain');
+      if (port != null && port.isNotEmpty)
+        _fullNodePortControllers[chain]!.text = port;
+      final user = await _secureStorage.read(key: 'swap_rpc_user_$chain');
+      if (user != null) _fullNodeUserControllers[chain]!.text = user;
+      final pass = await _secureStorage.read(key: 'swap_rpc_pass_$chain');
+      if (pass != null) _fullNodePassControllers[chain]!.text = pass;
+    }
     final xmrWif = await _secureStorage.read(key: 'swap_wif_xmr');
     if (xmrWif != null && xmrWif.isNotEmpty) {
       _wifControllers['xmr']!.text = xmrWif;
@@ -178,6 +227,37 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         value: _serverLists[chain]!.join(','),
       );
       chains[chain] = SwapChainConfig(wif: wif, servers: _serverLists[chain]!);
+    }
+
+    for (final chain in _fullNodeSwapChainKeys) {
+      final wif = _wifControllers[chain]!.text.trim();
+      if (wif.isEmpty) continue;
+      final error = SwapConfigService.validateWif(wif, chain);
+      if (error != null) {
+        _showError('${chain.toUpperCase()} WIF error: $error');
+        return;
+      }
+      final host = _fullNodeHostControllers[chain]!.text.trim();
+      final port =
+          int.tryParse(_fullNodePortControllers[chain]!.text.trim()) ??
+          _fullNodeDefaults[chain]!;
+      final user = _fullNodeUserControllers[chain]!.text.trim();
+      final pass = _fullNodePassControllers[chain]!.text;
+      await _secureStorage.write(key: 'swap_wif_$chain', value: wif);
+      await _secureStorage.write(
+        key: 'swap_rpc_host_$chain',
+        value: host.isEmpty ? '127.0.0.1' : host,
+      );
+      await _secureStorage.write(key: 'swap_rpc_port_$chain', value: '$port');
+      await _secureStorage.write(key: 'swap_rpc_user_$chain', value: user);
+      await _secureStorage.write(key: 'swap_rpc_pass_$chain', value: pass);
+      chains[chain] = SwapChainConfig(
+        wif: wif,
+        rpcHost: host.isEmpty ? '127.0.0.1' : host,
+        rpcPort: port,
+        rpcUser: user.isEmpty ? null : user,
+        rpcPass: pass.isEmpty ? null : pass,
+      );
     }
 
     for (final chain in _evmSwapChainKeys) {
@@ -336,6 +416,14 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         _buildSectionHeader('SPV Chains (BTC, LTC, KMD, BCH, DCR)'),
         for (final chain in ['btc', 'ltc', 'kmd', 'bch', 'dcr'])
           _buildChainCard(chain),
+        if (_fullNodeSwapChainKeys.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          _buildSectionHeader('Full-Node UTXO (DOGE, DASH, ZEC)'),
+          _buildFullNodeInfoBox(),
+          const SizedBox(height: 8),
+          for (final chain in _fullNodeSwapChainKeys)
+            _buildFullNodeChainCard(chain),
+        ],
         const SizedBox(height: 24),
         _buildSectionHeader('EVM / Solana (Light Client)'),
         _buildEvmInfoBox(),
@@ -612,7 +700,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 TextField(
-                  controller: _wifControllers[chain],
+                  controller: _wifControllers[chain]!,
                   obscureText: true,
                   decoration: InputDecoration(
                     hintText: _wifHint(chain),
@@ -766,6 +854,230 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     );
   }
 
+  Widget _buildFullNodeInfoBox() => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: AppTheme.warningColor.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppTheme.warningColor.withOpacity(0.3)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.dns_outlined, color: AppTheme.warningColor, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            'DOGE, DASH and ZEC have no SPV mode. Run the full node with -txindex and point its JSON-RPC at this card. Lock, claim and refund all need that node.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildFullNodeChainCard(String chain) {
+    final info = _chainInfo[chain]!;
+    final hasWif = _wifControllers[chain]!.text.isNotEmpty;
+    final host = _fullNodeHostControllers[chain]!.text.trim();
+    final port = _fullNodePortControllers[chain]!.text.trim();
+    final node = switch (chain) {
+      'doge' => 'dogecoind',
+      'dash' => 'dashd',
+      _ => 'zcashd',
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasWif
+              ? AppTheme.primaryColor.withOpacity(0.5)
+              : AppTheme.textSecondary.withOpacity(0.2),
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: hasWif
+                  ? AppTheme.primaryColor.withOpacity(0.15)
+                  : AppTheme.surfaceColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                info['icon']!,
+                style: TextStyle(
+                  color: hasWif
+                      ? AppTheme.primaryColor
+                      : AppTheme.textSecondary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          title: Row(
+            children: [
+              Text(
+                info['name']!,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (hasWif)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.successColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'KEY',
+                    style: TextStyle(
+                      color: AppTheme.successColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          subtitle: Text(
+            '${info['desc']} \u00b7 ${host.isEmpty ? 'No host' : '$host:$port'}',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _settingsField(
+                  label: 'Private Key (WIF)',
+                  controller: _wifControllers[chain]!,
+                  hint: _wifHint(chain),
+                  obscure: true,
+                  paste: true,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _settingsField(
+                        label: 'RPC Host',
+                        controller: _fullNodeHostControllers[chain]!,
+                        hint: '127.0.0.1',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: _settingsField(
+                        label: 'Port',
+                        controller: _fullNodePortControllers[chain]!,
+                        hint: '${_fullNodeDefaults[chain]}',
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _settingsField(
+                  label: 'RPC User',
+                  controller: _fullNodeUserControllers[chain]!,
+                  hint: 'rpcuser (optional)',
+                ),
+                const SizedBox(height: 12),
+                _settingsField(
+                  label: 'RPC Password',
+                  controller: _fullNodePassControllers[chain]!,
+                  hint: 'rpcpassword (optional)',
+                  obscure: true,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Run $node with -txindex and the same RPC credentials.',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsField({
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    bool obscure = false,
+    bool paste = false,
+    TextInputType? keyboardType,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: TextStyle(
+          color: AppTheme.textSecondary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextField(
+        controller: controller,
+        obscureText: obscure,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(
+            color: AppTheme.textSecondary.withOpacity(0.5),
+            fontFamily: 'IBMPlexMono',
+            fontSize: 13,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(
+              color: AppTheme.textSecondary.withOpacity(0.3),
+            ),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: AppTheme.primaryColor),
+          ),
+          suffixIcon: paste
+              ? IconButton(
+                  icon: const Icon(Icons.paste, size: 18),
+                  onPressed: () async {
+                    final data = await Clipboard.getData('text/plain');
+                    if (data?.text != null)
+                      setState(() => controller.text = data!.text!);
+                  },
+                  tooltip: 'Paste',
+                )
+              : null,
+        ),
+        style: const TextStyle(
+          color: AppTheme.textPrimary,
+          fontFamily: 'IBMPlexMono',
+          fontSize: 13,
+        ),
+      ),
+    ],
+  );
+
   Widget _buildEvmChainCard(String chain) {
     final info = _chainInfo[chain]!;
     final hasWif = _wifControllers[chain]!.text.isNotEmpty;
@@ -858,7 +1170,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 TextField(
-                  controller: _wifControllers[chain],
+                  controller: _wifControllers[chain]!,
                   obscureText: true,
                   decoration: InputDecoration(
                     hintText: isSol
@@ -1158,6 +1470,12 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         return '7... / U... (compressed)';
       case 'bch':
         return '5... / K... / L... (compressed)';
+      case 'doge':
+        return 'Q... (0x9E)';
+      case 'dash':
+        return 'X... (0xCC)';
+      case 'zec':
+        return '5... / K... / L... (0x80)';
       default:
         return 'WIF private key';
     }

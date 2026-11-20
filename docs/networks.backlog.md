@@ -34,9 +34,9 @@ generator rejects `ready` when the pin will not register the client.
 | 17 | SIA | SIA | staged_in_suite | staged | `1e24` | 15000 |
 | 18 | UNICHAIN | UNI | ready | registers | `1e18` | 1000 |
 | 19 | PLASMA | XPL | ready | registers | `1e18` | 2000 |
-| 20 | DOGE | DOGE | needs_wallet_wiring | registers | `1e8` | 60000 |
-| 21 | DASH | DASH | needs_wallet_wiring | registers | `1e8` | 260000 |
-| 22 | ZEC | ZEC | needs_wallet_wiring | registers | `1e8` | 150000 |
+| 20 | DOGE | DOGE | ready | registers | `1e8` | 60000 |
+| 21 | DASH | DASH | ready | registers | `1e8` | 260000 |
+| 22 | ZEC | ZEC | ready | registers | `1e8` | 150000 |
 | 23 | PULSECHAIN | PLS | ready | registers | `1e18` | 1000 |
 | 24 | ZANO | ZANO | staged_in_suite | staged | `1e12` | 120000 |
 | 25 | MONAD | MON | ready | registers | `1e18` | 500 |
@@ -48,9 +48,7 @@ generator rejects `ready` when the pin will not register the client.
 
 The pin will `registerChain` when a host is set. Valise has no settings path. Do not mark these `ready` until that path exists.
 
-- **DOGE** (id 20, `doge`). DogeChainClient registers when dogeHost is set. No SPV branch. Valise has no settings path.
-- **DASH** (id 21, `dash`). DashChainClient registers when dashHost is set. Valise has no settings path.
-- **ZEC** (id 22, `zec`). Transparent ZecChainClient only. No SPV. Claim/refund need zcashd with -txindex and a WIF.
+None.
 
 ## Staged in suite
 

@@ -4,7 +4,8 @@ Status: **implemented.** Branch: `feat/network-catalog`. Suite pin: `524454dd43c
 
 Post-implementation notes:
 
-- GLEEC (`SwapPair` 12, wallet ticker `GLEEC`, yaml `gleec`, name `Gleec Chain`) joined the ready set and is in `SwapPairSdk` now. It was hand-written before. The ready set is 23, not 22.
+- GLEEC (`SwapPair` 12, wallet ticker `GLEEC`, yaml `gleec`, name `Gleec Chain`) joined the ready set and is in `SwapPairSdk` now. It was hand-written before.
+- ZEC (22), DOGE (20) and DASH (21) are activated next: full-node RPC settings, config plumbing, `ChainTypeSdk` arms, and reserve-proof prefix/magic. The ready set is 25.
 - `SwapPairSdk.fromId` throws on unknown ids. `tryFromId` returns null.
 - `dex_cubit` offer/trade/status parsing uses `tryFromJson` and filters nulls.
 
@@ -27,7 +28,7 @@ Six catalogs overlap, and two of them use a different integer than the wire. (DA
 | registration | `SwapDaemon.cpp` | client registered only if host/SPV is set; ZANO/TON/SIA/DOT refuse even then | runtime, per process |
 | `chains.yaml` | repo root | 33 EVMs only. Comment says non-EVM stay hand-written | chain key, not SwapPair |
 | `EvmChainKey` | `lib/models/erc20_token.dart` | same 33, hand-copied | chainId |
-| `SwapPairSdk` | `lib/models/network_catalog.g.dart` | 23 ready (incl. GLEEC) | C++ ids, gaps omitted |
+| `SwapPairSdk` | `lib/models/network_catalog.g.dart` | 25 ready (incl. GLEEC, ZEC, DOGE, DASH) | C++ ids, gaps omitted |
 | `ChainTypeSdk` | same file | 23, including Fuego | **a second integer space. Fuego=0, Solana=1, Optimism=22. Not wire IDs.** |
 | Rust `SwapPair` | `fuego-sdk/.../types.rs` | 0–11 only | wire IDs, truncated |
 | Rust `ChainType` | `fuego-sdk/.../chain/mod.rs` | 13, no numeric id | symbol |
@@ -80,7 +81,7 @@ Activation values, exhaustive:
 | Value | Meaning | Picker |
 |---|---|---|
 | `ready` | Pin can register it, and Valise already wires it. 23, incl. GLEEC. | yes |
-| `needs_wallet_wiring` | Pin can register it. Valise has no settings/RPC path yet. ZEC (22), DOGE (20), DASH (21) are in the generated backlog's Needs Valise wiring. | no |
+| `needs_wallet_wiring` | Pin can register it but Valise has no settings/RPC path. None today: ZEC, DOGE and DASH moved to `ready`. | no |
 | `staged_in_suite` | Id reserved. `registerChain` is refused. ZANO, TON, SIA, DOT. | no |
 | `wallet_only` | No `SwapPair` id. ERC-20 / account layer only. The 18. | no |
 | `blocked` | Wallet-only, and a known reason it must not be cloned blindly. Tempo, and the zkEVM / RSK notes. | no |
@@ -370,6 +371,158 @@ Later candidates, same Optimism-shaped work, still not this pass: linea, hyperev
 ### String aliases that are already a footgun
 
 Even for `ready` pairs, do not send display tickers to `swapPairFromString`. Missing aliases on this pin: `RHC`, `UNI`, `XPL`, `MON`. `BSC` is a yaml key, not a wire name; the ticker `BNB` is accepted. Fixing the C++ aliases is a suite change. This pass avoids the bug by sending uint8 only.
+
+## Backlog B — activation plans
+
+Backlog A above is the generated ledger. This section is the execution plan.
+One rule decides every flip: a row becomes `activation: ready` only when the
+pinned suite registers the client **and** Valise can write a config the client
+accepts. A label is not an activation.
+
+Suite ids 0–28 are fixed. Proposed ids below 29+ are not real until the pin
+contains them. Never put a proposed id in `chains.yaml` early: the generator
+fails on an id the pin does not have, and that failure is correct.
+
+### B1. Full-node UTXO pairs — ZEC (22), DOGE (20), DASH (21)
+
+All three clients already exist in the pin. `SwapDaemon.cpp` registers each
+one when its `*_rpc_host` is non-empty. None has an SPV branch: lock, claim
+and refund are RPC calls, so the user runs a node. There is no suite change
+and no new id. Activation is a settings surface plus config plumbing.
+
+Shared checklist per pair:
+
+- [ ] Settings card: WIF, RPC host, RPC port, RPC user, RPC password.
+- [ ] Secure storage: `swap_wif_<key>`, `swap_rpc_host_<key>`,
+      `swap_rpc_port_<key>`, `swap_rpc_user_<key>`, `swap_rpc_pass_<key>`.
+- [ ] Config writer emits `<key>_rpc_host`, `<key>_rpc_port`,
+      `<key>_rpc_user`, `<key>_rpc_pass`, `<key>_wif`. It must not emit
+      `<key>_mode=spv`; those keys are ignored by these clients and hide the
+      fact that a node is required.
+- [ ] Catalog: `activation: ready`, `enum_name`, `tier: swap`.
+- [ ] `ChainTypeSdk` arm, `_chainForPair`, `_pairNameForChain`, reserve-proof
+      address prefix and signmessage magic (see below).
+- [ ] `ChainInfo`: `wired` is no longer `false`; the dialog says node + WIF.
+- [ ] Acceptance: saved JSON shows the five `*_rpc_*`/`*_wif` keys, `xfg-swapd`
+      logs `... chain client registered`, DeXFG lists `XFG/<ticker>`, and a
+      test lock/claim/refund round-trips on the node.
+
+#### B1a. ZEC (22)
+
+- Node: `zcashd -txindex -rpcuser=… -rpcpassword=…` (or an RPC proxy), default
+  port 8232.
+- WIF prefix 0x80 (`5…`, `K…`, `L…`). Transparent P2PKH only.
+- Address prefix 0x1CB8 (two-byte), signmessage magic
+  `"\x18Zcash Signed Message:\n"`.
+- Risk: shielded-only funds are invisible to this client. Say "transparent
+  t-address" in the UI; do not imply Sapling support. The node must be
+  unlocked for signing if it manages keys, though Valise signs from the WIF.
+- Acceptance extras: t-address in the proof matches the WIF's pubkey hash;
+  `msPerBlock` 150000, divisor 1e8.
+
+#### B1b. DOGE (20)
+
+- Node: `dogecoind -txindex -rpcuser=… -rpcpassword=…`, default port 22556.
+- WIF prefix 0x9E (`Q…`), P2PKH 0x1E, signmessage magic
+  `"\x19Dogecoin Signed Message:\n"`.
+- Risk: pre-SegWit, legacy sighash. Fee estimate comes from the node; no
+  Replace-by-Fee assumptions. Dust and 1 DOGE minimum output handling stay in
+  the client.
+- Acceptance extras: `msPerBlock` 60000, divisor 1e8.
+
+#### B1c. DASH (21)
+
+- Node: `dashd -txindex -rpcuser=… -rpcpassword=…`, default port 9998.
+- WIF prefix 0xCC (`X…`), P2PKH 0x4C, signmessage magic
+  `"\x19DarkCoin Signed Message:\n"`.
+- Risk: standard transactions only. InstantSend/ChainLocks are not part of the
+  swap proof; confirmation depth is the guarantee.
+- Acceptance extras: `msPerBlock` 260000, divisor 1e8.
+
+Order: ZEC, then DOGE, then DASH. One commit each so a bad activation is one
+revert. Each commit includes the yaml flip, regenerated catalog, settings,
+config test, and catalog-test assertions. `activation: ready` lands in the
+same commit as the settings path, never before it.
+
+### B2. EVM pairs — proposed ids 29–45
+
+**One contract per chain, not one global deployment.** It is the same
+`HashedTimelock.sol` source and bytecode, but every chain gets its own
+deployment and its own address. CREATE2 yields the same address across chains
+only when the factory, salt and init code match *and* the chain implements
+CREATE2 the same way. Gleec already keeps a separate registry for this reason,
+so "same address everywhere" is an assumption to prove per chain, not a
+default.
+
+#### B2a. Pre-flight every chain must pass
+
+1. Suite assigns the next `SwapPair` id after 28. Ids are contiguous; a gap is
+   a pin bug.
+2. `chainId`, native gas token, default RPC, explorer tx URL, `confirmBlocks`
+   and `msPerBlock` recorded in `chains.yaml`.
+3. `HashedTimelock.sol` deployed; address + runtime bytecode hash recorded;
+   `eth_getCode` non-empty on the public RPC.
+4. Wrap/unwrap is native gas only. No ERC-20 pair, no gas-token abstraction.
+5. A scripted lock → claim and lock → refund round-trip passes on that chain.
+
+#### B2b. Suite template (`Optimism` clone)
+
+`OptimismChainClient` is an `EthChainClient` subclass. A new pair needs, in
+the pin: enum arm; `*Host/*Port/*PrivKeyHex/*Address/*ChainId/*HtlcBinPath`
+fields in `ChainClientConfig` + loader; `registerChain` block; arm in
+`swapPairToString`/`swapPairFromString`; `msPerBlock`; `ctrDivisor`;
+`PriceOracle` row if the pair quotes XFG. The HTLC deploy is per chain. Then
+the submodule pin moves and `tool/gen_networks.dart` picks the id up.
+
+#### B2c. Valise template after the pin bump
+
+`chains.yaml` row (`swap_pair_id`, `activation: ready`, `enum_name`, `tier:
+swap`, RPC); regenerate; settings EVM card appears automatically from
+`kReadyEvmKeys`; `_chainForPair`, `_pairNameForChain` and `_evmChainKey` arms;
+`ChainTypeSdk` arm; orderbook + trades parse by uint8. No hand-written list.
+
+#### B2d. Planned order (proposals, not ids)
+
+| # | Key | Chain | Id (proposed) | Gate |
+|---|-----|-------|---------------|------|
+| 1 | `linea` | Linea | 29 | standard EVM + CREATE2 proof |
+| 2 | `zksync` | zkSync Era | 30 | zkEVM CREATE2 / registry proof |
+| 3 | `hyperevm` | HyperEVM | 31 | standard EVM |
+| 4 | `ink` | Ink | 32 | OP Stack |
+| 5 | `rsk` | Rootstock | 33 | RBTC + address-format proof |
+| 6 | `gnosis` | Gnosis | 34 | standard EVM |
+| 7 | `flare` | Flare | 35 | standard EVM |
+| 8 | `kaia` | Kaia | 36 | standard EVM |
+| 9 | `scroll` | Scroll | 37 | zkEVM + CREATE2 proof |
+| 10 | `abstract` | Abstract | 38 | zkEVM CREATE2 / registry proof |
+| 11 | `plume` | Plume | 39 | standard EVM |
+| 12 | `soneium` | Soneium | 40 | OP Stack |
+| 13 | `doma` | Doma | 41 | standard EVM |
+| 14 | `beam` | Beam | 42 | standard EVM |
+| 15 | `moonriver` | Moonriver | 43 | standard EVM |
+| 16 | `peaq` | peaq | 44 | standard EVM |
+| 17 | `sei` | Sei | 45 | standard EVM |
+
+Tempo is excluded: `gasToken` is empty, so there is no native asset to lock.
+
+#### B2e. Proof gates that keep a row `wallet_only`
+
+- **zkSync, Abstract, Scroll**: deploy the HTLC and compare
+  `eth_getCode`/address against Ethereum. If the address differs, store the
+  per-chain address. If CREATE2 semantics differ, the shared-registry
+  assumption is false; use a per-chain registry, not a local enum edit.
+- **RSK**: RBTC is the gas asset, but the address format and HTLC bytecode
+  environment must be proven. Treat as wallet-only until a lock/claim
+  round-trip passes.
+- A gate that fails does not block the other 14. Ship the proven ones, leave
+  the gated rows `wallet_only`, and record the failing check in `note`.
+
+#### B2f. Execution order
+
+1. Suite PR: ids + client clone + HTLC deploy for the first chain; bump pin.
+2. Valise: yaml row, regenerate, settings/UI arms, tests; flip `ready`.
+3. Repeat per chain. Batch the standard EVMs; keep zkSync/Abstract/RSK
+   separate until their proof gate passes.
 
 ## Verification
 

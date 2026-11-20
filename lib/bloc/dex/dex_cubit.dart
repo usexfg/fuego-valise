@@ -383,6 +383,12 @@ class DexCubit extends Cubit<DexState> {
         return ChainTypeSdk.monad;
       case SwapPairSdk.optimism:
         return ChainTypeSdk.optimism;
+      case SwapPairSdk.doge:
+        return ChainTypeSdk.doge;
+      case SwapPairSdk.dash:
+        return ChainTypeSdk.dash;
+      case SwapPairSdk.zec:
+        return ChainTypeSdk.zcash;
     }
   }
 
@@ -672,13 +678,15 @@ class DexCubit extends Cubit<DexState> {
           offerId: offerId,
           privateKeyHex: takerChainKey,
         );
-      } else if (chain.isBtcFamily) {
-        // Bitcoin signmessage proof from the taker's WIF key.
+      } else if (chain.isSignedMessageUtxo) {
+        // Bitcoin-style signmessage proof from the taker's WIF key. The
+        // message magic and P2PKH prefix are chain-specific.
         proof = BitcoinReserveProof.build(
           wif: takerChainKey,
           offerId: offerId,
           p2pkhVersion: _btcP2pkhVersion(chain).$1,
           p2pkhVersion2: _btcP2pkhVersion(chain).$2,
+          messageMagic: _signedMessageMagic(chain),
         );
       } else if (chain == ChainTypeSdk.monero) {
         // XMR reserve proofs are produced by monero-wallet-rpc. Bridge via
@@ -894,8 +902,29 @@ class DexCubit extends Cubit<DexState> {
         return 'LTC';
       case ChainTypeSdk.polygon:
         return 'POLYGON';
+      case ChainTypeSdk.doge:
+        return 'DOGE';
+      case ChainTypeSdk.dash:
+        return 'DASH';
+      case ChainTypeSdk.zcash:
+        return 'ZEC';
       default:
         return 'SOL';
+    }
+  }
+
+  /// Signmessage magic per UTXO chain. The leading byte is the message
+  /// length, matching the Bitcoin signmessage preimage.
+  static String _signedMessageMagic(ChainTypeSdk chain) {
+    switch (chain) {
+      case ChainTypeSdk.doge:
+        return '\x19Dogecoin Signed Message:\n';
+      case ChainTypeSdk.dash:
+        return '\x19DarkCoin Signed Message:\n';
+      case ChainTypeSdk.zcash:
+        return '\x18Zcash Signed Message:\n';
+      default:
+        return '\x18Bitcoin Signed Message:\n';
     }
   }
 
@@ -912,6 +941,12 @@ class DexCubit extends Cubit<DexState> {
         return (0x3c, null);
       case ChainTypeSdk.decred:
         return (0x3f, 0x07); // two-byte prefix 0x073f
+      case ChainTypeSdk.doge:
+        return (0x1e, null);
+      case ChainTypeSdk.dash:
+        return (0x4c, null);
+      case ChainTypeSdk.zcash:
+        return (0xb8, 0x1c); // two-byte prefix 0x1cb8
       default:
         return (0x00, null);
     }

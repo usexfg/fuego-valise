@@ -20,17 +20,22 @@ class BitcoinReserveProof {
 
   /// Builds the proof. [wif] is the taker's WIF private key.
   /// [p2pkhVersion] is the address prefix byte (BTC/BCH 0x00, LTC 0x30,
-  /// KMD 0x3C). DCR's two-byte prefix is handled via [p2pkhVersion2].
+  /// KMD 0x3C, DOGE 0x1E, DASH 0x4C). Two-byte prefixes (DCR 0x073F,
+  /// ZEC 0x1CB8) are handled via [p2pkhVersion2].
+  ///
+  /// [messageMagic] defaults to the Bitcoin prefix. DOGE/DASH/ZEC each sign
+  /// with their own prefix, and their nodes reject a Bitcoin-signed message.
   static String build({
     required String wif,
     required String offerId,
     required int p2pkhVersion,
     int? p2pkhVersion2,
+    String messageMagic = '\x18Bitcoin Signed Message:\n',
   }) {
     final key = _decodeWif(wif);
     final pubCompressed = _privToPubCompressed(key.$1);
     final address = _p2pkhAddress(pubCompressed, p2pkhVersion, p2pkhVersion2);
-    final sig = _signMessage(key.$1, key.$2, offerId);
+    final sig = _signMessage(key.$1, key.$2, offerId, messageMagic);
     return '$address:${base64Encode(sig)}:$offerId';
   }
 
@@ -77,8 +82,9 @@ class BitcoinReserveProof {
     Uint8List priv,
     bool compressed,
     String message,
+    String messageMagic,
   ) {
-    final magic = utf8.encode('\x18Bitcoin Signed Message:\n');
+    final magic = utf8.encode(messageMagic);
     final msgBytes = utf8.encode(message);
     final varint = _encodeVarInt(msgBytes.length);
     final preimage = <int>[...magic, ...varint, ...msgBytes];

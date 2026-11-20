@@ -86,6 +86,9 @@ class ChainInfo {
     'SOL': 'Solana — high-performance non-EVM chain with sub-second slots.',
     'DCR': 'Decred — hybrid PoW/PoS with built-in governance and Neutrino SPV.',
     'XMR': 'Monero — privacy coin using ring signatures and stealth addresses.',
+    'DASH': 'Dash — fast UTXO chain with optional InstantSend.',
+    'DOGE': 'Dogecoin — pre-SegWit UTXO chain with deep retail liquidity.',
+    'ZEC': 'Zcash — UTXO chain; swaps use transparent t-addresses only.',
     'XFG': 'Fuego  - Private Banking & Purchasing Power Chain',
   };
 
@@ -229,10 +232,26 @@ class ChainInfo {
       'user': 'Public RPC used by default — set a funded key in Swap Settings.',
       'htlc': 'HashedTimelock.sol',
     },
-    'DASH': {'type': 'UTXO', 'wired': 'false'},
-    'DOGE': {'type': 'UTXO', 'wired': 'false'},
+    'DASH': {
+      'type': 'UTXO',
+      'connect': 'Full node JSON-RPC (dashd -txindex)',
+      'user': 'Run dashd and set RPC + WIF in Swap Settings.',
+      'htlc': 'P2SH',
+    },
+    'DOGE': {
+      'type': 'UTXO',
+      'connect': 'Full node JSON-RPC (dogecoind -txindex)',
+      'user': 'Run dogecoind and set RPC + WIF in Swap Settings.',
+      'htlc': 'P2SH',
+    },
     'ZANO': {'type': 'CryptoNote', 'wired': 'false'},
-    'ZEC': {'type': 'UTXO', 'wired': 'false'},
+    'ZEC': {
+      'type': 'UTXO',
+      'connect': 'Full node JSON-RPC (zcashd -txindex)',
+      'user':
+          'Run zcashd and set RPC + WIF in Swap Settings. Transparent t-address only.',
+      'htlc': 'P2SH',
+    },
   };
 
   /// PTLC descriptor per chain (point commitment / adaptor).
