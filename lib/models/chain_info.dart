@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'chain_registry.g.dart';
+import 'network_catalog.g.dart';
 
 /// Chain display metadata shared by the DEX marketplace (Orderbook/Trade/
 /// Trades) and the Peer Swap section.
@@ -458,31 +459,9 @@ class ChainInfo {
     'GLEEC': 'assets/coin-icons/gleec.png',
   };
 
-  /// Chains a direct peer swap can actually run on (the ones the local
-  /// xfg-swapd has chain clients for). Everything else is display-only.
-  static const List<String> swapableChains = [
-    'BTC',
-    'LTC',
-    'BCH',
-    'KMD',
-    'DCR',
-    'ETH',
-    'ARB',
-    'BASE',
-    'BNB',
-    'POLY',
-    'AVAX',
-    'GLEEC',
-    'RHC',
-    'CRO',
-    'BOB',
-    'UNI',
-    'XPL',
-    'PLS',
-    'MON',
-    'OP',
-    'SOL',
-    'XMR',
+  /// Ready pairs from the generated catalog. Not a second hand list.
+  static List<String> get swapableChains => [
+    for (final row in kReadyNetworks) row.ticker,
   ];
 
   /// DeXFG 33-chain EVM expansion: live in the wallet's ERC20 layer

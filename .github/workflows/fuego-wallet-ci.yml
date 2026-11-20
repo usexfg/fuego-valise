@@ -49,6 +49,32 @@ jobs:
           flutter test --coverage
           test -f coverage/lcov.info || (echo "coverage/lcov.info missing" && exit 1)
 
+  network-catalog:
+    name: Network catalog matches suite pin
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: 'stable'
+
+      - name: Catalog has not drifted from the pin
+        run: dart run tool/gen_networks.dart --check
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with: { toolchain: stable }
+
+      - name: Generated SwapPair round-trips
+        run: cargo test --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-sdk --lib swap_pair
+
   rust-sdk:
     name: Rust SDK (tests + binding consistency)
     runs-on: ubuntu-22.04

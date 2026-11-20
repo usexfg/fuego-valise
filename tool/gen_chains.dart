@@ -18,8 +18,17 @@ const String yamlPath = 'chains.yaml';
 const String outPath = 'lib/models/chain_registry.g.dart';
 
 const Set<String> requiredFields = {
-  'key', 'ticker', 'name', 'family', 'chainId', 'rpc',
-  'gasToken', 'color', 'icon', 'tier', 'confirmBlocks',
+  'key',
+  'ticker',
+  'name',
+  'family',
+  'chainId',
+  'rpc',
+  'gasToken',
+  'color',
+  'icon',
+  'tier',
+  'confirmBlocks',
 };
 const Set<String> allowedFamilies = {'evm', 'utxo', 'cryptonote', 'sol'};
 const Set<String> allowedTiers = {'swap', 'wallet'};
@@ -69,6 +78,15 @@ List<Map<String, String>> parseChainsYaml(String src) {
     if (!inChainsBlock) {
       if (trimmed == 'chains:') inChainsBlock = true;
       continue;
+    }
+
+    // A following top-level key (networks:) is not another chain entry.
+    // Without this, those rows are swallowed into kChains and the EVM
+    // registry drifts from EvmChainKey.
+    if (!line.startsWith(' ') &&
+        !line.startsWith('\t') &&
+        trimmed.endsWith(':')) {
+      break;
     }
 
     if (trimmed.startsWith('- ')) {
@@ -138,7 +156,9 @@ void validate(List<Map<String, String>> chains) {
 int _parseInt(Map<String, String> c, String key, String field) {
   final v = int.tryParse(c[field]!);
   if (v == null || v < 0) {
-    throw StateError('Chain $key: $field must be a non-negative int, got "${c[field]}"');
+    throw StateError(
+      'Chain $key: $field must be a non-negative int, got "${c[field]}"',
+    );
   }
   return v;
 }
@@ -149,9 +169,13 @@ int _parseColor(String hex) => int.parse(hex.substring(1), radix: 16);
 
 String render(List<Map<String, String>> chains) {
   final b = StringBuffer();
-  b.writeln('// GENERATED FILE — from chains.yaml via tool/gen_chains.dart. DO NOT EDIT.');
+  b.writeln(
+    '// GENERATED FILE — from chains.yaml via tool/gen_chains.dart. DO NOT EDIT.',
+  );
   b.writeln();
-  b.writeln('/// One chain\'s metadata, generated from [chains.yaml] at repo root.');
+  b.writeln(
+    '/// One chain\'s metadata, generated from [chains.yaml] at repo root.',
+  );
   b.writeln('/// Regenerate with: dart run tool/gen_chains.dart');
   b.writeln('class ChainEntry {');
   b.writeln('  final String key;');
@@ -160,7 +184,9 @@ String render(List<Map<String, String>> chains) {
   b.writeln('  final String family;');
   b.writeln('  final String rpc;');
   b.writeln('  final String gasToken;');
-  b.writeln("  /// 'swap' (wired into xfg-swapd orderbook) or 'wallet' (ERC20 layer only).");
+  b.writeln(
+    "  /// 'swap' (wired into xfg-swapd orderbook) or 'wallet' (ERC20 layer only).",
+  );
   b.writeln('  final String tier;');
   b.writeln('  final String icon;');
   b.writeln('  final int chainId;');
@@ -170,8 +196,17 @@ String render(List<Map<String, String>> chains) {
   b.writeln();
   b.writeln('  const ChainEntry({');
   for (final f in const [
-    'key', 'ticker', 'name', 'family', 'rpc', 'gasToken', 'tier',
-    'icon', 'chainId', 'confirmBlocks', 'colorValue',
+    'key',
+    'ticker',
+    'name',
+    'family',
+    'rpc',
+    'gasToken',
+    'tier',
+    'icon',
+    'chainId',
+    'confirmBlocks',
+    'colorValue',
   ]) {
     b.writeln('    required this.$f,');
   }
@@ -201,10 +236,16 @@ String render(List<Map<String, String>> chains) {
   }
   b.writeln('];');
   b.writeln();
-  b.writeln('final Map<String, ChainEntry> kChainByKey = {for (final c in kChains) c.key: c};');
+  b.writeln(
+    'final Map<String, ChainEntry> kChainByKey = {for (final c in kChains) c.key: c};',
+  );
   b.writeln();
 
-  void emitMap(String name, String type, String Function(Map<String, String>) valueFor) {
+  void emitMap(
+    String name,
+    String type,
+    String Function(Map<String, String>) valueFor,
+  ) {
     b.writeln('const Map<String, $type> $name = {');
     for (final c in chains) {
       b.writeln("  '${_dartStr(c['key']!)}': ${valueFor(c)},");
@@ -216,8 +257,12 @@ String render(List<Map<String, String>> chains) {
   emitMap('kChainIds', 'int', (c) => c['chainId']!);
   emitMap('kChainRpcs', 'String', (c) => "'${_dartStr(c['rpc']!)}'");
   emitMap('kChainNames', 'String', (c) => "'${_dartStr(c['name']!)}'");
-  emitMap('kChainColors', 'int',
-      (c) => '0x${_parseColor(c['color']!).toRadixString(16).padLeft(6, '0').toUpperCase()}');
+  emitMap(
+    'kChainColors',
+    'int',
+    (c) =>
+        '0x${_parseColor(c['color']!).toRadixString(16).padLeft(6, '0').toUpperCase()}',
+  );
 
   b.writeln('const Set<String> kWalletTierKeys = {');
   for (final c in chains.where((c) => c['tier'] == 'wallet')) {
@@ -228,8 +273,7 @@ String render(List<Map<String, String>> chains) {
 }
 
 /// Escapes a string for a single-quoted Dart literal.
-String _dartStr(String s) =>
-    s.replaceAll('\\', r'\\').replaceAll("'", r"\'");
+String _dartStr(String s) => s.replaceAll('\\', r'\\').replaceAll("'", r"\'");
 
 // ── Formatting ────────────────────────────────────────────────────────
 
@@ -288,6 +332,8 @@ void _printDiffSummary(String existing, String expected) {
     }
   }
   if (shown == 0) {
-    stdout.writeln('Lines agree up to the shorter length; files differ only in tail/length.');
+    stdout.writeln(
+      'Lines agree up to the shorter length; files differ only in tail/length.',
+    );
   }
 }

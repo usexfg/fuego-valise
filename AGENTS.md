@@ -25,22 +25,11 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 - xfg-swapd handles actual cross-chain lock/claim/refund on BTC, ETH, SOL, etc.
 - They use **separate databases** (fuegod: `<configFolder>/swaps`, xfg-swapd: `~/.xfg-swapd`)
 
-## Supported Swap Chains (12 pairs)
+## Swap pairs
 
-| ID | Chain | Adapter | Connection | HTLC Type |
-|----|-------|---------|-----------|-----------|
-| 0 | SOL | `SolChainClient` | Solana JSON-RPC | On-chain program |
-| 1 | ETH | `EthChainClient` | Ethereum JSON-RPC | HashedTimelock.sol |
-| 2 | XMR | `XmrChainClient` | monerod + monero-wallet-rpc | Ring sigs + adaptor sigs |
-| 3 | BCH | `BchChainClient` | Electrum SPV or bitcoind RPC | P2SH |
-| 4 | ARB | `EthChainClient` | Arbitrum JSON-RPC | HashedTimelock.sol |
-| 5 | BASE | `EthChainClient` | Base JSON-RPC | HashedTimelock.sol |
-| 6 | KMD | `KmdChainClient` | Electrum SPV or komodod RPC | P2SH |
-| 7 | BNB | `BscChainClient` | BSC JSON-RPC | HashedTimelock.sol |
-| 8 | DCR | `DcrChainClient` | Neutrino SPV (BIP-157/158) or dcrd RPC | P2SH |
-| 9 | BTC | `BtcChainClient` | Electrum SPV or bitcoind RPC | P2WSH SegWit |
-| 10 | LTC | `LtcChainClient` | Electrum SPV or litecoind RPC | P2WSH SegWit |
-| 11 | POLYGON | `PolygonChainClient` | Polygon JSON-RPC | HashedTimelock.sol |
+Pair identity is the pinned fuego-suite `SwapPair` uint8 (`fuego-suite/src/SwapDaemon/SwapTypes.h`). Valise does not invent ids. Presentation and activation live in `chains.yaml` (`chains:` for the 33 EVMs, `networks:` for the rest). `tool/gen_networks.dart` joins them and writes `lib/models/network_catalog.g.dart`, the Rust `SwapPair` include, and `docs/networks.backlog.md`. DeXFG and peer swap show `activation: ready` only. Wire calls send the uint8, not the display ticker. Do not add a pair id in Dart or Rust by hand. Do not mark a row `ready` unless the pin's `SwapDaemon.cpp` will `registerChain` it.
+
+`ChainTypeSdk.id` is a local proof-adapter integer used by `/verify_payment`. It is not a `SwapPair` id.
 
 ### Chain Connection Modes
 - **SPV mode**: Read-only verification via Electrum protocol (BTC/LTC/BCH/KMD) or Neutrino (DCR). Cannot create lock transactions — claim/refund needs RPC mode.
@@ -93,7 +82,7 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 
 Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
-- `types.rs`: SwapPair enum (12 pairs), SwapOffer, SwapPrice, SwapTrade, SwapStatus
+- `types.rs`: SwapPair (generated from the suite pin; every id, `from_id` is `Option`), SwapOffer, SwapPrice, SwapTrade, SwapStatus
 - `chain/mod.rs`: ChainType enum (13 chains including Fuego), ChainSpv trait
 - `chain/bitcoin.rs`: Bitcoin-family SPV adapter (BTC, LTC, BCH, KMD, DCR)
 - `chain/evm.rs`: EVM chain adapter (ETH, ARB, BASE, BNB, POLYGON)

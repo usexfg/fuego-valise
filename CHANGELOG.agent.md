@@ -1,5 +1,29 @@
 # CHANGELOG.agent.md
 
+## [2026-11-20] Network catalog join suite pin 524454d
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 1 | Generate `tool/gen_networks.dart` from the pinned `fuego-suite` `SwapPair` enum, `swapPairToString`, `swapPairFromString`, `msPerBlock`, `PriceOracle::ctrDivisor`, and `SwapDaemon.cpp` register-vs-staged detection. | opencode | 2026-11-20 | ✅ done |
+| 2 | Extend `chains.yaml` with `swap_pair_id`, `activation`, `enum_name`, `note`; add `networks:` rows for SOL, XMR, BCH, KMD, DCR, BTC, LTC, SIA, DOGE, DASH, ZEC, ZANO, TON, DOT. GLEEC joined the ready set (SwapPair 12). | opencode | 2026-11-20 | ✅ done |
+| 3 | Generate `lib/models/network_catalog.g.dart`, `swap_pair_generated.rs`, and `docs/networks.backlog.md`. | opencode | 2026-11-20 | ✅ done |
+| 4 | Replace hand-written `SwapPairSdk` with the generated ready set (22). `SwapPairSdk.fromId` now throws for unknown ids; `tryFromId` is null. Cubit offers/trades/status use `tryFromJson` and skip unknown pairs. | opencode | 2026-11-20 | ✅ done |
+| 5 | Point picker, peer swap (`swapableChains`), Swap Settings (`kReadyEvmKeys`), and `SwapConfigService` at the catalog. | opencode | 2026-11-20 | ✅ done |
+| 6 | Replace Rust `SwapPair` (0–11) with the generated `#[repr(u8)]` enum (0–28, `from_id` returns `Option`). FFI `fuego_swap_pair_count` now returns 29. | opencode | 2026-11-20 | ✅ done |
+| 7 | Add `network-catalog` CI job. Update AGENTS.md swap pair contract. Add `test/network_catalog_test.dart`. | opencode | 2026-11-20 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `dart run tool/gen_networks.dart --check` | ✅ matches pin (29 ids, 22 ready) |
+| `dart run tool/gen_chains.dart --check` | ✅ up to date (33 chains) |
+| `dart format` | ✅ |
+| `flutter analyze` | ✅ no errors; 907 pre-existing infos in tool/ + 1801 pre-existing warnings, unchanged baseline for non-tool files |
+| `flutter test --coverage` | ✅ All tests passed |
+| `cargo test -p fuego-sdk --lib swap_pair` | ✅ 1 passed |
+| `cargo test -p fuego-sdk --lib` | ✅ 5 passed |
+
 ## [2026-10-01] OKOC valise-daemon audit continuation (local index, no source change)
 
 | # | Task | Owner | Date | Status |

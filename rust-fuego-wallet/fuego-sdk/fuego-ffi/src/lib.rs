@@ -464,10 +464,10 @@ pub extern "C" fn fuego_version() -> *mut c_char {
 
 // ── Swap Pair helpers ──
 
-/// Get number of supported swap pairs. Returns 6.
+/// Number of SwapPair ids the pin defines. Not the tradable subset.
 #[no_mangle]
 pub extern "C" fn fuego_swap_pair_count() -> u8 {
-    6
+    SwapPair::all().len() as u8
 }
 
 /// Get swap pair ID by ticker. Returns -1 if not found.

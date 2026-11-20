@@ -399,7 +399,8 @@ class DexCubit extends Cubit<DexState> {
     );
     return results
         .expand((result) => result['offers'] as List<dynamic>? ?? const [])
-        .map((offer) => SwapOfferSdk.fromJson(offer as Map<String, dynamic>))
+        .map((offer) => SwapOfferSdk.tryFromJson(offer as Map<String, dynamic>))
+        .whereType<SwapOfferSdk>()
         .where((offer) => offer.offerId.isNotEmpty)
         .toList();
   }
@@ -439,7 +440,8 @@ class DexCubit extends Cubit<DexState> {
         'limit': 50,
       });
       final trades = (r['trades'] as List<dynamic>? ?? [])
-          .map((t) => SwapTradeSdk.fromJson(t as Map<String, dynamic>))
+          .map((t) => SwapTradeSdk.tryFromJson(t as Map<String, dynamic>))
+          .whereType<SwapTradeSdk>()
           .toList();
       emit(state.copyWith(recentTrades: trades));
     } catch (e) {
@@ -477,7 +479,8 @@ class DexCubit extends Cubit<DexState> {
     try {
       final r = await _post('/getactiveswaps', {});
       final swaps = (r['swaps'] as List<dynamic>? ?? [])
-          .map((s) => SwapStatusSdk.fromJson(s as Map<String, dynamic>))
+          .map((s) => SwapStatusSdk.tryFromJson(s as Map<String, dynamic>))
+          .whereType<SwapStatusSdk>()
           .toList();
       emit(state.copyWith(activeSwaps: swaps));
     } catch (e) {

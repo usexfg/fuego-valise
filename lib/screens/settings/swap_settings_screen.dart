@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../models/chain_registry.g.dart';
+import '../../models/network_catalog.g.dart';
 import '../../services/swap_config_service.dart';
 import '../../utils/theme.dart';
 
@@ -16,7 +17,7 @@ const Map<String, List<String>> _defaultServers = {
 };
 
 final List<ChainEntry> _evmSwapChains = kChains
-    .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
+    .where((chain) => kReadyEvmKeys.contains(chain.key))
     .toList(growable: false);
 final List<String> _evmSwapChainKeys = _evmSwapChains
     .map((chain) => chain.key)

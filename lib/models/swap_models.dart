@@ -1,49 +1,18 @@
-/// Swap and DEX models aligned with fuego-sdk types.
-/// Maps 1:1 with Rust SDK types.rs SwapPair, SwapOffer, SwapStatus, etc.
+/// Swap and DEX models.
+///
+/// Pair identity is the pinned fuego-suite `SwapPair` uint8. [SwapPairSdk]
+/// is generated (`network_catalog.g.dart`) and is only the ready set.
+/// It is not a second numbering scheme and it is not 1:1 with every Rust
+/// arm: Rust knows every pin id, the picker knows `activation: ready`.
+import 'network_catalog.g.dart';
 
-/// Supported swap pair IDs matching fuego-suite.
-/// IDs match C++ `SwapPair`; gaps are non-EVM pairs not mirrored here yet.
-enum SwapPairSdk {
-  sol(0, 'SOL', 'XFG/SOL'),
-  eth(1, 'ETH', 'XFG/ETH'),
-  xmr(2, 'XMR', 'XFG/XMR'),
-  bch(3, 'BCH', 'XFG/BCH'),
-  arb(4, 'ARB', 'XFG/ARB'),
-  base(5, 'BASE', 'XFG/BASE'),
-  kmd(6, 'KMD', 'XFG/KMD'),
-  bnb(7, 'BNB', 'XFG/BNB'),
-  dcr(8, 'DCR', 'XFG/DCR'),
-  btc(9, 'BTC', 'XFG/BTC'),
-  ltc(10, 'LTC', 'XFG/LTC'),
-  poly(11, 'POLY', 'XFG/POLY'),
-  gleec(12, 'GLEEC', 'XFG/GLEEC'),
-  robinhood(13, 'RHC', 'XFG/RHC'),
-  avax(14, 'AVAX', 'XFG/AVAX'),
-  cro(15, 'CRO', 'XFG/CRO'),
-  bob(16, 'BOB', 'XFG/BOB'),
-  unichain(18, 'UNI', 'XFG/UNI'),
-  plasma(19, 'XPL', 'XFG/XPL'),
-  pulsex(23, 'PLS', 'XFG/PLS'),
-  monad(25, 'MON', 'XFG/MON'),
-  optimism(26, 'OP', 'XFG/OP');
-
-  final int id;
-  final String ticker;
-  final String displayName;
-  const SwapPairSdk(this.id, this.ticker, this.displayName);
-
-  static SwapPairSdk fromId(int id) => SwapPairSdk.values.firstWhere(
-    (p) => p.id == id,
-    orElse: () => SwapPairSdk.eth,
-  );
-
-  static SwapPairSdk? tryFromId(int id) {
-    for (final p in SwapPairSdk.values) {
-      if (p.id == id) return p;
-    }
-    return null;
-  }
-}
+export 'network_catalog.g.dart'
+    show
+        SwapPairSdk,
+        NetworkRow,
+        kNetworkCatalog,
+        kReadyNetworks,
+        kReadyEvmKeys;
 
 /// PTLC lock type (mirrors Rust SwapLockType / C++ SwapLockType).
 /// htlc=0 legacy hash, ptlc=1 pure point, bridge=2 PTLC on XFG + HTLC on CTR.
@@ -73,7 +42,8 @@ enum SwapLockTypeSdk {
   bool get isHtlc => this == htlc;
 }
 
-/// Supported chains for SPV verification.
+/// Local SPV / proof adapter. [id] is not a `SwapPair` wire id.
+/// `/verify_payment` still sends this integer. Do not reuse it as a pair id.
 enum ChainTypeSdk {
   fuego(0, 'XFG', 'Fuego'),
   solana(1, 'SOL', 'Solana'),
@@ -188,12 +158,27 @@ class SwapOfferSdk {
     expiresAt: expiresAt,
   );
 
+  /// Null when the pair id is not in the ready set. Never substitutes ETH.
+  static SwapOfferSdk? tryFromJson(Map<String, dynamic> j) {
+    final pair = SwapPairSdk.tryFromId(_intValue(j['pair']));
+    if (pair == null) return null;
+    return SwapOfferSdk._fromJson(j, pair);
+  }
+
   factory SwapOfferSdk.fromJson(Map<String, dynamic> j) {
+    final parsed = tryFromJson(j);
+    if (parsed == null) {
+      throw ArgumentError('unknown swap pair id ${_intValue(j['pair'])}');
+    }
+    return parsed;
+  }
+
+  factory SwapOfferSdk._fromJson(Map<String, dynamic> j, SwapPairSdk pair) {
     return SwapOfferSdk(
       offerId: j['offerId']?.toString() ?? j['offer_id']?.toString() ?? '',
       makerPubKey:
           j['makerPubKey']?.toString() ?? j['maker_pubkey']?.toString() ?? '',
-      pair: SwapPairSdk.fromId(_intValue(j['pair'])),
+      pair: pair,
       sellXfg:
           j['sellXfg'] as bool? ??
           j['sell_xfg'] as bool? ??
@@ -245,17 +230,33 @@ class SwapStatusSdk {
     required this.updatedAt,
   });
 
-  factory SwapStatusSdk.fromJson(Map<String, dynamic> j) => SwapStatusSdk(
-    swapId: j['swapId'] as String? ?? j['swap_id'] as String? ?? '',
-    state: SwapStateSdk.fromString(j['state'] as String? ?? 'open'),
-    pair: SwapPairSdk.fromId(j['pair'] as int? ?? 0),
-    amount: j['amount'] as int? ?? 0,
-    makerPubkey:
-        j['makerPubkey'] as String? ?? j['maker_pubkey'] as String? ?? '',
-    takerPubkey: j['takerPubkey'] as String? ?? j['taker_pubkey'] as String?,
-    createdAt: j['createdAt'] as int? ?? j['created_at'] as int? ?? 0,
-    updatedAt: j['updatedAt'] as int? ?? j['updated_at'] as int? ?? 0,
-  );
+  static SwapStatusSdk? tryFromJson(Map<String, dynamic> j) {
+    final pair = SwapPairSdk.tryFromId(j['pair'] as int? ?? -1);
+    if (pair == null) return null;
+    return SwapStatusSdk._fromJson(j, pair);
+  }
+
+  factory SwapStatusSdk.fromJson(Map<String, dynamic> j) {
+    final parsed = tryFromJson(j);
+    if (parsed == null) {
+      throw ArgumentError('unknown swap pair id ${j['pair']}');
+    }
+    return parsed;
+  }
+
+  factory SwapStatusSdk._fromJson(Map<String, dynamic> j, SwapPairSdk pair) =>
+      SwapStatusSdk(
+        swapId: j['swapId'] as String? ?? j['swap_id'] as String? ?? '',
+        state: SwapStateSdk.fromString(j['state'] as String? ?? 'open'),
+        pair: pair,
+        amount: j['amount'] as int? ?? 0,
+        makerPubkey:
+            j['makerPubkey'] as String? ?? j['maker_pubkey'] as String? ?? '',
+        takerPubkey:
+            j['takerPubkey'] as String? ?? j['taker_pubkey'] as String?,
+        createdAt: j['createdAt'] as int? ?? j['created_at'] as int? ?? 0,
+        updatedAt: j['updatedAt'] as int? ?? j['updated_at'] as int? ?? 0,
+      );
 }
 
 /// Historical trade record.
@@ -276,14 +277,29 @@ class SwapTradeSdk {
     required this.timestamp,
   });
 
-  factory SwapTradeSdk.fromJson(Map<String, dynamic> j) => SwapTradeSdk(
-    tradeId: j['tradeId'] as String? ?? j['trade_id'] as String? ?? '',
-    pair: SwapPairSdk.fromId(j['pair'] as int? ?? 0),
-    sellXfg: j['sellXfg'] as bool? ?? j['sell_xfg'] as bool? ?? true,
-    amount: j['amount'] as int? ?? 0,
-    price: j['price'] as int? ?? 0,
-    timestamp: j['timestamp'] as int? ?? 0,
-  );
+  static SwapTradeSdk? tryFromJson(Map<String, dynamic> j) {
+    final pair = SwapPairSdk.tryFromId(j['pair'] as int? ?? -1);
+    if (pair == null) return null;
+    return SwapTradeSdk._fromJson(j, pair);
+  }
+
+  factory SwapTradeSdk.fromJson(Map<String, dynamic> j) {
+    final parsed = tryFromJson(j);
+    if (parsed == null) {
+      throw ArgumentError('unknown swap pair id ${j['pair']}');
+    }
+    return parsed;
+  }
+
+  factory SwapTradeSdk._fromJson(Map<String, dynamic> j, SwapPairSdk pair) =>
+      SwapTradeSdk(
+        tradeId: j['tradeId'] as String? ?? j['trade_id'] as String? ?? '',
+        pair: pair,
+        sellXfg: j['sellXfg'] as bool? ?? j['sell_xfg'] as bool? ?? true,
+        amount: j['amount'] as int? ?? 0,
+        price: j['price'] as int? ?? 0,
+        timestamp: j['timestamp'] as int? ?? 0,
+      );
 }
 
 /// Price data for a trading pair.

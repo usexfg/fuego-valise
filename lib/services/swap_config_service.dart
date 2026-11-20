@@ -5,15 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/chain_registry.g.dart';
+import '../models/network_catalog.g.dart';
 
 /// Manages xfg-swapd configuration and process lifecycle.
 class SwapConfigService {
   static const _daemonConfigPrefixes = {'xpl': 'plasma', 'pls': 'pulsex'};
 
-  static final Set<String> _evmSwapChains = kChains
-      .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
-      .map((chain) => chain.key)
-      .toSet();
+  static final Set<String> _evmSwapChains = kReadyEvmKeys;
 
   Process? _swapDaemon;
   String? _configPath;
