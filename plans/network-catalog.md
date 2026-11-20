@@ -80,7 +80,7 @@ Activation values, exhaustive:
 | Value | Meaning | Picker |
 |---|---|---|
 | `ready` | Pin can register it, and Valise already wires it. 23, incl. GLEEC. | yes |
-| `needs_wallet_wiring` | Pin can register it. Valise has no settings/RPC path yet. ZEC, DOGE, DASH. | no |
+| `needs_wallet_wiring` | Pin can register it. Valise has no settings/RPC path yet. ZEC (22), DOGE (20), DASH (21). | no |
 | `staged_in_suite` | Id reserved. `registerChain` is refused. ZANO, TON, SIA, DOT. | no |
 | `wallet_only` | No `SwapPair` id. ERC-20 / account layer only. The 18. | no |
 | `blocked` | Wallet-only, and a known reason it must not be cloned blindly. Tempo, and the zkEVM / RSK notes. | no |
