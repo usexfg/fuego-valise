@@ -80,7 +80,7 @@ Activation values, exhaustive:
 | Value | Meaning | Picker |
 |---|---|---|
 | `ready` | Pin can register it, and Valise already wires it. 23, incl. GLEEC. | yes |
-| `needs_wallet_wiring` | Pin can register it. Valise has no settings/RPC path yet. ZEC (22), DOGE (20), DASH (21). | no |
+| `needs_wallet_wiring` | Pin can register it. Valise has no settings/RPC path yet. ZEC (22), DOGE (20), DASH (21) are listed under `docs/networks.backlog.md` "Needs Valise wiring". | no |
 | `staged_in_suite` | Id reserved. `registerChain` is refused. ZANO, TON, SIA, DOT. | no |
 | `wallet_only` | No `SwapPair` id. ERC-20 / account layer only. The 18. | no |
 | `blocked` | Wallet-only, and a known reason it must not be cloned blindly. Tempo, and the zkEVM / RSK notes. | no |
@@ -341,7 +341,8 @@ Do not do these now.
 
 **DOGE (20)** — `DogeChainClient` registers iff `dogeHost` is set. No SPV branch. Divisor 1e8. Valise has no settings screen.
 
-**DASH (21)** — `DashChainClient`, host required, divisor 1e8, `msPerBlock` 260000. Valise has no settings screen.
+All three live in the generated backlog section `Needs Valise wiring`.
+
 
 ### Staged in suite (id reserved, registerChain refused)
 
