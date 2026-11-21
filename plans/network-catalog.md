@@ -465,6 +465,13 @@ default.
 4. Wrap/unwrap is native gas only. No ERC-20 pair, no gas-token abstraction.
 5. A scripted lock → claim and lock → refund round-trip passes on that chain.
 
+Launch cost (one-time per chain, estimate 2026-11-20): HashedTimelock creation
+≈ 0.3M–0.8M gas. OP-Stack chains (OP, Linea, Ink, Soneium, Unichain) deploy for
+≈ $0.10–$2 each; zkEVM chains (zkSync Era, Scroll, Abstract) ≈ $5–$40 each; other
+EVM L2s ≈ $0.10–$1 each. The full B2 wallet-tier launch set (17 chains) is therefore
+≈ under $500 one-time, vs. L1-deploy multiples of that. Exact figure =
+`gasUsed × gasPrice` at deploy time.
+
 #### B2b. Suite template (`Optimism` clone)
 
 `OptimismChainClient` is an `EthChainClient` subclass. A new pair needs, in
