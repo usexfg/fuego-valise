@@ -524,6 +524,24 @@ Tempo is excluded: `gasToken` is empty, so there is no native asset to lock.
 3. Repeat per chain. Batch the standard EVMs; keep zkSync/Abstract/RSK
    separate until their proof gate passes.
 
+#### B2 status — 2026-11-20
+
+- Optimism (`SwapPair` 26) and Monad (25) were already live in the pin at
+  `524454d` and already activated in Valise; they are not part of the 17.
+- First wallet-tier EVM of the B2 list is **Linea**, planned order #1
+  (`wallet_only` → `ready` next). Suite-side clone started on branch
+  `feat/b2-lina-swapd` (commit `dc49731`): `SwapPair::LINEA = 29`, OP-Stack
+  `LineaChainClient`, `ChainClientConfig` `linea_*` keys, PriceOracle
+  (`SEED_LINEA_USD`, divisor 1e18), SwapTimelock (2s), order-book bound
+  `MAX_PAIR_INDEX` 28→29, RPC/swap loops bound `DOT`→`LINEA`, JSON keys,
+  config example.
+- The suite clone is **not yet in the pin**: branch `feat/b2-lina-swapd` ahead
+  of `524454d`. Next: deploy HashedTimelock on Linea (CREATE2), record address
+  + runtime bytecode hash, open suite PR, merge, bump submodule pin.
+- Valise-side flip intentionally not started: the generator now fails loudly
+  (`Pinned SwapPair::LINEA (29) has no chains.yaml row`) — correct behavior
+  until the pin bump + yaml row land.
+
 ### Backlog C. Wallet surface for every ready pair
 
 Today Valise has a wallet for XFG (vault + `fuego_walletd`) and the 33 EVMs
