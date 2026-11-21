@@ -243,11 +243,14 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         return;
       }
       final host = _fullNodeHostControllers[chain]!.text.trim();
-      final port =
-          int.tryParse(_fullNodePortControllers[chain]!.text.trim()) ??
-          _fullNodeDefaults[chain]!;
+      final parsedPort = int.tryParse(
+        _fullNodePortControllers[chain]!.text.trim(),
+      );
+      final port = (parsedPort != null && parsedPort > 0 && parsedPort <= 65535)
+          ? parsedPort
+          : _fullNodeDefaults[chain]!;
       final user = _fullNodeUserControllers[chain]!.text.trim();
-      final pass = _fullNodePassControllers[chain]!.text;
+      final pass = _fullNodePassControllers[chain]!.text.trim();
       await _secureStorage.write(key: 'swap_wif_$chain', value: wif);
       await _secureStorage.write(
         key: 'swap_rpc_host_$chain',
