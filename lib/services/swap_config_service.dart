@@ -179,6 +179,20 @@ class SwapConfigService {
         if (!wif.startsWith('7') && !wif.startsWith('U'))
           return 'Must start with 7 or U';
         break;
+      case 'doge':
+        if (!wif.startsWith('Q'))
+          return 'Must start with Q (Dogecoin WIF prefix 0x9E)';
+        break;
+      case 'dash':
+        if (!wif.startsWith('X'))
+          return 'Must start with X (Dash WIF prefix 0xCC)';
+        break;
+      case 'zec':
+        if (!wif.startsWith('5') &&
+            !wif.startsWith('K') &&
+            !wif.startsWith('L'))
+          return 'Must start with 5, K, or L';
+        break;
     }
     return null;
   }

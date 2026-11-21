@@ -922,7 +922,7 @@ class DexCubit extends Cubit<DexState> {
       case ChainTypeSdk.dash:
         return '\x19DarkCoin Signed Message:\n';
       case ChainTypeSdk.zcash:
-        return '\x18Zcash Signed Message:\n';
+        return '\x16Zcash Signed Message:\n';
       default:
         return '\x18Bitcoin Signed Message:\n';
     }

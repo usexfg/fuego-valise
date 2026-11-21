@@ -104,7 +104,12 @@ class SwapSettingsScreen extends StatefulWidget {
 
 class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
   final SwapConfigService _swapService = SwapConfigService();
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
   final Map<String, TextEditingController> _wifControllers = {};
   final Map<String, TextEditingController> _serverControllers = {};
   final Map<String, List<String>> _serverLists = {};
