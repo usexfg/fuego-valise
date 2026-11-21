@@ -549,6 +549,27 @@ Rule: a pair gets a wallet screen only when address derivation and the send
 path are tested against that chain's own node/RPC. A balance read from a
 third-party API is not a wallet.
 
+## Guardian remediation log — B1 (ZEC/DOGE/DASH activation)
+
+Adversarial review via the `fuego-guardian` Red Team (two passes) on the
+B1 diff (`9e8ccaf..HEAD`) finished; findings remediated and re-verified:
+
+- **Blocking (fixed)**: ZEC signmessage magic byte `0x18` → `0x16` (the magic
+  string is `<len-byte><message>`; `"Zcash Signed Message:\n"` is 22 bytes).
+  DOGE (`0x19`) / DASH (`0x19`) were re-verified correct. Red-team "CRITICAL"
+  preimage-structure and DASH-magic findings were refuted by independent
+  length computation; the only real defect was the ZEC byte.
+- **High (fixed)**: swap settings now use an encrypted `FlutterSecureStorage`
+  (`AndroidOptions(encryptedSharedPreferences: true)`, iOS keychain).
+- **High / fund-safety (fixed)**: `SwapConfigService.validateWif` now enforces
+  DOGE (`Q…`), DASH (`X…`) and ZEC (`5/K/L…`) WIF prefixes.
+- **Medium (fixed)**: full-node RPC port validated to 1–65535; RPC password
+  trimmed; `_startSwapd` already awaits `_saveConfig` before starting.
+
+Verification after remediation: `dart format` clean, `flutter analyze` no
+errors/warnings, full `flutter test` suite green, `dart run tool/gen_networks.dart --check`
+and `gen_chains --check` green, `cargo test -p fuego-sdk --lib swap_pair` green.
+
 ## Verification
 
 - `dart run tool/gen_networks.dart --check`
