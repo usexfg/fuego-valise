@@ -279,13 +279,8 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
   /// After a background lock, nothing wallet-related may show until the PIN is
   /// entered again. With no PIN set there is nothing to re-check.
   Future<void> _requireUnlock() async {
-    bool hasPin;
-    try {
-      hasPin = await widget.securityService.hasPIN();
-    } catch (_) {
-      // No readable PIN was stored. Do not demand one.
-      hasPin = false;
-    }
+    // hasPIN() reports an unreadable store as "no PIN" and does not throw.
+    final hasPin = await widget.securityService.hasPIN();
     if (!hasPin || !mounted) return;
     _navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute<void>(builder: (_) => const PinEntryScreen()),

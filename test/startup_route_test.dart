@@ -2,30 +2,83 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fuego/screens/startup_route.dart';
 
 void main() {
-  test('no stored PIN opens the wallet, not the unlock screen', () {
+  test('a readable store with no PIN opens the wallet', () {
     expect(
-      startupDestination(hasWallet: false, hasPin: false, lockedOut: false),
+      startupDestination(
+        storageReadable: true,
+        walletKnown: true,
+        hasWallet: false,
+        hasPin: false,
+        lockedOut: false,
+      ),
       StartupDestination.wallet,
     );
   });
 
   test('a stored PIN on an existing wallet asks to unlock', () {
     expect(
-      startupDestination(hasWallet: true, hasPin: true, lockedOut: false),
+      startupDestination(
+        storageReadable: true,
+        walletKnown: true,
+        hasWallet: true,
+        hasPin: true,
+        lockedOut: false,
+      ),
       StartupDestination.pin,
     );
   });
 
   test('a wallet with no PIN is not asked for one', () {
     expect(
-      startupDestination(hasWallet: true, hasPin: false, lockedOut: false),
+      startupDestination(
+        storageReadable: true,
+        walletKnown: true,
+        hasWallet: true,
+        hasPin: false,
+        lockedOut: false,
+      ),
       StartupDestination.wallet,
     );
   });
 
   test('an active lockout still asks for the PIN', () {
     expect(
-      startupDestination(hasWallet: false, hasPin: false, lockedOut: true),
+      startupDestination(
+        storageReadable: true,
+        walletKnown: true,
+        hasWallet: false,
+        hasPin: false,
+        lockedOut: true,
+      ),
+      StartupDestination.pin,
+    );
+  });
+
+  test(
+    'an unreadable keyring does not ask for a PIN that cannot be checked',
+    () {
+      expect(
+        startupDestination(
+          storageReadable: false,
+          walletKnown: false,
+          hasWallet: false,
+          hasPin: false,
+          lockedOut: false,
+        ),
+        StartupDestination.wallet,
+      );
+    },
+  );
+
+  test('an unknown wallet check still requires the PIN', () {
+    expect(
+      startupDestination(
+        storageReadable: true,
+        walletKnown: false,
+        hasWallet: false,
+        hasPin: false,
+        lockedOut: false,
+      ),
       StartupDestination.pin,
     );
   });

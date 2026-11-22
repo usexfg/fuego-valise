@@ -83,6 +83,8 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _initializeApp() async {
+    var hasPIN = false;
+    var isLocked = false;
     try {
       // Splash visible for at least 3 seconds
       await Future.delayed(const Duration(seconds: 3));
@@ -107,19 +109,21 @@ class _SplashScreenState extends State<SplashScreen>
 
       // Do NOT clear lockout unconditionally — that bypasses brute-force protection.
       // isLockedOut() already clears only if expired; stale lockout must persist until expiry.
-      bool hasWallet = false;
-      bool hasPIN = false;
-      bool isLocked = false;
-      try {
-        hasWallet = await walletProvider.hasWalletData();
+      final storageReadable = await securityService.secureStorageReadable();
+      var hasWallet = false;
+      var walletKnown = false;
+      if (storageReadable) {
+        try {
+          hasWallet = await walletProvider.hasWalletData();
+          walletKnown = true;
+        } catch (e) {
+          debugPrint('Wallet check failed — requiring the PIN');
+        }
         hasPIN = await securityService.hasPIN();
         isLocked = await securityService.isLockedOut();
-      } catch (e) {
-        // An unreadable keyring has no PIN on record. Sending that launch to
-        // the unlock screen asks for a password that was never created, and
-        // the prompt cannot succeed while storage is down.
+      } else {
         debugPrint(
-          'Secure storage check failed — opening the wallet with no PIN',
+          'Secure storage is unreadable — opening the wallet with no PIN prompt',
         );
       }
 
@@ -128,15 +132,21 @@ class _SplashScreenState extends State<SplashScreen>
 
       setState(() => _isInitializing = false);
 
-      // Ask for a PIN only when one was stored, or a lockout record says so.
-      if (startupDestination(
-            hasWallet: hasWallet,
-            hasPin: hasPIN,
-            lockedOut: isLocked,
-          ) ==
-          StartupDestination.pin) {
+      final destination = startupDestination(
+        storageReadable: storageReadable,
+        walletKnown: walletKnown,
+        hasWallet: hasWallet,
+        hasPin: hasPIN,
+        lockedOut: isLocked,
+      );
+      if (destination == StartupDestination.pin) {
         if (isLocked) {
-          final remain = await securityService.lockoutRemaining();
+          Duration? remain;
+          try {
+            remain = await securityService.lockoutRemaining();
+          } catch (_) {
+            remain = null;
+          }
           setState(() {
             _initMessage = remain != null
                 ? 'Too many attempts — try again in ${remain.inMinutes}m ${remain.inSeconds % 60}s'
@@ -151,15 +161,12 @@ class _SplashScreenState extends State<SplashScreen>
       _navigateToScreen(const MainScreen());
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _initMessage = 'Opening your wallet...';
-      });
-
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) {
-        _navigateToScreen(const MainScreen());
+      // A failure after a PIN or lockout was confirmed must not skip the gate.
+      if (isLocked || hasPIN) {
+        _navigateToScreen(const PinEntryScreen());
+        return;
       }
+      _navigateToScreen(const MainScreen());
     }
   }
 

@@ -168,6 +168,17 @@ class SecurityService {
     return int.tryParse(v ?? '0') ?? 0;
   }
 
+  /// Whether the keyring opened. False means no PIN record can be read or
+  /// written, so a PIN prompt cannot be checked.
+  Future<bool> secureStorageReadable() async {
+    try {
+      await _storage();
+      return !_initFailed;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> isLockedOut() async {
     try {
       final until = await _read(_lockUntilKey);
@@ -179,9 +190,10 @@ class SecurityService {
       }
       return true;
     } catch (_) {
-      // Nothing was stored, or the keyring cannot be read. That is not a
-      // lockout: there is no PIN attempt counter to enforce.
-      return false;
+      // The keyring never opened: there is no lockout record to enforce.
+      // A later read failure, after the store did open, is not "no lockout".
+      if (_initFailed) return false;
+      return true;
     }
   }
 

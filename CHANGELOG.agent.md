@@ -5,6 +5,7 @@
 | # | Task | Owner | Date | Status |
 |---|------|-------|------|--------|
 | 122 | A locked or missing keyring made `isLockedOut()` throw, and splash treated that as “a PIN exists,” so a first launch opened Welcome Back. Route to the wallet unless a PIN or lockout is actually stored. When the keyring cannot store the walletd bearer token, mint a session token instead of refusing to start. Scale the PIN pad so a short window does not paint the yellow-black overflow band. Replace the Material fire icon with `assets/logo/fuegologo.png`; the HEAT screen keeps its fire mark. Desktop debug no longer wraps the app in Device Preview. | grok | 2026-11-22 | ✅ done |
+| 123 | A readable store whose wallet check fails, or whose lockout record cannot be read, still requires the PIN. A keyring that never opens does not, because that prompt cannot be checked. A lockout-message failure no longer skips the gate. | grok | 2026-11-22 | ✅ done |
 
 ### Sign-off
 
