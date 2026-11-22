@@ -1,5 +1,18 @@
 # CHANGELOG.agent.md
 
+## [2026-11-22] First launch no longer asks for a PIN that was never set
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 122 | A locked or missing keyring made `isLockedOut()` throw, and splash treated that as “a PIN exists,” so a first launch opened Welcome Back. Route to the wallet unless a PIN or lockout is actually stored. When the keyring cannot store the walletd bearer token, mint a session token instead of refusing to start. Scale the PIN pad so a short window does not paint the yellow-black overflow band. Replace the Material fire icon with `assets/logo/fuegologo.png`; the HEAT screen keeps its fire mark. Desktop debug no longer wraps the app in Device Preview. | grok | 2026-11-22 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| Source change | Splash routing, PIN layout, logo, desktop Device Preview |
+| Expected | First launch opens the wallet. PIN pad fits. Fire icon remains only on the HEAT screen |
+
 ## [2026-11-10] Mobile CI iOS simulator FFI missing
 
 | # | Task | Owner | Date | Status |

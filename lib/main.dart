@@ -194,9 +194,13 @@ Future<void> main() async {
     // Default (IBMPlexSans) applies on failure.
   }
 
+  // Device Preview forces a phone frame in every debug run. On desktop that
+  // frame is shorter than the window and paints the yellow-black overflow
+  // band under the keypad. Keep it for mobile debug only.
+  final desktop = Platform.isLinux || Platform.isMacOS || Platform.isWindows;
   runApp(
     DevicePreview(
-      enabled: !kReleaseMode,
+      enabled: !kReleaseMode && !desktop,
       builder: (context) => FuegoApp(
         backendReady: _backendReady.future,
         vaultService: _vaultService,
@@ -279,7 +283,8 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
     try {
       hasPin = await widget.securityService.hasPIN();
     } catch (_) {
-      hasPin = true; // fail closed, as the splash screen does
+      // No readable PIN was stored. Do not demand one.
+      hasPin = false;
     }
     if (!hasPin || !mounted) return;
     _navigatorKey.currentState?.pushAndRemoveUntil(

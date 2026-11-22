@@ -12,6 +12,7 @@ import '../../services/fuego_rpc_service.dart';
 import '../../services/fuego_vault_service.dart';
 import '../../services/security_service.dart';
 import '../../utils/theme.dart';
+import '../../widgets/fuego_logo.dart';
 import '../main/main_screen.dart';
 import 'swap_settings_screen.dart';
 import 'alias_registration_screen.dart';
@@ -1296,19 +1297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: AppTheme.cardColor,
           title: Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.local_fire_department,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
+              const FuegoLogo(size: 40),
               const SizedBox(width: 12),
               const Text(
                 'Fuego Valise',

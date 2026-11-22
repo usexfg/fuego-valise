@@ -8,6 +8,7 @@ import '../../core/core.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
 import '../../bloc/mining/mining_cubit.dart';
 import '../../utils/theme.dart';
+import '../../widgets/fuego_logo.dart';
 import '../transactions/transaction_details_screen.dart';
 import '../transactions/send_screen.dart';
 import '../transactions/mint_heat_screen.dart';
@@ -754,7 +755,7 @@ class _BalanceCardState extends State<_BalanceCard> {
                         },
                       ),
                       _CrownPusher(
-                        icon: Icons.local_fire_department,
+                        emblem: const FuegoLogo(size: 28, fit: BoxFit.cover),
                         label: 'MINT ΗΞΔŦ',
                         accent: AppTheme.accentColor,
                         onTap: () {
@@ -1086,12 +1087,14 @@ class _CrownPusher extends StatelessWidget {
   const _CrownPusher({
     required this.onTap,
     this.icon = Icons.arrow_upward,
+    this.emblem,
     this.label = 'SEND',
     this.accent,
   });
 
   final VoidCallback onTap;
   final IconData icon;
+  final Widget? emblem;
   final String label;
   final Color? accent;
 
@@ -1109,7 +1112,11 @@ class _CrownPusher extends StatelessWidget {
             height: 58,
             child: CustomPaint(
               painter: _KnurlPainter(accent: a),
-              child: Center(child: Icon(icon, color: a, size: 20)),
+              child: Center(
+                child: emblem == null
+                    ? Icon(icon, color: a, size: 20)
+                    : ClipOval(child: emblem),
+              ),
             ),
           ),
           const SizedBox(height: 6),
