@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'constants.dart';
 import 'network_info.dart';
+import '../models/subaddress.dart';
 import '../services/walletd_auth.dart';
 import 'transaction.dart';
 
@@ -201,15 +202,16 @@ class FuegoDaemonClient {
 
   // ── Sub-addresses (fuego-suite scheme, derived and scanned by walletd) ──
 
-  /// Hands out the next sub-address. Returns (index, address).
-  Future<(int, String)> createSubaddress() async {
+  /// Hands out the next sub-address.
+  Future<BackendSubaddress> createSubaddress() async {
     final r = await _walletRpc('create_subaddress');
     final index = r['index'] as int?;
     final address = r['address'] as String?;
     if (index == null || address == null || address.isEmpty) {
       throw FuegoRpcException('create_subaddress: malformed response');
     }
-    return (index, address);
+    final scheme = r['version'] as int? ?? Subaddress.sublimeScheme;
+    return (scheme: scheme, index: index, address: address);
   }
 
   /// Sub-addresses with unspent balances, and legacy sub-addresses with the

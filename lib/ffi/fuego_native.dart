@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
+import '../models/fuego_address.dart';
+
 /// Native Fuego library bindings via dart:ffi.
 class FuegoNative {
   late final DynamicLibrary _lib;
@@ -92,6 +94,20 @@ class FuegoNative {
     _freeString(result);
     _freeSecret(ptr, 32);
     return _parseJson(json);
+  }
+
+  /// Parses a standard (fire / TEST) or funsa sub-address (funsa / Tsub)
+  /// address with checksum. Null when it is neither.
+  ParsedFuegoAddress? parseAddress(String address) {
+    final input = address.toNativeUtf8();
+    final fn = _lib.lookupFunction<_ParseAddressNative, _ParseAddressDart>(
+      'fuego_parse_address',
+    );
+    final result = fn(input);
+    final json = result.toDartString();
+    _freeString(result);
+    calloc.free(input);
+    return ParsedFuegoAddress.fromNativeJson(json);
   }
 
   /// Generate Fuego address from spend + view public keys.
@@ -540,6 +556,9 @@ typedef _MakeAddressNative =
     Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
 typedef _MakeAddressDart =
     Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
+
+typedef _ParseAddressNative = Pointer<Utf8> Function(Pointer<Utf8>);
+typedef _ParseAddressDart = Pointer<Utf8> Function(Pointer<Utf8>);
 
 typedef _MakeAddressNetNative =
     Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, Uint8);

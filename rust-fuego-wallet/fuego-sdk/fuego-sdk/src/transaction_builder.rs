@@ -12,7 +12,8 @@
 use crate::error::{Result, SdkError};
 use crate::serialization::{
     add_amm_swap_auth_extra, add_heat_mint_auth_extra, add_limit_deposit_extra,
-    add_lp_add_auth_extra, add_lp_remove_auth_extra, build_extra_with_pubkey, serialize_inputs,
+    add_lp_add_auth_extra, add_lp_remove_auth_extra, add_subaddress_tx_keys, build_extra_with_pubkey,
+    parse_subaddress_tx_keys, serialize_inputs, SubaddressTxKeys,
     serialize_tx, tx_prefix_hash, CommitmentOutputTarget, CommitmentSpendInput, KeyInput,
     OutputTarget, Transaction, TransactionPrefix, TxInput, TxOutput, HEAT_TERM, AMOUNT_PROOF_LEN,
 };
@@ -64,6 +65,149 @@ pub struct BuildDestination {
     pub amount: u64,
     pub spend_pub: [u8; 32],
     pub view_pub: [u8; 32],
+    /// A funsa V2 sub-address (D, C): its output needs a sub-address tx key.
+    pub is_subaddress: bool,
+}
+
+/// The sending wallet: its view secret seeds the deterministic tx key, and
+/// `janus_base` says the chain tip is v11, so the tx carries a 0x09 Janus base
+/// (F8). Built only from the wallet's own keys, so a public key can never seed r.
+pub struct TxSender {
+    view_secret: [u8; 32],
+    spend_public: [u8; 32],
+    janus_base: bool,
+}
+
+impl TxSender {
+    pub fn new(keys: &crate::scanner::WalletKeys, janus_base: bool) -> Self {
+        Self { view_secret: keys.view_secret, spend_public: keys.spend_public, janus_base }
+    }
+}
+
+impl Drop for TxSender {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.view_secret.zeroize();
+    }
+}
+
+/// A tip block of this major version or later makes every key-input tx carry
+/// a 0x09 Janus base (fuego-suite funsaSubaddressActivated).
+pub fn janus_base_expected(tip_block_major_version: u8) -> bool {
+    tip_block_major_version >= 11
+}
+
+fn crypto_error(what: &str) -> SdkError {
+    SdkError::Crypto(format!("{what} failed"))
+}
+
+/// Outputs to a sub-address need sub-address tx keys, which only
+/// build_transaction plans. Every other builder refuses one.
+fn refuse_subaddress_destinations(destinations: &[BuildDestination]) -> Result<()> {
+    if destinations.iter().any(|d| d.is_subaddress) {
+        return Err(SdkError::Crypto("sub-address destinations are only supported in XFG sends".into()));
+    }
+    Ok(())
+}
+
+/// tx public key and extra for a tx with no sub-address destination, with the
+/// filler Janus base when the tip is v11. 0x09 sits right after the tx key,
+/// ahead of auth tags, so this wallet's own parser always reaches it.
+fn main_key_extra(txkey: &[u8; 32], txkey_pub: &[u8; 32], sender: &TxSender, extra_extra: &[u8]) -> Result<Vec<u8>> {
+    let mut extra = build_extra_with_pubkey(txkey_pub);
+    if sender.janus_base {
+        let keys = SubaddressTxKeys { additional_pub_keys: vec![], janus_bases: vec![fuego_crypto::janus_filler(txkey)] };
+        add_subaddress_tx_keys(&mut extra, &keys).map_err(SdkError::Crypto)?;
+    }
+    extra.extend_from_slice(extra_extra);
+    Ok(extra)
+}
+
+/// How build_transaction keys its outputs (fuego-suite planSubaddressOutputs):
+/// no sub-address → main key r*G; one sub-address and only change besides →
+/// single key R = r*D with 0x09 = [r*G]; otherwise one key R_n per output.
+struct OutputKeyPlan {
+    main_tx_pub: [u8; 32],
+    derivations: Vec<[u8; 32]>,
+    subaddress_keys: SubaddressTxKeys,
+}
+
+fn random_point(rng: &mut impl RngCore) -> [u8; 32] {
+    let mut seed = [0u8; 32];
+    rng.fill_bytes(&mut seed);
+    let mut scalar = hash_to_scalar(&seed);
+    let point = secret_key_to_public_key(&scalar);
+    use zeroize::Zeroize;
+    seed.zeroize();
+    scalar.zeroize();
+    point
+}
+
+fn plan_main_key_only(dests: &[BuildDestination], txkey: &[u8; 32], txkey_pub: &[u8; 32], sender: &TxSender) -> Result<OutputKeyPlan> {
+    let derivations = dests
+        .iter()
+        .map(|d| generate_key_derivation(&d.view_pub, txkey).ok_or_else(|| crypto_error("key derivation")))
+        .collect::<Result<Vec<_>>>()?;
+    let janus_bases = if sender.janus_base { vec![fuego_crypto::janus_filler(txkey)] } else { vec![] };
+    Ok(OutputKeyPlan {
+        main_tx_pub: *txkey_pub,
+        derivations,
+        subaddress_keys: SubaddressTxKeys { additional_pub_keys: vec![], janus_bases },
+    })
+}
+
+fn plan_single_subaddress(dests: &[BuildDestination], subaddress: &BuildDestination, txkey: &[u8; 32], txkey_pub: &[u8; 32], sender: &TxSender) -> Result<OutputKeyPlan> {
+    let main_tx_pub = fuego_crypto::subaddress_tx_pub_key(txkey, &subaddress.spend_pub).ok_or_else(|| crypto_error("sub-address tx key"))?;
+    // Change to this wallet: the sender's own scan computes a*R with R = r*D.
+    let change_derivation = generate_key_derivation(&main_tx_pub, &sender.view_secret).ok_or_else(|| crypto_error("change derivation"))?;
+    let derivations = dests
+        .iter()
+        .map(|d| {
+            if d.is_subaddress {
+                generate_key_derivation(&d.view_pub, txkey).ok_or_else(|| crypto_error("sub-address derivation"))
+            } else {
+                Ok(change_derivation)
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(OutputKeyPlan {
+        main_tx_pub,
+        derivations,
+        subaddress_keys: SubaddressTxKeys { additional_pub_keys: vec![], janus_bases: vec![*txkey_pub] },
+    })
+}
+
+fn plan_per_output_keys(dests: &[BuildDestination], txkey: &[u8; 32], txkey_pub: &[u8; 32], rng: &mut impl RngCore) -> Result<OutputKeyPlan> {
+    let mut plan = OutputKeyPlan { main_tx_pub: *txkey_pub, derivations: vec![], subaddress_keys: SubaddressTxKeys::default() };
+    for (n, d) in dests.iter().enumerate() {
+        let mut r_n = fuego_crypto::additional_tx_secret(txkey, n as u64);
+        let (tx_pub, janus) = if d.is_subaddress {
+            let r_d = fuego_crypto::subaddress_tx_pub_key(&r_n, &d.spend_pub).ok_or_else(|| crypto_error("per-output sub-address key"))?;
+            (r_d, secret_key_to_public_key(&r_n))
+        } else {
+            (secret_key_to_public_key(&r_n), random_point(rng))
+        };
+        let derivation = generate_key_derivation(&d.view_pub, &r_n).ok_or_else(|| crypto_error("per-output derivation"));
+        use zeroize::Zeroize;
+        r_n.zeroize();
+        plan.derivations.push(derivation?);
+        plan.subaddress_keys.additional_pub_keys.push(tx_pub);
+        plan.subaddress_keys.janus_bases.push(janus);
+    }
+    Ok(plan)
+}
+
+fn plan_output_keys(dests: &[BuildDestination], txkey: &[u8; 32], txkey_pub: &[u8; 32], sender: &TxSender, rng: &mut impl RngCore) -> Result<OutputKeyPlan> {
+    let subaddresses: std::collections::BTreeSet<[u8; 32]> = dests.iter().filter(|d| d.is_subaddress).map(|d| d.spend_pub).collect();
+    let other_recipients = dests.iter().filter(|d| !d.is_subaddress && d.spend_pub != sender.spend_public).count();
+    match (subaddresses.len(), other_recipients) {
+        (0, _) => plan_main_key_only(dests, txkey, txkey_pub, sender),
+        (1, 0) => {
+            let subaddress = dests.iter().find(|d| d.is_subaddress).unwrap();
+            plan_single_subaddress(dests, subaddress, txkey, txkey_pub, sender)
+        }
+        _ => plan_per_output_keys(dests, txkey, txkey_pub, rng),
+    }
 }
 
 /// A commitment destination: HEAT, LP shares, a swap receipt or a term-locked
@@ -90,12 +234,18 @@ fn commitment_key(
         .ok_or_else(|| SdkError::Crypto("owner-bound commitment key derivation failed".into()))
 }
 
-/// Deterministic tx secret key recovery: r = Hs(viewSecret || inputsHash),
-/// the inverse of deterministic_tx_key — used to produce tx proofs for
-/// previously sent transactions.
-pub fn recover_tx_secret(inputs: &[TxInput], view_secret: &[u8; 32]) -> [u8; 32] {
-    let (r, _r_pub) = deterministic_tx_key(view_secret, inputs);
-    r
+/// The tx secret of a transaction this wallet sent, for payment proofs:
+/// r = Hs(viewSecret || inputsHash). Transactions built before the fix that
+/// seeded r with the public view key are recovered too. A candidate counts only
+/// if r*G is the tx's public key or, for a single-key sub-address tx, its 0x09 key.
+pub fn recover_tx_secret(prefix: &TransactionPrefix, keys: &crate::scanner::WalletKeys) -> Option<[u8; 32]> {
+    let tx_pub = crate::serialization::parse_extra_pubkey(&prefix.extra)?;
+    let lists = parse_subaddress_tx_keys(&prefix.extra);
+    let single_janus = (lists.additional_pub_keys.is_empty() && lists.janus_bases.len() == 1).then(|| lists.janus_bases[0]);
+    [keys.view_secret, keys.view_public].iter().find_map(|seed| {
+        let (r, r_pub) = deterministic_tx_key(seed, &prefix.inputs);
+        (r_pub == tx_pub || Some(r_pub) == single_janus).then_some(r)
+    })
 }
 
 /// HEAT_BILL_DENOMINATIONS (CryptoNoteConfig.h), largest first.
@@ -269,11 +419,10 @@ fn deterministic_tx_key(view_secret: &[u8; 32], inputs: &[TxInput]) -> ([u8; 32]
 /// * `destinations`: outputs to build (recipient amounts + change chunks +
 ///   dust remainder, in any order; they are sorted by amount here, matching
 ///   constructTransaction).
-/// * `view_secret`: this wallet's view secret key, the seed of the
+/// * `sender`: this wallet's keys ([`TxSender`]): the view secret seeds the
 ///   deterministic tx key r = Hs(viewSecret || inputsHash)
-///   (generateDeterministicTransactionKeys). Every builder takes the secret:
-///   seeded with the public view key, r is computable by anyone who knows
-///   the sender's address.
+///   (generateDeterministicTransactionKeys), and the v11 flag adds the 0x09
+///   filler. Destinations may be funsa sub-addresses (`is_subaddress`).
 /// * `decoys`: per-input decoy lists (each must be exactly `mixin` entries).
 /// * `fee`: flat fee (>= MINIMUM_FEE).
 /// * `unlock_time`: transaction-level timestamp lock (0 = none).
@@ -282,7 +431,7 @@ fn deterministic_tx_key(view_secret: &[u8; 32], inputs: &[TxInput]) -> ([u8; 32]
 pub fn build_transaction(
     inputs: &[SpendableOutput],
     destinations: &[BuildDestination],
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     mixin: usize,
     decoys: &[Vec<DecoyEntry>],
@@ -333,17 +482,16 @@ pub fn build_transaction(
     }
 
     // Deterministic tx key (CryptoNoteFormatUtils.cpp:156).
-    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, &wire_inputs); // the key pair is used for output derivation below
+    let (txkey, txkey_pub) = deterministic_tx_key(&sender.view_secret, &wire_inputs);
 
     // Outputs, sorted by amount (constructTransaction sorts destinations).
     let mut dests: Vec<BuildDestination> = destinations.to_vec();
     dests.sort_by_key(|d| d.amount);
+    let plan = plan_output_keys(&dests, &txkey, &txkey_pub, sender, rng)?;
 
     let mut outputs = Vec::with_capacity(dests.len());
-    for (i, dst) in dests.iter().enumerate() {
-        let derivation = generate_key_derivation(&dst.view_pub, &txkey)
-            .ok_or_else(|| SdkError::Crypto("key derivation failed".into()))?;
-        let key = derive_public_key(&derivation, i as u64, &dst.spend_pub)
+    for (i, (dst, derivation)) in dests.iter().zip(&plan.derivations).enumerate() {
+        let key = derive_public_key(derivation, i as u64, &dst.spend_pub)
             .ok_or_else(|| SdkError::Crypto("output key derivation failed".into()))?;
         outputs.push(TxOutput {
             amount: dst.amount,
@@ -351,7 +499,10 @@ pub fn build_transaction(
         });
     }
 
-    let mut extra = build_extra_with_pubkey(&txkey_pub);
+    let mut extra = build_extra_with_pubkey(&plan.main_tx_pub);
+    if !plan.subaddress_keys.janus_bases.is_empty() {
+        add_subaddress_tx_keys(&mut extra, &plan.subaddress_keys).map_err(SdkError::Crypto)?;
+    }
     extra.extend_from_slice(extra_extra);
 
     let prefix = TransactionPrefix {
@@ -479,11 +630,12 @@ pub fn build_mixed_output_transaction(
     mixin: usize,
     commitment_destinations: &[BuildCommitmentDestination],
     key_destinations: &[BuildDestination],
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     extra_extra: &[u8],
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
+    refuse_subaddress_destinations(key_destinations)?;
     if inputs.is_empty() {
         return Err(SdkError::InsufficientFunds { need: fee, have: 0 });
     }
@@ -531,8 +683,8 @@ pub fn build_mixed_output_transaction(
         }));
     }
 
-    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, &wire_inputs);
-    let view_pub = &secret_key_to_public_key(view_secret);
+    let (txkey, txkey_pub) = deterministic_tx_key(&sender.view_secret, &wire_inputs);
+    let view_pub = &secret_key_to_public_key(&sender.view_secret);
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("tx key derivation failed".into()))?;
 
@@ -573,8 +725,7 @@ pub fn build_mixed_output_transaction(
         });
     }
 
-    let mut extra = build_extra_with_pubkey(&txkey_pub);
-    extra.extend_from_slice(extra_extra);
+    let extra = main_key_extra(&txkey, &txkey_pub, sender, extra_extra)?;
 
     let has_commitment_outputs = !commitment_destinations.is_empty();
     let prefix = TransactionPrefix {
@@ -636,7 +787,7 @@ pub fn build_mint_transaction(
     xfg_burned: u64,
     heat_minted: u64,
     change: u64,
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     change_keys: (&[u8; 32], &[u8; 32]),
     fee: u64,
     rng: &mut impl RngCore,
@@ -661,6 +812,7 @@ pub fn build_mint_transaction(
             amount: chunk,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -668,6 +820,7 @@ pub fn build_mint_transaction(
             amount: dust,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
 
@@ -680,7 +833,7 @@ pub fn build_mint_transaction(
         mixin,
         &commitment_dests,
         &key_dests,
-        view_secret,
+        sender,
         fee,
         &extra,
         rng,
@@ -697,11 +850,12 @@ pub fn build_commitment_spend_transaction(
     ring_size: usize,
     key_destinations: &[BuildDestination],
     commitment_destinations: &[BuildCommitmentDestination],
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     extra_extra: &[u8],
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
+    refuse_subaddress_destinations(key_destinations)?;
     if deposits.is_empty() {
         return Err(SdkError::InsufficientFunds { need: fee, have: 0 });
     }
@@ -734,7 +888,7 @@ pub fn build_commitment_spend_transaction(
         }));
     }
 
-    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, &wire_inputs);
+    let (txkey, txkey_pub) = deterministic_tx_key(&sender.view_secret, &wire_inputs);
 
     // Key outputs (payouts + change), sorted by amount.
     let mut key_dests: Vec<BuildDestination> = key_destinations.to_vec();
@@ -752,7 +906,7 @@ pub fn build_commitment_spend_transaction(
         });
         out_index += 1;
     }
-    let view_pub = &secret_key_to_public_key(view_secret);
+    let view_pub = &secret_key_to_public_key(&sender.view_secret);
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("commitment derivation failed".into()))?;
     for cdest in commitment_destinations {
@@ -775,8 +929,7 @@ pub fn build_commitment_spend_transaction(
         });
     }
 
-    let mut extra = build_extra_with_pubkey(&txkey_pub);
-    extra.extend_from_slice(extra_extra);
+    let extra = main_key_extra(&txkey, &txkey_pub, sender, extra_extra)?;
 
     let has_commitment_outputs = !commitment_destinations.is_empty();
     let prefix = TransactionPrefix {
@@ -846,12 +999,13 @@ fn assemble_outputs_and_sign(
     commitment_destinations: &[BuildCommitmentDestination],
     key_destinations: &[BuildDestination],
     pool_destinations: &[BuildPoolCommitmentDestination],
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     extra_extra: &[u8],
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
-    let (txkey, txkey_pub) = deterministic_tx_key(view_secret, wire_inputs);
-    let view_pub = &secret_key_to_public_key(view_secret);
+    refuse_subaddress_destinations(key_destinations)?;
+    let (txkey, txkey_pub) = deterministic_tx_key(&sender.view_secret, wire_inputs);
+    let view_pub = &secret_key_to_public_key(&sender.view_secret);
     let tx_derivation = generate_key_derivation(view_pub, &txkey)
         .ok_or_else(|| SdkError::Crypto("tx key derivation failed".into()))?;
 
@@ -906,8 +1060,7 @@ fn assemble_outputs_and_sign(
         });
     }
 
-    let mut extra = build_extra_with_pubkey(&txkey_pub);
-    extra.extend_from_slice(extra_extra);
+    let extra = main_key_extra(&txkey, &txkey_pub, sender, extra_extra)?;
 
     let has_commitment_outputs = !commitment_destinations.is_empty() || !pool_destinations.is_empty();
     let prefix = TransactionPrefix {
@@ -1041,7 +1194,7 @@ pub fn build_commitment_spend_xfg_fee_transaction(
     fee_decoys: &[Vec<DecoyEntry>],
     commitment_destinations: &[BuildCommitmentDestination],
     xfg_change_keys: (&[u8; 32], &[u8; 32]),
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     extra_extra: &[u8],
     rng: &mut impl RngCore,
@@ -1064,7 +1217,7 @@ pub fn build_commitment_spend_xfg_fee_transaction(
     let key_dests: Vec<BuildDestination> = chunks
         .into_iter()
         .chain((dust > 0).then_some(dust))
-        .map(|amount| BuildDestination { amount, spend_pub: *change_spend, view_pub: *change_view })
+        .map(|amount| BuildDestination { amount, spend_pub: *change_spend, view_pub: *change_view, is_subaddress: false })
         .collect();
 
     assemble_outputs_and_sign(
@@ -1073,7 +1226,7 @@ pub fn build_commitment_spend_xfg_fee_transaction(
         commitment_destinations,
         &key_dests,
         &[],
-        view_secret,
+        sender,
         extra_extra,
         rng,
     )
@@ -1091,7 +1244,7 @@ pub fn build_swap_xfg_to_heat_transaction(
     heat_received: u64,
     min_output: u64,
     change_keys: (&[u8; 32], &[u8; 32]),
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
@@ -1117,6 +1270,7 @@ pub fn build_swap_xfg_to_heat_transaction(
             amount: chunk,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -1124,6 +1278,7 @@ pub fn build_swap_xfg_to_heat_transaction(
             amount: dust,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
 
@@ -1136,7 +1291,7 @@ pub fn build_swap_xfg_to_heat_transaction(
         mixin,
         &commitment_dests,
         &key_dests,
-        view_secret,
+        sender,
         fee,
         &extra,
         rng,
@@ -1155,7 +1310,7 @@ pub fn build_swap_heat_to_xfg_transaction(
     min_output: u64,
     xfg_dest: (&[u8; 32], &[u8; 32]),
     heat_change: u64,
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
@@ -1167,6 +1322,7 @@ pub fn build_swap_heat_to_xfg_transaction(
             amount: chunk,
             spend_pub: *spend_pub,
             view_pub: *view_pub_dest,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -1174,6 +1330,7 @@ pub fn build_swap_heat_to_xfg_transaction(
             amount: dust,
             spend_pub: *spend_pub,
             view_pub: *view_pub_dest,
+            is_subaddress: false,
         });
     }
 
@@ -1198,7 +1355,7 @@ pub fn build_swap_heat_to_xfg_transaction(
         ring_size,
         &key_dests,
         &commitment_dests,
-        view_secret,
+        sender,
         fee,
         &extra,
         rng,
@@ -1220,7 +1377,7 @@ pub fn build_lp_add_transaction(
     lp_shares: u64,
     xfg_change: u64,
     heat_change: u64,
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     change_keys: (&[u8; 32], &[u8; 32]),
     fee: u64,
     rng: &mut impl RngCore,
@@ -1262,6 +1419,7 @@ pub fn build_lp_add_transaction(
             amount: chunk,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -1269,6 +1427,7 @@ pub fn build_lp_add_transaction(
             amount: dust,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
 
@@ -1281,7 +1440,7 @@ pub fn build_lp_add_transaction(
         &commitment_dests,
         &key_dests,
         &[],
-        view_secret,
+        sender,
         &extra,
         rng,
     )
@@ -1299,7 +1458,7 @@ pub fn build_lp_remove_transaction(
     min_heat: u64,
     xfg_out: u64,
     heat_out: u64,
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     change_keys: (&[u8; 32], &[u8; 32]),
     fee: u64,
     rng: &mut impl RngCore,
@@ -1312,6 +1471,7 @@ pub fn build_lp_remove_transaction(
             amount: chunk,
             spend_pub: *spend_pub,
             view_pub: *view_pub_dest,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -1319,6 +1479,7 @@ pub fn build_lp_remove_transaction(
             amount: dust,
             spend_pub: *spend_pub,
             view_pub: *view_pub_dest,
+            is_subaddress: false,
         });
     }
 
@@ -1341,7 +1502,7 @@ pub fn build_lp_remove_transaction(
         ring_size,
         &key_dests,
         &commitment_dests,
-        view_secret,
+        sender,
         fee,
         &extra,
         rng,
@@ -1364,7 +1525,7 @@ pub fn build_place_order_transaction(
     address_hash: &[u8; 32],
     pool_key: &[u8; 32],
     change_keys: (&[u8; 32], &[u8; 32]),
-    view_secret: &[u8; 32],
+    sender: &TxSender,
     fee: u64,
     rng: &mut impl RngCore,
 ) -> Result<BuiltTransaction> {
@@ -1379,6 +1540,7 @@ pub fn build_place_order_transaction(
             amount: chunk,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -1386,6 +1548,7 @@ pub fn build_place_order_transaction(
             amount: dust,
             spend_pub: *change_spend,
             view_pub: *change_view,
+            is_subaddress: false,
         });
     }
 
@@ -1456,7 +1619,7 @@ pub fn build_place_order_transaction(
         &[],
         &key_dests,
         &pool_dests,
-        view_secret,
+        sender,
         &extra,
         rng,
     )

@@ -70,6 +70,13 @@ pub const TX_OUTPUT_TAG_COMMITMENT: u8 = 0x04;
 pub const TX_EXTRA_TAG_PADDING: u8 = 0x00;
 pub const TX_EXTRA_TAG_PUBKEY: u8 = 0x01;
 pub const TX_EXTRA_TAG_NONCE: u8 = 0x02;
+pub const TX_EXTRA_MERGE_MINING_TAG: u8 = 0x03;
+pub const TX_EXTRA_MESSAGE_TAG: u8 = 0x04;
+pub const TX_EXTRA_TTL: u8 = 0x05;
+/// One tx public key per output (funsa per-output transactions).
+pub const TX_EXTRA_ADDITIONAL_PUBKEYS: u8 = 0x06;
+/// Janus bases: one for a single-key tx, one per output with 0x06.
+pub const TX_EXTRA_JANUS_BASE: u8 = 0x09;
 pub const TX_EXTRA_HEAT_MINT_AUTH: u8 = 0xF5;
 pub const TX_EXTRA_AMM_SWAP_AUTH: u8 = 0xF6;
 pub const TX_EXTRA_AMM_LP_ADD_AUTH: u8 = 0xF7;
@@ -475,6 +482,95 @@ pub fn parse_extra_pubkey(extra: &[u8]) -> Option<[u8; 32]> {
         }
     }
     None
+}
+
+/// The funsa key lists of a transaction's extra (0x06 and 0x09).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SubaddressTxKeys {
+    pub additional_pub_keys: Vec<[u8; 32]>,
+    pub janus_bases: Vec<[u8; 32]>,
+}
+
+fn read_counted_keys(extra: &[u8], pos: &mut usize) -> Option<Vec<[u8; 32]>> {
+    let count = *extra.get(*pos)? as usize;
+    *pos += 1;
+    if count == 0 || *pos + count * 32 > extra.len() {
+        return None;
+    }
+    let keys = extra[*pos..*pos + count * 32]
+        .chunks_exact(32)
+        .map(|chunk| chunk.try_into().unwrap())
+        .collect();
+    *pos += count * 32;
+    Some(keys)
+}
+
+fn skip_fixed(extra: &[u8], pos: &mut usize, size: usize) -> Option<()> {
+    if size > extra.len() - *pos {
+        return None;
+    }
+    *pos += size;
+    Some(())
+}
+
+fn skip_nonce(extra: &[u8], pos: &mut usize) -> Option<()> {
+    let size = *extra.get(*pos)? as usize;
+    *pos += 1;
+    skip_fixed(extra, pos, size)
+}
+
+fn skip_sized(extra: &[u8], pos: &mut usize) -> Option<()> {
+    let size = read_varint(extra, pos).ok()? as usize;
+    if size > extra.len() - *pos {
+        return None;
+    }
+    *pos += size;
+    Some(())
+}
+
+/// Read 0x06 and 0x09 from the extra. Walks every tag fuego-suite writes ahead
+/// of them in a transfer (pubkey, nonce, merge-mining tag, message, TTL); at a
+/// tag whose length it does not know it stops and returns what it has read.
+pub fn parse_subaddress_tx_keys(extra: &[u8]) -> SubaddressTxKeys {
+    let mut keys = SubaddressTxKeys::default();
+    let mut pos = 0usize;
+    while pos < extra.len() {
+        let tag = extra[pos];
+        pos += 1;
+        let read = match tag {
+            TX_EXTRA_TAG_PADDING => return keys,
+            TX_EXTRA_TAG_PUBKEY => skip_fixed(extra, &mut pos, 32),
+            TX_EXTRA_TAG_NONCE => skip_nonce(extra, &mut pos),
+            TX_EXTRA_MERGE_MINING_TAG | TX_EXTRA_MESSAGE_TAG | TX_EXTRA_TTL => skip_sized(extra, &mut pos),
+            TX_EXTRA_ADDITIONAL_PUBKEYS => read_counted_keys(extra, &mut pos).map(|k| keys.additional_pub_keys = k),
+            TX_EXTRA_JANUS_BASE => read_counted_keys(extra, &mut pos).map(|k| keys.janus_bases = k),
+            _ => None,
+        };
+        if read.is_none() {
+            return keys;
+        }
+    }
+    keys
+}
+
+/// Append 0x06 (when present) and 0x09 as fuego-suite writes them: tag, count
+/// byte, keys. Fails for an empty or oversized (> 255) list.
+pub fn add_subaddress_tx_keys(extra: &mut Vec<u8>, keys: &SubaddressTxKeys) -> Result<(), String> {
+    let mut write = |tag: u8, list: &[[u8; 32]]| -> Result<(), String> {
+        if list.is_empty() || list.len() > 255 {
+            return Err(format!("extra tag {tag:#04x} needs 1 to 255 keys, got {}", list.len()));
+        }
+        extra.push(tag);
+        extra.push(list.len() as u8);
+        for key in list {
+            extra.extend_from_slice(key);
+        }
+        Ok(())
+    };
+    if !keys.additional_pub_keys.is_empty() {
+        write(TX_EXTRA_ADDITIONAL_PUBKEYS, &keys.additional_pub_keys)?;
+    }
+    write(TX_EXTRA_JANUS_BASE, &keys.janus_bases)
 }
 
 /// Build a standard extra: 0x01 || R (32 bytes). Matches
@@ -1285,5 +1381,72 @@ fn kv_value_to_json(value: &KvValue) -> Value {
                 .collect(),
         ),
         KvValue::Array(v) => Value::Array(v.iter().map(kv_value_to_json).collect()),
+    }
+}
+
+#[cfg(test)]
+mod subaddress_extra_tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn vectors() -> Value {
+        serde_json::from_str(include_str!("../../../test-vectors/funsa_v2_vectors.json")).unwrap()
+    }
+
+    fn suite_prefix(name: &str) -> TransactionPrefix {
+        let blob = hex::decode(vectors()[name]["blob"].as_str().unwrap()).unwrap();
+        let mut pos = 0usize;
+        parse_prefix_at(&blob, &mut pos).unwrap()
+    }
+
+    fn suite_tx_secret(name: &str) -> [u8; 32] {
+        hex::decode(vectors()[name]["tx_secret"].as_str().unwrap()).unwrap().try_into().unwrap()
+    }
+
+    #[test]
+    fn reads_the_key_lists_fuego_suite_writes() {
+        let single = suite_prefix("single_key_tx");
+        let keys = parse_subaddress_tx_keys(&single.extra);
+        assert!(keys.additional_pub_keys.is_empty());
+        assert_eq!(keys.janus_bases, vec![fuego_crypto::ring::secret_key_to_public_key(&suite_tx_secret("single_key_tx"))]);
+
+        let per_output = suite_prefix("per_output_tx");
+        let keys = parse_subaddress_tx_keys(&per_output.extra);
+        assert_eq!(keys.additional_pub_keys.len(), per_output.outputs.len());
+        assert_eq!(keys.janus_bases.len(), per_output.outputs.len());
+
+        let standard = suite_prefix("standard_tx");
+        let keys = parse_subaddress_tx_keys(&standard.extra);
+        assert!(keys.additional_pub_keys.is_empty());
+        assert_eq!(keys.janus_bases, vec![fuego_crypto::janus_filler(&suite_tx_secret("standard_tx"))]);
+    }
+
+    #[test]
+    fn written_lists_read_back_after_other_fields() {
+        let keys = SubaddressTxKeys {
+            additional_pub_keys: vec![[1u8; 32], [2u8; 32]],
+            janus_bases: vec![[3u8; 32], [4u8; 32]],
+        };
+        let mut extra = build_extra_with_pubkey(&[9u8; 32]);
+        extra.extend_from_slice(&[TX_EXTRA_TAG_NONCE, 3, 7, 7, 7, TX_EXTRA_MESSAGE_TAG, 2, 0xaa, 0xbb, TX_EXTRA_TTL, 1, 5]);
+        add_subaddress_tx_keys(&mut extra, &keys).unwrap();
+        assert_eq!(parse_subaddress_tx_keys(&extra), keys);
+    }
+
+    #[test]
+    fn malformed_lists_are_not_read() {
+        let mut empty = build_extra_with_pubkey(&[9u8; 32]);
+        empty.extend_from_slice(&[TX_EXTRA_JANUS_BASE, 0]);
+        assert_eq!(parse_subaddress_tx_keys(&empty), SubaddressTxKeys::default());
+
+        let mut truncated = build_extra_with_pubkey(&[9u8; 32]);
+        truncated.extend_from_slice(&[TX_EXTRA_ADDITIONAL_PUBKEYS, 2]);
+        truncated.extend_from_slice(&[1u8; 40]);
+        assert_eq!(parse_subaddress_tx_keys(&truncated), SubaddressTxKeys::default());
+
+        let mut too_many = Vec::new();
+        let keys = SubaddressTxKeys { additional_pub_keys: vec![], janus_bases: vec![[1u8; 32]; 256] };
+        assert!(add_subaddress_tx_keys(&mut too_many, &keys).is_err());
+        assert!(add_subaddress_tx_keys(&mut too_many, &SubaddressTxKeys::default()).is_err());
     }
 }

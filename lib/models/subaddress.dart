@@ -15,12 +15,22 @@ class Subaddress {
   /// funds on them are swept to the main address.
   final bool legacy;
 
+  /// Derivation scheme walletd used: [funsaScheme] (own view key, unlinkable)
+  /// or [sublimeScheme] (shares the wallet's view key, so any two are linkable).
+  final int scheme;
+
+  static const int sublimeScheme = 1;
+  static const int funsaScheme = 2;
+
+  bool get linkable => !legacy && scheme == sublimeScheme;
+
   const Subaddress({
     required this.address,
     required this.label,
     required this.index,
     required this.createdAt,
     this.legacy = false,
+    this.scheme = sublimeScheme,
   });
 
   factory Subaddress.fromJson(
@@ -35,6 +45,7 @@ class Subaddress {
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
       legacy: json['legacy'] as bool? ?? legacyDefault,
+      scheme: json['scheme'] as int? ?? sublimeScheme,
     );
   }
 
@@ -44,6 +55,7 @@ class Subaddress {
     'index': index,
     'createdAt': createdAt.toIso8601String(),
     'legacy': legacy,
+    'scheme': scheme,
   };
 
   Subaddress copyWith({String? label}) => Subaddress(
@@ -52,7 +64,12 @@ class Subaddress {
     index: index,
     createdAt: createdAt,
     legacy: legacy,
+    scheme: scheme,
   );
+
+  /// Same backend slot: kind, scheme and index (indices restart per scheme).
+  bool sameSlot(Subaddress other) =>
+      legacy == other.legacy && scheme == other.scheme && index == other.index;
 
   String get addressShort {
     if (address.length <= 30) return address;
@@ -60,12 +77,31 @@ class Subaddress {
   }
 }
 
+/// One sub-address as walletd lists it.
+typedef BackendSubaddress = ({int scheme, int index, String address});
+
+/// Reads one `get_subaddresses` list. Entries from a walletd older than funsa
+/// carry no version: those are Sublime sub-addresses.
+List<BackendSubaddress> backendSubaddresses(Object? entries) => [
+  if (entries is List<dynamic>)
+    for (final e in entries)
+      if (e is Map<String, dynamic> &&
+          e['index'] is int &&
+          e['address'] is String)
+        (
+          scheme: e['version'] as int? ?? Subaddress.sublimeScheme,
+          index: e['index'] as int,
+          address: e['address'] as String,
+        ),
+];
+
 class SubaddressStore {
   static const _fileName = 'subaddresses.json';
 
   /// 2: indices and addresses come from fuego_walletd (fuego-suite scheme).
+  /// 3: entries carry their derivation scheme; v2 entries are all Sublime.
   /// Files without a version hold only old-scheme entries.
-  static const _version = 2;
+  static const _version = 3;
 
   List<Subaddress> _subaddresses = [];
 
@@ -93,13 +129,15 @@ class SubaddressStore {
       if (await file.exists()) {
         final data =
             jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-        final isOld = (data['version'] as int? ?? 1) < _version;
+        final version = data['version'] as int? ?? 1;
+        final isOld = version < _version;
+        final heldOnlyOldSchemeKeys = version < 2;
         final list = data['subaddresses'] as List<dynamic>? ?? [];
         _subaddresses = list
             .map(
               (e) => Subaddress.fromJson(
                 e as Map<String, dynamic>,
-                legacyDefault: isOld,
+                legacyDefault: heldOnlyOldSchemeKeys,
               ),
             )
             .toList();
@@ -152,6 +190,7 @@ class SubaddressStore {
     required int index,
     required String address,
     required String label,
+    required int scheme,
   }) async {
     final trimmed = address.trim();
     if (trimmed.isEmpty || trimmed.length < 90) {
@@ -163,8 +202,9 @@ class SubaddressStore {
       label: label.trim(),
       index: index,
       createdAt: DateTime.now(),
+      scheme: scheme,
     );
-    _subaddresses.removeWhere((s) => !s.legacy && s.index == index);
+    _subaddresses.removeWhere((s) => s.sameSlot(sub));
     _subaddresses.add(sub);
     if (sub.label.isNotEmpty) _labels[sub.address] = sub.label;
     await _save();
@@ -175,25 +215,32 @@ class SubaddressStore {
   /// for the open wallet. The backend derives them from the wallet's seed, so an
   /// entry it does not list belongs to another key (another wallet, or the key an
   /// older walletd generated for itself) and must not be handed out.
-  Future<void> reconcile(List<(int, String)> fromBackend) async {
+  Future<void> reconcile(List<BackendSubaddress> fromBackend) async {
     final byAddress = {for (final s in _subaddresses) s.address: s};
     final current = <Subaddress>[
-      for (final (index, address) in fromBackend)
+      for (final (:scheme, :index, :address) in fromBackend)
         if (!_hidden.contains(address))
           Subaddress(
             address: address,
             label: _labels[address] ?? '',
             index: index,
             createdAt: byAddress[address]?.createdAt ?? DateTime.now(),
+            scheme: scheme,
           ),
     ];
     final next = [..._subaddresses.where((s) => s.legacy), ...current];
     if (listEquals(
       next
-          .map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}')
+          .map(
+            (s) =>
+                '${s.legacy}:${s.scheme}:${s.index}:${s.address}:${s.label}',
+          )
           .toList(),
       _subaddresses
-          .map((s) => '${s.legacy}:${s.index}:${s.address}:${s.label}')
+          .map(
+            (s) =>
+                '${s.legacy}:${s.scheme}:${s.index}:${s.address}:${s.label}',
+          )
           .toList(),
     )) {
       return;
@@ -209,24 +256,16 @@ class SubaddressStore {
 
   /// Hides a sub-address from the list. Legacy entries stay until their funds
   /// are swept, since they are the only record of which old keys to scan.
-  Future<void> remove(int index, {bool legacy = false}) async {
-    for (final s in _subaddresses.where(
-      (s) => s.index == index && s.legacy == legacy,
-    )) {
-      if (!legacy) _hidden.add(s.address);
+  Future<void> remove(Subaddress sub) async {
+    for (final s in _subaddresses.where((s) => s.sameSlot(sub))) {
+      if (!s.legacy) _hidden.add(s.address);
     }
-    _subaddresses.removeWhere((s) => s.index == index && s.legacy == legacy);
+    _subaddresses.removeWhere((s) => s.sameSlot(sub));
     await _save();
   }
 
-  Future<void> updateLabel(
-    int index,
-    String label, {
-    bool legacy = false,
-  }) async {
-    final i = _subaddresses.indexWhere(
-      (s) => s.index == index && s.legacy == legacy,
-    );
+  Future<void> updateLabel(Subaddress sub, String label) async {
+    final i = _subaddresses.indexWhere((s) => s.sameSlot(sub));
     if (i != -1) {
       _subaddresses[i] = _subaddresses[i].copyWith(label: label);
       _labels[_subaddresses[i].address] = label;

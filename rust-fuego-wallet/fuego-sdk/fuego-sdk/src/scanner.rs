@@ -96,6 +96,9 @@ pub enum OutputOwner {
     /// and n + 1) that only a separate scan finds. Funds here are swept to
     /// the primary address.
     LegacySubaddress(u32),
+    /// funsa V2 sub-address (major 0, minor n), n >= 1. Credited only when the
+    /// output's tx key passes the Janus check.
+    SubaddressV2(u32),
 }
 
 /// Sub-addresses scanned beyond the highest one used or created, so outputs
@@ -110,6 +113,7 @@ struct ScanKeys {
     spend_secret: [u8; 32],
     by_spend_key: HashMap<[u8; 32], (OutputOwner, [u8; 32])>,
     subaddress_top: u32,
+    subaddress_v2_top: u32,
     legacy: Vec<LegacyAccount>,
 }
 
@@ -130,10 +134,76 @@ impl ScanKeys {
             spend_secret: keys.spend_secret,
             by_spend_key,
             subaddress_top: 0,
+            subaddress_v2_top: 0,
             legacy: Vec::new(),
         };
         table.extend_subaddresses(SUBADDRESS_LOOKAHEAD);
+        table.extend_subaddresses_v2(SUBADDRESS_LOOKAHEAD);
         table
+    }
+
+    fn extend_subaddresses_v2(&mut self, top: u32) {
+        while self.subaddress_v2_top < top {
+            let minor = self.subaddress_v2_top + 1;
+            if let Some(k) = fuego_crypto::derive_subaddress_v2_keys(
+                &self.view_secret,
+                &self.spend_public,
+                Some(&self.spend_secret),
+                0,
+                minor,
+            ) {
+                self.by_spend_key.insert(
+                    k.spend_public,
+                    (OutputOwner::SubaddressV2(minor), k.spend_secret.clone().unwrap()),
+                );
+            }
+            self.subaddress_v2_top = minor;
+        }
+    }
+
+    /// The owner whose spend key output `index` pays under this tx key, and the
+    /// one-time secret that spends it. A V2 sub-address needs a passing Janus check.
+    fn match_key_output(&self, candidate: &CandidateTxKey, index: u64, output_key: &[u8; 32]) -> Option<(OutputOwner, [u8; 32])> {
+        let base = fuego_crypto::underive_public_key(&candidate.derivation, index, &fuego_crypto::PublicKey(*output_key))?;
+        let (owner, spend_secret) = self.by_spend_key.get(&base.0)?;
+        if !candidate.authorises(owner, spend_secret) {
+            return None;
+        }
+        fuego_crypto::derive_secret_key(&candidate.derivation, index, spend_secret).map(|x| (*owner, x))
+    }
+
+    fn match_legacy_key_output(&self, candidate: &CandidateTxKey, index: u64, output_key: &[u8; 32]) -> Option<(OutputOwner, [u8; 32])> {
+        self.legacy.iter().find_map(|acct| {
+            let d = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(candidate.tx_pub_key), &acct.view_secret)?;
+            let p = fuego_crypto::derive_public_key(&d, index, &acct.spend_public)?;
+            if p.0 != *output_key {
+                return None;
+            }
+            fuego_crypto::derive_secret_key(&d, index, &acct.spend_secret).map(|x| (OutputOwner::LegacySubaddress(acct.index), x))
+        })
+    }
+
+    /// Commitment outputs are owner-bound: the scalar and key image need the
+    /// recipient's spend secret, found through the same tx key candidates.
+    fn match_commitment(&self, candidate: &CandidateTxKey, index: u64, commit_key: &[u8; 32]) -> Option<(OutputOwner, [u8; 32], [u8; 32])> {
+        if let Some(base) = fuego_crypto::underive_public_key(&candidate.derivation, index, &fuego_crypto::PublicKey(*commit_key)) {
+            if let Some((owner, spend_secret)) = self.by_spend_key.get(&base.0) {
+                if candidate.authorises(owner, spend_secret) {
+                    if let Some((sec, ki)) = fuego_crypto::ring::derive_owner_bound_key_image(&candidate.derivation, index, commit_key, spend_secret) {
+                        return Some((*owner, sec, ki));
+                    }
+                }
+            }
+        }
+        self.legacy.iter().find_map(|acct| {
+            let d = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(candidate.tx_pub_key), &acct.view_secret)?;
+            let p = fuego_crypto::derive_public_key(&d, index, &acct.spend_public)?;
+            if p.0 != *commit_key {
+                return None;
+            }
+            fuego_crypto::ring::derive_owner_bound_key_image(&d, index, commit_key, &acct.spend_secret)
+                .map(|(sec, ki)| (OutputOwner::LegacySubaddress(acct.index), sec, ki))
+        })
     }
 
     fn extend_subaddresses(&mut self, top: u32) {
@@ -154,6 +224,54 @@ impl ScanKeys {
             self.subaddress_top = minor;
         }
     }
+}
+
+/// A tx key that may have produced an output: the main key, or that output's
+/// own key from 0x06, with the Janus base published for it.
+struct CandidateTxKey {
+    tx_pub_key: [u8; 32],
+    derivation: [u8; 32],
+    janus_base: Option<[u8; 32]>,
+}
+
+impl CandidateTxKey {
+    fn new(tx_pub_key: [u8; 32], view_secret: &[u8; 32], janus_base: Option<[u8; 32]>) -> Option<Self> {
+        let derivation = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(tx_pub_key), view_secret)?;
+        Some(Self { tx_pub_key, derivation, janus_base })
+    }
+
+    /// Every owner but a V2 sub-address accepts any tx key; a V2 sub-address
+    /// needs (b + m)*J == R, which a sender probing for the primary address cannot meet.
+    fn authorises(&self, owner: &OutputOwner, spend_secret: &[u8; 32]) -> bool {
+        match owner {
+            OutputOwner::SubaddressV2(_) => self
+                .janus_base
+                .map_or(false, |j| fuego_crypto::janus_check(&self.tx_pub_key, &j, spend_secret)),
+            _ => true,
+        }
+    }
+}
+
+/// The tx keys to try for output `index`: the main key first, then the
+/// output's own key when the tx carries one per output.
+fn candidate_tx_keys(
+    main_tx_key: Option<[u8; 32]>,
+    keys: &crate::serialization::SubaddressTxKeys,
+    output_count: usize,
+    index: usize,
+    view_secret: &[u8; 32],
+) -> Vec<CandidateTxKey> {
+    let per_output = keys.additional_pub_keys.len() == output_count;
+    let single_janus = (keys.additional_pub_keys.is_empty() && keys.janus_bases.len() == 1).then(|| keys.janus_bases[0]);
+    let mut candidates = Vec::with_capacity(2);
+    if let Some(r) = main_tx_key {
+        candidates.extend(CandidateTxKey::new(r, view_secret, single_janus));
+    }
+    if per_output {
+        let janus = (keys.janus_bases.len() == output_count).then(|| keys.janus_bases[index]);
+        candidates.extend(CandidateTxKey::new(keys.additional_pub_keys[index], view_secret, janus));
+    }
+    candidates
 }
 
 impl Drop for ScanKeys {
@@ -242,6 +360,18 @@ impl UtxoScanner {
             .write()
             .unwrap()
             .extend_subaddresses(minor.saturating_add(SUBADDRESS_LOOKAHEAD));
+        Some((sub.spend_public, sub.view_public))
+    }
+
+    /// Public keys (spend D, view C) of funsa V2 sub-address `minor` (>= 1),
+    /// and make sure the scanner looks at least SUBADDRESS_LOOKAHEAD past it.
+    pub fn subaddress_v2(&self, minor: u32) -> Option<([u8; 32], [u8; 32])> {
+        let keys = self.wallet_keys();
+        let sub = fuego_crypto::derive_subaddress_v2_keys(&keys.view_secret, &keys.spend_public, None, 0, minor)?;
+        self.scan_keys
+            .write()
+            .unwrap()
+            .extend_subaddresses_v2(minor.saturating_add(SUBADDRESS_LOOKAHEAD));
         Some((sub.spend_public, sub.view_public))
     }
 
@@ -411,61 +541,29 @@ impl UtxoScanner {
             }
         }
 
-        // Output detection.
-        let r = match parse_extra_pubkey(&prefix.extra) {
-            Some(k) => k,
-            None => return Ok((received, spent)),
-        };
-        let derivation = match fuego_crypto::generate_key_derivation(
-            &fuego_crypto::PublicKey(r),
-            &view_secret,
-        ) {
-            Some(d) => d,
-            None => return Ok((received, spent)),
-        };
-
+        // Output detection: each output is tried with the main tx key, then
+        // with its own key from 0x06 (per-output funsa transactions).
+        let main_tx_key = parse_extra_pubkey(&prefix.extra);
+        let subaddress_keys = crate::serialization::parse_subaddress_tx_keys(&prefix.extra);
         let table = self.scan_keys.read().unwrap();
-        // Legacy accounts have their own view keys, hence their own derivations.
-        let legacy_derivations: Vec<Option<[u8; 32]>> = table
-            .legacy
-            .iter()
-            .map(|a| fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r), &a.view_secret))
-            .collect();
         let mut highest_subaddress = 0u32;
+        let mut highest_subaddress_v2 = 0u32;
+        let mut note_owner = |owner: OutputOwner| match owner {
+            OutputOwner::Subaddress(minor) => highest_subaddress = highest_subaddress.max(minor),
+            OutputOwner::SubaddressV2(minor) => highest_subaddress_v2 = highest_subaddress_v2.max(minor),
+            _ => {}
+        };
 
         for (i, output) in prefix.outputs.iter().enumerate() {
+            let candidates = candidate_tx_keys(main_tx_key, &subaddress_keys, prefix.outputs.len(), i, &view_secret);
             match &output.target {
                 OutputTarget::Key(output_key) => {
-                    let mut hit: Option<(OutputOwner, [u8; 32])> = None;
-                    // One master derivation serves the primary address and every
-                    // sub-address: P - Hs(aR, i)G is the recipient's spend key.
-                    if let Some(base) = fuego_crypto::underive_public_key(
-                        &derivation,
-                        i as u64,
-                        &fuego_crypto::PublicKey(*output_key),
-                    ) {
-                        if let Some((owner, spend_secret)) = table.by_spend_key.get(&base.0) {
-                            hit = fuego_crypto::derive_secret_key(&derivation, i as u64, spend_secret)
-                                .map(|x| (*owner, x));
-                        }
-                    }
-                    if hit.is_none() {
-                        for (acct, d) in table.legacy.iter().zip(&legacy_derivations) {
-                            let Some(d) = d else { continue };
-                            let matches = fuego_crypto::derive_public_key(d, i as u64, &acct.spend_public)
-                                .map(|p| p.0 == *output_key)
-                                .unwrap_or(false);
-                            if matches {
-                                hit = fuego_crypto::derive_secret_key(d, i as u64, &acct.spend_secret)
-                                    .map(|x| (OutputOwner::LegacySubaddress(acct.index), x));
-                                break;
-                            }
-                        }
-                    }
+                    let hit = candidates
+                        .iter()
+                        .find_map(|c| table.match_key_output(c, i as u64, output_key))
+                        .or_else(|| candidates.iter().find_map(|c| table.match_legacy_key_output(c, i as u64, output_key)));
                     let Some((owner, secret)) = hit else { continue };
-                    if let OutputOwner::Subaddress(minor) = owner {
-                        highest_subaddress = highest_subaddress.max(minor);
-                    }
+                    note_owner(owner);
                     let key_image = fuego_crypto::generate_key_image(
                         &fuego_crypto::PublicKey(*output_key),
                         &secret,
@@ -491,59 +589,13 @@ impl UtxoScanner {
                     received += output.amount;
                 }
                 OutputTarget::Commitment(commit) => {
-                    // Owner-bound only: recover which registered spend key produced
-                    // this output, then derive the scalar with that key's secret.
-                    let mut resolved: Option<([u8; 32], [u8; 32])> = None;
-
-                    if let Some(base) = fuego_crypto::underive_public_key(
-                        &derivation,
-                        i as u64,
-                        &fuego_crypto::PublicKey(commit.commit_key),
-                    ) {
-                        if let Some((owner, spend_secret)) = table.by_spend_key.get(&base.0) {
-                            if let Some((sec, ki)) = fuego_crypto::ring::derive_owner_bound_key_image(
-                                &derivation,
-                                i as u64,
-                                &commit.commit_key,
-                                spend_secret,
-                            ) {
-                                if let OutputOwner::Subaddress(minor) = *owner {
-                                    highest_subaddress = highest_subaddress.max(minor);
-                                }
-                                resolved = Some((sec, ki));
-                            }
-                        }
-                    }
-                    if resolved.is_none() {
-                        for (acct, d) in table.legacy.iter().zip(&legacy_derivations) {
-                            let Some(d) = d else { continue };
-                            let matches = fuego_crypto::derive_public_key(
-                                d,
-                                i as u64,
-                                &acct.spend_public,
-                            )
-                            .map(|p| p.0 == commit.commit_key)
-                            .unwrap_or(false);
-                            if !matches {
-                                continue;
-                            }
-                            if let Some((sec, ki)) = fuego_crypto::ring::derive_owner_bound_key_image(
-                                d,
-                                i as u64,
-                                &commit.commit_key,
-                                &acct.spend_secret,
-                            ) {
-                                highest_subaddress = highest_subaddress.max(acct.index);
-                                resolved = Some((sec, ki));
-                            }
-                            break;
-                        }
-                    }
-
-                    let (key_scalar, key_image) = match resolved {
-                        Some(r) => r,
-                        None => continue, // not owner-bound; legacy form removed
+                    // Owner-bound only: legacy-form commitments are not resolved.
+                    let Some((owner, key_scalar, key_image)) =
+                        candidates.iter().find_map(|c| table.match_commitment(c, i as u64, &commit.commit_key))
+                    else {
+                        continue;
                     };
+                    note_owner(owner);
                     if state.spent_images.contains(&key_image)
                         || state.commitments.iter().any(|c| c.key_image == key_image)
                     {
@@ -566,11 +618,10 @@ impl UtxoScanner {
         }
 
         drop(table);
-        if highest_subaddress > 0 {
-            self.scan_keys
-                .write()
-                .unwrap()
-                .extend_subaddresses(highest_subaddress.saturating_add(SUBADDRESS_LOOKAHEAD));
+        if highest_subaddress > 0 || highest_subaddress_v2 > 0 {
+            let mut table = self.scan_keys.write().unwrap();
+            table.extend_subaddresses(highest_subaddress.saturating_add(SUBADDRESS_LOOKAHEAD));
+            table.extend_subaddresses_v2(highest_subaddress_v2.saturating_add(SUBADDRESS_LOOKAHEAD));
         }
 
         if received > 0 || spent > 0 {
@@ -645,20 +696,19 @@ impl UtxoScanner {
         state.history = snapshot.history.clone();
         state.owners = snapshot.owners.iter().copied().collect();
         state.balance.confirmed = state.utxos.iter().map(|u| u.amount).sum();
-        let highest = state
-            .owners
-            .values()
-            .filter_map(|o| match o {
-                OutputOwner::Subaddress(n) => Some(*n),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
+        let highest_of = |pick: fn(&OutputOwner) -> Option<u32>| state.owners.values().filter_map(pick).max().unwrap_or(0);
+        let highest = highest_of(|o| match o {
+            OutputOwner::Subaddress(n) => Some(*n),
+            _ => None,
+        });
+        let highest_v2 = highest_of(|o| match o {
+            OutputOwner::SubaddressV2(n) => Some(*n),
+            _ => None,
+        });
         drop(state);
-        self.scan_keys
-            .write()
-            .unwrap()
-            .extend_subaddresses(highest.saturating_add(SUBADDRESS_LOOKAHEAD));
+        let mut table = self.scan_keys.write().unwrap();
+        table.extend_subaddresses(highest.saturating_add(SUBADDRESS_LOOKAHEAD));
+        table.extend_subaddresses_v2(highest_v2.saturating_add(SUBADDRESS_LOOKAHEAD));
     }
 
     /// Phase 1 of sending: select inputs for `amount + fee` using the bucket
@@ -710,9 +760,10 @@ impl UtxoScanner {
         fee: u64,
         mixin: usize,
         decoys: &[Vec<DecoyEntry>],
+        janus_base: bool,
         rng: &mut impl rand::RngCore,
     ) -> Result<BuiltTransaction> {
-        self.build_with_selection_ext(selected, destinations, fee, mixin, decoys, 0, &[], rng)
+        self.build_with_selection_ext(selected, destinations, fee, mixin, decoys, 0, &[], janus_base, rng)
     }
 
     /// Like build_with_selection, with unlock_time and additional extra bytes
@@ -727,6 +778,7 @@ impl UtxoScanner {
         decoys: &[Vec<DecoyEntry>],
         unlock_time: u64,
         extra_extra: &[u8],
+        janus_base: bool,
         rng: &mut impl rand::RngCore,
     ) -> Result<BuiltTransaction> {
         let keys = self.wallet_keys();
@@ -744,19 +796,13 @@ impl UtxoScanner {
         let mut dests: Vec<BuildDestination> =
             Vec::with_capacity(destinations.len() + change_chunks.len() + 1);
         for (addr, amount) in destinations {
-            let (spend_pub, view_pub) = match fuego_crypto::parse_address(&addr.0) {
-                Some(k) => k,
-                None => {
-                    return Err(SdkError::Crypto(format!(
-                        "invalid destination address: {}",
-                        addr.0
-                    )))
-                }
-            };
+            let parsed = fuego_crypto::parse_any_address(&addr.0)
+                .ok_or_else(|| SdkError::Crypto(format!("invalid destination address: {}", addr.0)))?;
             dests.push(BuildDestination {
                 amount: *amount,
-                spend_pub,
-                view_pub,
+                spend_pub: parsed.spend_public,
+                view_pub: parsed.view_public,
+                is_subaddress: parsed.is_subaddress,
             });
         }
         for chunk in change_chunks {
@@ -764,6 +810,7 @@ impl UtxoScanner {
                 amount: chunk,
                 spend_pub: change_spend,
                 view_pub: change_view,
+                is_subaddress: false,
             });
         }
         if dust > 0 {
@@ -771,6 +818,7 @@ impl UtxoScanner {
                 amount: dust,
                 spend_pub: change_spend,
                 view_pub: change_view,
+                is_subaddress: false,
             });
         }
 
@@ -789,7 +837,7 @@ impl UtxoScanner {
         build_signed_transaction(
             &inputs,
             &dests,
-            &keys.view_public,
+            &crate::transaction_builder::TxSender::new(&keys, janus_base),
             fee,
             mixin,
             &decoys_sorted,
@@ -1009,5 +1057,305 @@ mod subaddress_tests {
         assert_eq!(s.balance_by_owner().get(&OutputOwner::LegacySubaddress(1)), Some(&42));
         assert_eq!(s.legacy_utxos().len(), 1);
         assert_spendable(&s);
+    }
+}
+
+#[cfg(test)]
+mod funsa_v2_scan_tests {
+    use super::*;
+    use crate::serialization::{add_subaddress_tx_keys, parse_prefix_at, SubaddressTxKeys, TxOutput};
+    use serde_json::Value;
+
+    fn vectors() -> Value {
+        serde_json::from_str(include_str!("../../../test-vectors/funsa_v2_vectors.json")).unwrap()
+    }
+
+    fn key(v: &Value) -> [u8; 32] {
+        hex::decode(v.as_str().unwrap()).unwrap().try_into().unwrap()
+    }
+
+    fn vector_keys() -> WalletKeys {
+        let v = vectors();
+        WalletKeys {
+            spend_secret: key(&v["recipient"]["spend_secret"]),
+            spend_public: key(&v["recipient"]["spend_public"]),
+            view_secret: key(&v["recipient"]["view_secret"]),
+            view_public: key(&v["recipient"]["view_public"]),
+        }
+    }
+
+    /// A scanner holding the vector recipient's keys (a = 0x11.., b = 0x22..).
+    fn recipient_scanner() -> UtxoScanner {
+        let scanner = UtxoScanner::new(WalletVault::from_seed([0x5au8; 32]));
+        *scanner.scan_keys.write().unwrap() = ScanKeys::new(&vector_keys());
+        scanner
+    }
+
+    fn suite_prefix(name: &str) -> TransactionPrefix {
+        let blob = hex::decode(vectors()[name]["blob"].as_str().unwrap()).unwrap();
+        let mut pos = 0usize;
+        parse_prefix_at(&blob, &mut pos).unwrap()
+    }
+
+    fn assert_spendable(s: &UtxoScanner) {
+        for u in s.utxos() {
+            assert_eq!(fuego_crypto::ring::secret_key_to_public_key(&u.secret_key), u.output_key);
+        }
+    }
+
+    fn v2_keys(minor: u32) -> fuego_crypto::SubaddressV2Keys {
+        let k = vector_keys();
+        fuego_crypto::derive_subaddress_v2_keys(&k.view_secret, &k.spend_public, Some(&k.spend_secret), 0, minor).unwrap()
+    }
+
+    #[test]
+    fn credits_a_single_key_payment_built_by_fuego_suite() {
+        let s = recipient_scanner();
+        s.scan_tx_prefix(&[1; 32], &suite_prefix("single_key_tx"), 10).unwrap();
+        assert_eq!(s.balance_by_owner().get(&OutputOwner::SubaddressV2(1)), Some(&700000));
+        assert_spendable(&s);
+    }
+
+    #[test]
+    fn credits_a_per_output_payment_built_by_fuego_suite() {
+        let s = recipient_scanner();
+        s.scan_tx_prefix(&[2; 32], &suite_prefix("per_output_tx"), 10).unwrap();
+        let by_owner = s.balance_by_owner();
+        assert_eq!(by_owner.get(&OutputOwner::SubaddressV2(2)), Some(&300000));
+        assert_eq!(by_owner.get(&OutputOwner::Primary), Some(&200000));
+        assert_spendable(&s);
+    }
+
+    #[test]
+    fn credits_a_standard_payment_carrying_the_filler() {
+        let s = recipient_scanner();
+        s.scan_tx_prefix(&[3; 32], &suite_prefix("standard_tx"), 10).unwrap();
+        assert_eq!(s.balance_by_owner().get(&OutputOwner::Primary), Some(&400000));
+        assert_spendable(&s);
+    }
+
+    /// A sender who knows the primary view key A pays D = B + mG with the standard
+    /// derivation rA: the output underives to D, which would link the sub-address
+    /// to the wallet. Without a Janus base, or with a forged one, it is not credited.
+    fn linking_probe(janus: Option<[u8; 32]>) -> TransactionPrefix {
+        let keys = vector_keys();
+        let sub = v2_keys(1);
+        let r = fuego_crypto::Keypair::from_secret([0x61u8; 32]);
+        let d = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(keys.view_public), &r.secret).unwrap();
+        let p = fuego_crypto::derive_public_key(&d, 0, &sub.spend_public).unwrap();
+        let mut extra = vec![0x01];
+        extra.extend_from_slice(&r.public);
+        if let Some(j) = janus {
+            add_subaddress_tx_keys(&mut extra, &SubaddressTxKeys { additional_pub_keys: vec![], janus_bases: vec![j] }).unwrap();
+        }
+        TransactionPrefix { version: 1, unlock_time: 0, inputs: Vec::new(), outputs: vec![TxOutput { amount: 5, target: OutputTarget::Key(p.0) }], extra }
+    }
+
+    #[test]
+    fn linking_probes_are_not_credited() {
+        let r = fuego_crypto::Keypair::from_secret([0x61u8; 32]);
+        for janus in [None, Some(r.public), Some(fuego_crypto::janus_filler(&r.secret))] {
+            let s = recipient_scanner();
+            s.scan_tx_prefix(&[4; 32], &linking_probe(janus), 10).unwrap();
+            assert!(s.utxos().is_empty(), "probe with janus {janus:?} was credited");
+        }
+    }
+
+    /// A per-output tx whose 0x09 list does not cover every output cannot prove
+    /// the sub-address output.
+    #[test]
+    fn per_output_payment_without_its_janus_base_is_not_credited() {
+        let mut prefix = suite_prefix("per_output_tx");
+        let mut keys = crate::serialization::parse_subaddress_tx_keys(&prefix.extra);
+        keys.janus_bases.swap(0, 1);
+        let pubkey_end = 33;
+        prefix.extra.truncate(pubkey_end);
+        add_subaddress_tx_keys(&mut prefix.extra, &keys).unwrap();
+        let s = recipient_scanner();
+        s.scan_tx_prefix(&[5; 32], &prefix, 10).unwrap();
+        assert_eq!(s.balance_by_owner().get(&OutputOwner::SubaddressV2(2)), None);
+    }
+
+    #[test]
+    fn lookahead_follows_v2_use_and_survives_restore() {
+        let s = recipient_scanner();
+        let sub = v2_keys(45);
+        let r = fuego_crypto::Keypair::from_secret([0x71u8; 32]);
+        let tx_key = fuego_crypto::subaddress_tx_pub_key(&r.secret, &sub.spend_public).unwrap();
+        let d = fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(sub.view_public), &r.secret).unwrap();
+        let p = fuego_crypto::derive_public_key(&d, 0, &sub.spend_public).unwrap();
+        let mut extra = vec![0x01];
+        extra.extend_from_slice(&tx_key);
+        add_subaddress_tx_keys(&mut extra, &SubaddressTxKeys { additional_pub_keys: vec![], janus_bases: vec![r.public] }).unwrap();
+        let prefix = TransactionPrefix { version: 1, unlock_time: 0, inputs: Vec::new(), outputs: vec![TxOutput { amount: 9, target: OutputTarget::Key(p.0) }], extra };
+        s.scan_tx_prefix(&[6; 32], &prefix, 10).unwrap();
+        assert_eq!(s.balance_by_owner().get(&OutputOwner::SubaddressV2(45)), Some(&9));
+        assert!(s.scan_keys.read().unwrap().subaddress_v2_top >= 45 + SUBADDRESS_LOOKAHEAD);
+
+        let restored = recipient_scanner();
+        restored.restore(&s.snapshot());
+        assert!(restored.scan_keys.read().unwrap().subaddress_v2_top >= 45 + SUBADDRESS_LOOKAHEAD);
+        assert_eq!(restored.balance_by_owner().get(&OutputOwner::SubaddressV2(45)), Some(&9));
+    }
+
+    // ── Transactions built by this SDK for the vector recipient ──────────
+    // Pinned in test-vectors/valise_built_txs.json, which fuego-suite's
+    // ValiseInterop test feeds through its consensus check and scanner.
+
+    use crate::transaction_builder::{build_transaction, BuildDestination, BuiltTransaction, SpendableOutput, TxSender};
+    use rand::SeedableRng;
+
+    fn keys_from_secrets(spend_secret: [u8; 32], view_secret: [u8; 32]) -> WalletKeys {
+        WalletKeys {
+            spend_public: fuego_crypto::ring::secret_key_to_public_key(&spend_secret),
+            view_public: fuego_crypto::ring::secret_key_to_public_key(&view_secret),
+            spend_secret,
+            view_secret,
+        }
+    }
+
+    fn sender_keys() -> WalletKeys {
+        let v = vectors();
+        keys_from_secrets(key(&v["sender"]["spend_secret"]), key(&v["sender"]["view_secret"]))
+    }
+
+    fn sender_scanner() -> UtxoScanner {
+        let scanner = UtxoScanner::new(WalletVault::from_seed([0x6bu8; 32]));
+        *scanner.scan_keys.write().unwrap() = ScanKeys::new(&sender_keys());
+        scanner
+    }
+
+    fn sender_input(amount: u64, seed: u8) -> SpendableOutput {
+        let mut secret_key = [seed; 32];
+        fuego_crypto::ref10::sc_reduce32(&mut secret_key);
+        let output_key = fuego_crypto::ring::secret_key_to_public_key(&secret_key);
+        SpendableOutput {
+            amount,
+            output_key,
+            secret_key,
+            key_image: fuego_crypto::ring::generate_key_image(&output_key, &secret_key),
+            global_index: 10 + seed as u32,
+            tx_hash: [seed; 32],
+            output_position: 0,
+        }
+    }
+
+    fn destination(amount: u64, keys: ([u8; 32], [u8; 32]), is_subaddress: bool) -> BuildDestination {
+        BuildDestination { amount, spend_pub: keys.0, view_pub: keys.1, is_subaddress }
+    }
+
+    fn recipient_subaddress(minor: u32) -> ([u8; 32], [u8; 32]) {
+        let sub = v2_keys(minor);
+        (sub.spend_public, sub.view_public)
+    }
+
+    fn recipient_primary() -> ([u8; 32], [u8; 32]) {
+        let k = vector_keys();
+        (k.spend_public, k.view_public)
+    }
+
+    fn sender_change() -> ([u8; 32], [u8; 32]) {
+        let k = sender_keys();
+        (k.spend_public, k.view_public)
+    }
+
+    const FEE: u64 = 10000;
+
+    fn build(dests: &[BuildDestination], janus_base: bool, seed: u8) -> BuiltTransaction {
+        let total: u64 = dests.iter().map(|d| d.amount).sum::<u64>() + FEE;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+        build_transaction(&[sender_input(total, seed)], dests, &TxSender::new(&sender_keys(), janus_base), FEE, 0, &[vec![]], 0, &[], &mut rng)
+            .unwrap()
+    }
+
+    fn single_key_payment() -> BuiltTransaction {
+        build(&[destination(700000, recipient_subaddress(1), true), destination(290000, sender_change(), false)], true, 0x31)
+    }
+
+    fn per_output_payment() -> BuiltTransaction {
+        build(
+            &[
+                destination(300000, recipient_subaddress(2), true),
+                destination(200000, recipient_primary(), false),
+                destination(90000, sender_change(), false),
+            ],
+            true,
+            0x32,
+        )
+    }
+
+    fn standard_payment_with_filler() -> BuiltTransaction {
+        build(&[destination(400000, recipient_primary(), false), destination(80000, sender_change(), false)], true, 0x33)
+    }
+
+    fn credited(scanner: &UtxoScanner, built: &BuiltTransaction) -> HashMap<OutputOwner, u64> {
+        scanner.scan_tx_prefix(&built.tx_hash, &built.tx.prefix, 10).unwrap();
+        assert_spendable(scanner);
+        scanner.balance_by_owner()
+    }
+
+    #[test]
+    fn single_key_payment_built_here_is_credited_by_both_sides() {
+        let built = single_key_payment();
+        let keys = crate::serialization::parse_subaddress_tx_keys(&built.tx.prefix.extra);
+        assert!(keys.additional_pub_keys.is_empty());
+        assert_eq!(keys.janus_bases.len(), 1);
+        assert_eq!(credited(&recipient_scanner(), &built).get(&OutputOwner::SubaddressV2(1)), Some(&700000));
+        assert_eq!(credited(&sender_scanner(), &built).get(&OutputOwner::Primary), Some(&290000));
+    }
+
+    #[test]
+    fn per_output_payment_built_here_is_credited_by_both_sides() {
+        let built = per_output_payment();
+        let keys = crate::serialization::parse_subaddress_tx_keys(&built.tx.prefix.extra);
+        assert_eq!(keys.additional_pub_keys.len(), 3);
+        assert_eq!(keys.janus_bases.len(), 3);
+        let received = credited(&recipient_scanner(), &built);
+        assert_eq!(received.get(&OutputOwner::SubaddressV2(2)), Some(&300000));
+        assert_eq!(received.get(&OutputOwner::Primary), Some(&200000));
+        assert_eq!(credited(&sender_scanner(), &built).get(&OutputOwner::Primary), Some(&90000));
+    }
+
+    #[test]
+    fn standard_payment_carries_the_filler_only_when_the_tip_is_v11() {
+        let with_filler = standard_payment_with_filler();
+        let r = crate::transaction_builder::recover_tx_secret(&with_filler.tx.prefix, &sender_keys()).unwrap();
+        assert_eq!(crate::serialization::parse_subaddress_tx_keys(&with_filler.tx.prefix.extra).janus_bases, vec![fuego_crypto::janus_filler(&r)]);
+        assert_eq!(credited(&recipient_scanner(), &with_filler).get(&OutputOwner::Primary), Some(&400000));
+
+        let before_v11 = build(&[destination(400000, recipient_primary(), false), destination(80000, sender_change(), false)], false, 0x33);
+        assert_eq!(crate::serialization::parse_subaddress_tx_keys(&before_v11.tx.prefix.extra), Default::default());
+    }
+
+    /// The tx key is seeded with the view secret: from the sender's public
+    /// address alone nobody can recompute r and spot the sender's transactions.
+    #[test]
+    fn tx_key_is_not_derivable_from_the_public_view_key() {
+        let built = standard_payment_with_filler();
+        let keys = sender_keys();
+        let tx_pub = crate::serialization::parse_extra_pubkey(&built.tx.prefix.extra).unwrap();
+        let inputs_hash = fuego_crypto::cn_fast_hash(&crate::serialization::serialize_inputs(&built.tx.prefix.inputs));
+        let seeded_with = |view_key: &[u8; 32]| {
+            let mut seed = view_key.to_vec();
+            seed.extend_from_slice(&inputs_hash);
+            fuego_crypto::ring::secret_key_to_public_key(&fuego_crypto::ring::hash_to_scalar(&seed))
+        };
+        assert_eq!(seeded_with(&keys.view_secret), tx_pub);
+        assert_ne!(seeded_with(&keys.view_public), tx_pub);
+    }
+
+    #[test]
+    fn built_transactions_match_the_pinned_vectors() {
+        let built = serde_json::json!({
+            "single_key_tx": hex::encode(&single_key_payment().serialized),
+            "per_output_tx": hex::encode(&per_output_payment().serialized),
+            "standard_tx": hex::encode(&standard_payment_with_filler().serialized),
+        });
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-vectors/valise_built_txs.json");
+        if std::env::var_os("FUNSA_WRITE_VECTORS").is_some() {
+            std::fs::write(path, serde_json::to_string_pretty(&built).unwrap() + "\n").unwrap();
+        }
+        let pinned: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(built, pinned, "builder output changed; rerun with FUNSA_WRITE_VECTORS=1 and update fuego-suite's ValiseInterop test");
     }
 }

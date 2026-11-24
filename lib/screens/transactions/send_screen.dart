@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:dns_client/dns_client.dart' hide DnsClient;
 import 'package:dns_client/src/dns_over_https.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
+import '../../services/fuego_vault_service.dart';
 import '../../utils/theme.dart';
 import '../../utils/xfg_ticker.dart';
 
@@ -67,6 +68,7 @@ class _SendScreenState extends State<SendScreen> {
       }
       final domain = parts[1];
 
+      final vault = context.read<FuegoVaultService>();
       final client = DnsOverHttps.cloudflare();
       final records = await client.lookupDataByRRType(domain, RRType.TXT);
 
@@ -81,9 +83,11 @@ class _SendScreenState extends State<SendScreen> {
         final valueStart = addrStart + 'recipient_address='.length;
         final addrEnd = record.indexOf(';', valueStart);
 
-        if (addrEnd == -1 || (addrEnd - valueStart) != 98) continue;
+        if (addrEnd == -1) continue;
 
-        fuegoAddress = record.substring(valueStart, addrEnd);
+        final candidate = record.substring(valueStart, addrEnd);
+        if (vault.recipientAddressProblem(candidate) != null) continue;
+        fuegoAddress = candidate;
         break;
       }
 
@@ -621,10 +625,9 @@ class _SendScreenState extends State<SendScreen> {
                         return 'Please enter recipient address';
                       }
                       if (value.contains('@')) return null;
-                      if (!value.startsWith('fire') || value.length != 98) {
-                        return 'Invalid address (must be fire... and 98 chars)';
-                      }
-                      return null;
+                      return context
+                          .read<FuegoVaultService>()
+                          .recipientAddressProblem(value);
                     },
                     maxLines: 3,
                     minLines: 1,

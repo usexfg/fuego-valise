@@ -1,5 +1,32 @@
 # CHANGELOG.agent.md
 
+## [2026-11-24] funsa V2 sub-addresses (rollout plan V1–V9)
+
+Plan: fuego-suite `docs/developer/funsa-subaddress-rollout-plan.md` section 1 (V1–V9). Owner request 2026-11-23: "proceed with valise and api".
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 122 | V1: `fuego_crypto::subaddress_v2` (V2 keys, per-output tx secrets, subaddress tx key, Janus check, F8 filler), tested byte for byte against `test-vectors/funsa_v2_vectors.json` from fuego-suite's `funsa_vectors` | Claude Code | 2026-11-24 | ✅ |
+| 123 | V2/V3: funsa / Tsub address encode and parse (`make_subaddress`, `parse_any_address`; `parse_address` is standard-only); 0x06 / 0x09 extra parse and write | Claude Code | 2026-11-24 | ✅ |
+| 124 | V4/V7: scanner finds V2 outputs (single-key and per-output) only when the Janus check holds; V1 sub-addresses keep scanning; restore extends both lookaheads; `SCAN_VERSION` 3 rescans each wallet once from genesis | Claude Code | 2026-11-24 | ✅ |
+| 125 | V5: builder pays funsa (single-key `R = r·D` with 0x09 `r·G`; per-output 0x06 / 0x09 with a random 0x09 key for standard outputs) and adds the F8 filler at block major version 11+; HEAT and commitment sends to funsa refused | Claude Code | 2026-11-24 | ✅ |
+| 126 | Bug: every builder seeded the deterministic tx key with the wallet's PUBLIC view key, so anyone holding the sender's address could compute `r` and identify the wallet's outgoing transactions. `TxSender` now carries the view secret; `recover_tx_secret` still finds `r` for transactions built before the fix; the pinned builder hash was re-pinned after checking the new transaction with fuego-suite's ring-signature verifier | Claude Code | 2026-11-24 | ✅ |
+| 127 | V6: `create_subaddress` returns funsa with `version: 2`; `get_subaddresses` lists V2 as `subaddresses` and V1 as `v1_subaddresses`; sends refuse a destination for the other network; `unverifiedSubaddressOutputs` not added: Valise has no view-only wallet, so every V2 output is Janus-checked | Claude Code | 2026-11-24 | ✅ |
+| 128 | V8: FFI `fuego_parse_address`; Dart `FuegoNative.parseAddress` and `FuegoVaultService.recipientAddressProblem` replace the "fire + 98 chars" send check and the OpenAlias length check; the sub-address store records each entry's scheme (file version 3) so V1 entries survive next to V2 ones with the same index; receive screen tags V1 entries LINKABLE | Claude Code | 2026-11-24 | ✅ |
+| 129 | V9: `fuego-suite` submodule 33e787a5 → 467b8562. No change to the C files `build.rs` compiles, `hash-ops.h` or `get_block_longhash` | Claude Code | 2026-11-24 | ✅ |
+| 130 | Stale `server.rs` auth test updated for the fail-closed auth behaviour already in the code | Claude Code | 2026-11-24 | ✅ |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| Rust | `cargo test --workspace` 146 passed; `CFLAGS=-DNO_AES cargo test -p fuego-ffi` 8 passed (CN v0 / v2 vectors, mainnet PoW) |
+| Interop | Suite-built transactions credited by the Valise scanner; Valise-built transactions pass fuego-suite consensus and are credited by `TransfersConsumer` (suite test `ValiseBuiltTransactionsPassConsensusAndAreCredited`) |
+| Mutation | Janus bypass, single-key tx with `r·G` as `R`, and a public-view-key tx seed each fail tests |
+| FFI boundary | `check_ffi_bindings.py`: 25 Dart lookups, 40 Rust exports, 0 errors, 0 warnings; Dart → native parse checked against the built `libfuego_ffi.so` |
+| Dart | `flutter test` 100 passed; `flutter analyze` on the changed files: 0 errors, 0 warnings |
+| Not done | ProofV2 not ported: `get_tx_proof` refuses subaddress- and per-output-keyed transactions. walletd `register_alias` ignores the `address` the alias screen sends (pre-existing) |
+
 ## [2026-11-10] Mobile CI iOS simulator FFI missing
 
 | # | Task | Owner | Date | Status |

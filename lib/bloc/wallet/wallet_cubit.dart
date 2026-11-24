@@ -437,11 +437,12 @@ class WalletCubit extends Cubit<WalletState> {
   Future<Subaddress?> createSubaddress(String label) async {
     try {
       if (!await _ensureWalletdHasVault()) return null;
-      final (index, address) = await _daemon.createSubaddress();
+      final created = await _daemon.createSubaddress();
       final sub = await _subaddressStore.add(
-        index: index,
-        address: address,
+        index: created.index,
+        address: created.address,
         label: label,
+        scheme: created.scheme,
       );
       emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
       return sub;
@@ -456,14 +457,10 @@ class WalletCubit extends Cubit<WalletState> {
     if (_walletdOpenFor == null) return;
     try {
       final r = await _daemon.getSubaddresses();
-      final current = [
-        for (final e in (r['subaddresses'] as List<dynamic>? ?? const []))
-          if (e is Map<String, dynamic> &&
-              e['index'] is int &&
-              e['address'] is String)
-            (e['index'] as int, e['address'] as String),
-      ];
-      await _subaddressStore.reconcile(current);
+      await _subaddressStore.reconcile([
+        ...backendSubaddresses(r['subaddresses']),
+        ...backendSubaddresses(r['v1_subaddresses']),
+      ]);
       final legacyBalance = (r['legacy'] as List<dynamic>? ?? const [])
           .fold<int>(
             0,
@@ -507,12 +504,12 @@ class WalletCubit extends Cubit<WalletState> {
   }
 
   Future<void> removeSubaddress(Subaddress sub) async {
-    await _subaddressStore.remove(sub.index, legacy: sub.legacy);
+    await _subaddressStore.remove(sub);
     emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
   }
 
   Future<void> updateSubaddressLabel(Subaddress sub, String label) async {
-    await _subaddressStore.updateLabel(sub.index, label, legacy: sub.legacy);
+    await _subaddressStore.updateLabel(sub, label);
     emit(state.copyWith(subaddresses: _subaddressStore.subaddresses));
   }
 

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../ffi/fuego_native.dart';
+import '../models/fuego_address.dart';
 import 'security_service.dart';
 
 /// A saved wallet on this device. Only public metadata — no secrets.
@@ -413,6 +414,15 @@ class FuegoVaultService {
 
   String makeAddress(List<int> spendPub, List<int> viewPub, {bool? testnet}) {
     return _ffi.makeAddress(spendPub, viewPub, testnet: testnet ?? _testnet);
+  }
+
+  /// Why [address] cannot be paid from this wallet's network, or null when it
+  /// can. Accepts standard addresses and funsa sub-addresses.
+  String? recipientAddressProblem(String address) {
+    return recipientAddressProblemFor(
+      _ffi.parseAddress(address.trim()),
+      walletOnTestnet: _testnet,
+    );
   }
 
   /// Set the network used for locally derived addresses. Re-derives the

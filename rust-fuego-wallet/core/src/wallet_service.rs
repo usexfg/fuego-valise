@@ -105,8 +105,10 @@ const KEY_HEIGHT: &[u8] = b"height";
 const KEY_TOP_HASH: &[u8] = b"top_hash";
 /// Which address received each owned output: Vec<([u8; 32], OutputOwner)>.
 const KEY_OWNERS: &[u8] = b"owners";
-/// Number of suite-scheme sub-addresses handed out (u32).
+/// Number of V1 ("Sublime") sub-addresses handed out before funsa (u32).
 const KEY_SUBADDRESS_COUNT: &[u8] = b"subaddress_count";
+/// Number of funsa V2 sub-addresses handed out (u32).
+const KEY_SUBADDRESS_V2_COUNT: &[u8] = b"subaddress_v2_count";
 /// Pre-suite-scheme sub-address indices to scan and sweep (Vec<u32>).
 const KEY_LEGACY_SUBADDRESSES: &[u8] = b"legacy_subaddresses";
 /// Set when the next sync must start over from genesis.
@@ -115,10 +117,19 @@ const KEY_RESCAN: &[u8] = b"rescan_requested";
 const KEY_SCAN_VERSION: &[u8] = b"scan_version";
 /// 2: vault secrets are reduced mod l (before, sc_check rejected most view keys,
 /// so most wallets found no outputs) and sub-address outputs are detected.
+/// 3: per-output tx keys (0x06) are tried for every output, and funsa V2
+/// sub-addresses are matched with their Janus check.
 /// State scanned under older rules is rebuilt once from genesis.
-const SCAN_VERSION: u32 = 2;
+const SCAN_VERSION: u32 = 3;
 /// Id of the wallet whose state this database holds (see `wallet_id`).
 const KEY_WALLET_ID: &[u8] = b"wallet_id";
+
+/// Sub-addresses as walletd lists them: (index, address, unspent balance).
+pub struct SubaddressListing {
+    pub v2: Vec<(u32, String, u64)>,
+    pub v1: Vec<(u32, String, u64)>,
+    pub legacy: Vec<(u32, u64)>,
+}
 
 /// Stable, non-secret id for a wallet: the first 8 bytes of
 /// Keccak("fuego-walletd-id" || spend_public || view_public), hex. Names its state directory.
@@ -277,6 +288,10 @@ impl SyncEngine {
         let count: u32 = db_get(db, KEY_SUBADDRESS_COUNT).unwrap_or(0);
         if count > 0 {
             wallet.subaddress(count);
+        }
+        let v2_count: u32 = db_get(db, KEY_SUBADDRESS_V2_COUNT).unwrap_or(0);
+        if v2_count > 0 {
+            wallet.subaddress_v2(v2_count);
         }
         let legacy: Vec<u32> = db_get(db, KEY_LEGACY_SUBADDRESSES).unwrap_or_default();
         wallet.set_legacy_subaddresses(&legacy);
@@ -553,8 +568,38 @@ impl WalletService {
 
     // ------------------------------------------------------------ send
 
+    /// Whether the node's tip block is v11, after which every key-input tx
+    /// carries a 0x09 Janus base (F8). Read per build, as fuego-suite does.
+    async fn janus_base_active(&self) -> std::result::Result<bool, String> {
+        let info = self.daemon.get_info().await?;
+        Ok(fuego_sdk::transaction_builder::janus_base_expected(info.block_major_version))
+    }
+
+    async fn tx_sender(
+        &self,
+        keys: &fuego_sdk::scanner::WalletKeys,
+    ) -> std::result::Result<fuego_sdk::transaction_builder::TxSender, String> {
+        Ok(fuego_sdk::transaction_builder::TxSender::new(keys, self.janus_base_active().await?))
+    }
+
     /// Build, persist and broadcast a transaction. `anonymity` is the
     /// requested mixin (0 → default 4).
+    /// Parse a send destination and refuse one encoded for the other network:
+    /// the keys would still be spendable, but the recipient's wallet on this
+    /// network never handed that address out.
+    fn require_destination_on_this_network(
+        &self,
+        address: &str,
+    ) -> std::result::Result<fuego_crypto::ParsedAddress, String> {
+        let parsed = fuego_crypto::parse_any_address(address)
+            .ok_or_else(|| format!("invalid destination address: {}", address))?;
+        if parsed.testnet != self.testnet {
+            let network = if self.testnet { "testnet" } else { "mainnet" };
+            return Err(format!("destination address is not a {network} address: {address}"));
+        }
+        Ok(parsed)
+    }
+
     pub async fn send_transaction(
         &self,
         destinations: &[(String, u64)],
@@ -569,6 +614,9 @@ impl WalletService {
         };
 
         let total: u64 = destinations.iter().map(|(_, a)| *a).sum::<u64>().checked_add(fee).ok_or("amount overflow")?;
+        for (address, _) in destinations {
+            self.require_destination_on_this_network(address)?;
+        }
 
         let selected = {
             let wallet = self.wallet.lock().unwrap();
@@ -584,10 +632,11 @@ impl WalletService {
             .map(|(addr, amount)| (fuego_sdk::Address(addr.clone()), *amount))
             .collect();
 
+        let janus_base = self.janus_base_active().await?;
         let built = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .build_with_selection(&selected, &dests, fee, mixin, &decoys, &mut rand::thread_rng())
+                .build_with_selection(&selected, &dests, fee, mixin, &decoys, janus_base, &mut rand::thread_rng())
                 .map_err(|e| format!("build: {e}"))?
         };
 
@@ -647,41 +696,48 @@ impl WalletService {
         }
     }
 
-    /// Suite-scheme sub-address `minor` (>= 1) as a string for this network.
-    fn subaddress_string(&self, minor: u32) -> Option<String> {
+    /// V1 ("Sublime") sub-address `minor` (>= 1) as a string for this network.
+    fn subaddress_v1_string(&self, minor: u32) -> Option<String> {
         let (spend, view) = self.wallet.lock().unwrap().subaddress(minor)?;
         Some(fuego_crypto::make_address_with_prefix(&spend, &view, self.address_prefix()).0)
     }
 
-    /// Hand out the next sub-address. Returns (index, address).
+    /// funsa V2 sub-address `minor` (>= 1): funsa on mainnet, Tsub on testnet.
+    fn subaddress_v2_string(&self, minor: u32) -> Option<String> {
+        let (spend, view) = self.wallet.lock().unwrap().subaddress_v2(minor)?;
+        Some(fuego_crypto::make_subaddress(&spend, &view, self.testnet).0)
+    }
+
+    /// Hand out the next funsa V2 sub-address. Returns (index, address).
     pub fn create_subaddress(&self) -> std::result::Result<(u32, String), String> {
-        let next = db_get::<u32>(&self.db, KEY_SUBADDRESS_COUNT).unwrap_or(0) + 1;
-        let address = self.subaddress_string(next).ok_or("sub-address derivation failed")?;
-        db_put(&self.db, KEY_SUBADDRESS_COUNT, &next);
+        let next = db_get::<u32>(&self.db, KEY_SUBADDRESS_V2_COUNT).unwrap_or(0) + 1;
+        let address = self.subaddress_v2_string(next).ok_or("sub-address derivation failed")?;
+        db_put(&self.db, KEY_SUBADDRESS_V2_COUNT, &next);
         let _ = self.db.flush();
         Ok((next, address))
     }
 
-    /// Every handed-out sub-address with its unspent balance, then legacy
+    /// Every handed-out sub-address with its unspent balance: funsa V2, the V1
+    /// set handed out before funsa (still scanned and spendable), and legacy
     /// sub-addresses with the balance still waiting to be swept.
-    pub fn list_subaddresses(&self) -> (Vec<(u32, String, u64)>, Vec<(u32, u64)>) {
+    pub fn list_subaddresses(&self) -> SubaddressListing {
         use fuego_sdk::scanner::OutputOwner;
-        let count: u32 = db_get(&self.db, KEY_SUBADDRESS_COUNT).unwrap_or(0);
+        let v1_count: u32 = db_get(&self.db, KEY_SUBADDRESS_COUNT).unwrap_or(0);
+        let v2_count: u32 = db_get(&self.db, KEY_SUBADDRESS_V2_COUNT).unwrap_or(0);
         let (balances, legacy) = {
             let wallet = self.wallet.lock().unwrap();
             (wallet.balance_by_owner(), wallet.legacy_subaddresses())
         };
-        let subs = (1..=count)
-            .filter_map(|n| {
-                let addr = self.subaddress_string(n)?;
-                Some((n, addr, *balances.get(&OutputOwner::Subaddress(n)).unwrap_or(&0)))
-            })
-            .collect();
-        let legacy = legacy
-            .into_iter()
-            .map(|n| (n, *balances.get(&OutputOwner::LegacySubaddress(n)).unwrap_or(&0)))
-            .collect();
-        (subs, legacy)
+        let balance = |owner: OutputOwner| *balances.get(&owner).unwrap_or(&0);
+        SubaddressListing {
+            v2: (1..=v2_count)
+                .filter_map(|n| Some((n, self.subaddress_v2_string(n)?, balance(OutputOwner::SubaddressV2(n)))))
+                .collect(),
+            v1: (1..=v1_count)
+                .filter_map(|n| Some((n, self.subaddress_v1_string(n)?, balance(OutputOwner::Subaddress(n)))))
+                .collect(),
+            legacy: legacy.into_iter().map(|n| (n, balance(OutputOwner::LegacySubaddress(n)))).collect(),
+        }
     }
 
     /// Start scanning pre-suite-scheme sub-addresses (vault keys n, n + 1).
@@ -748,10 +804,11 @@ impl WalletService {
         }
         let decoys = self.fetch_decoys(&selected, DEFAULT_MIXIN).await?;
         let to = fuego_sdk::Address(address.to_string());
+        let janus_base = self.janus_base_active().await?;
         let built = {
             let wallet = self.wallet.lock().unwrap();
             wallet
-                .build_with_selection(&selected, &[(to, total.checked_sub(fee).ok_or("amount underflow")?)], fee, DEFAULT_MIXIN, &decoys, &mut rand::thread_rng())
+                .build_with_selection(&selected, &[(to, total.checked_sub(fee).ok_or("amount underflow")?)], fee, DEFAULT_MIXIN, &decoys, janus_base, &mut rand::thread_rng())
                 .map_err(|e| format!("build: {e}"))?
         };
         let key_images: Vec<[u8; 32]> = selected.iter().map(|u| u.key_image).collect();
@@ -875,6 +932,7 @@ impl WalletService {
                 .map_err(|e| format!("coin selection: {e}"))?
         };
         let decoys: Vec<Vec<DecoyEntry>> = selected.iter().map(|_| Vec::new()).collect();
+        let janus_base = self.janus_base_active().await?;
         let built = {
             let wallet = self.wallet.lock().unwrap();
             wallet
@@ -886,6 +944,7 @@ impl WalletService {
                     &decoys,
                     unlock_time,
                     &[],
+                    janus_base,
                     &mut rand::thread_rng(),
                 )
                 .map_err(|e| format!("build: {e}"))?
@@ -954,6 +1013,7 @@ impl WalletService {
 
         let fee = MINIMUM_FEE;
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
         let selected = {
             let wallet = self.wallet.lock().unwrap();
             wallet
@@ -1002,7 +1062,7 @@ impl WalletService {
             xfg_burned,
             heat_minted,
             change,
-            &keys.view_public,
+            &sender,
             (&keys.spend_public, &keys.view_public),
             fee,
             &mut rand::thread_rng(),
@@ -1052,6 +1112,7 @@ impl WalletService {
             }
 
             let keys = self.wallet.lock().unwrap().wallet_keys();
+            let sender = self.tx_sender(&keys).await?;
             let selected = {
                 let wallet = self.wallet.lock().unwrap();
                 wallet
@@ -1098,7 +1159,7 @@ impl WalletService {
                 expected_heat,
                 min_output,
                 (&keys.spend_public, &keys.view_public),
-                &keys.view_public,
+                &sender,
                 fee,
                 &mut rand::thread_rng(),
             )
@@ -1122,6 +1183,7 @@ impl WalletService {
         }
 
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
         let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
             .wallet
             .lock()
@@ -1170,7 +1232,7 @@ impl WalletService {
             min_output,
             (&keys.spend_public, &keys.view_public),
             heat_change,
-            &keys.view_public,
+            &sender,
             fee,
             &mut rand::thread_rng(),
         )
@@ -1214,6 +1276,7 @@ impl WalletService {
         let fee = MINIMUM_FEE;
         let mixin = DEFAULT_MIXIN;
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
 
         // XFG side: select key inputs for amount_xfg + fee.
         let selected_xfg = {
@@ -1307,7 +1370,7 @@ impl WalletService {
             shares,
             xfg_change,
             heat_change,
-            &keys.view_public,
+            &sender,
             (&keys.spend_public, &keys.view_public),
             fee,
             &mut rand::thread_rng(),
@@ -1347,6 +1410,7 @@ impl WalletService {
         let fee = MINIMUM_FEE;
         let mixin = DEFAULT_MIXIN;
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
 
         let lp: Vec<fuego_sdk::scanner::CommitmentEntry> = self
             .wallet
@@ -1407,7 +1471,7 @@ impl WalletService {
             min_heat,
             amount_xfg,
             amount_heat,
-            &keys.view_public,
+            &sender,
             (&keys.spend_public, &keys.view_public),
             fee,
             &mut rand::thread_rng(),
@@ -1445,6 +1509,7 @@ impl WalletService {
         let fee = MINIMUM_FEE;
         let mixin = DEFAULT_MIXIN;
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
 
         let selected = {
             let wallet = self.wallet.lock().unwrap();
@@ -1513,7 +1578,7 @@ impl WalletService {
             &address_hash,
             &pool_key,
             (&keys.spend_public, &keys.view_public),
-            &keys.view_public,
+            &sender,
             fee,
             &mut rand::thread_rng(),
         )
@@ -1581,6 +1646,7 @@ impl WalletService {
         }
 
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
         let heat_change = found.checked_sub(amount).and_then(|v| v.checked_sub(banking_fee)).and_then(|v| v.checked_sub(fee)).ok_or("amount underflow")?;
 
         let mut commitment_dests = vec![BuildCommitmentDestination {
@@ -1618,7 +1684,7 @@ impl WalletService {
             mixin,
             &[],
             &commitment_dests,
-            &keys.view_public,
+            &sender,
             fee,
             &extra_extra,
             &mut rand::thread_rng(),
@@ -1723,6 +1789,7 @@ impl WalletService {
         }
 
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
         let (chunks, dust) = decompose_change(payout, DEFAULT_DUST_THRESHOLD);
         let mut key_dests: Vec<BuildDestination> = Vec::with_capacity(chunks.len() + 1);
         for chunk in chunks {
@@ -1730,6 +1797,7 @@ impl WalletService {
                 amount: chunk,
                 spend_pub: keys.spend_public,
                 view_pub: keys.view_public,
+                is_subaddress: false,
             });
         }
         if dust > 0 {
@@ -1737,6 +1805,7 @@ impl WalletService {
                 amount: dust,
                 spend_pub: keys.spend_public,
                 view_pub: keys.view_public,
+                is_subaddress: false,
             });
         }
 
@@ -1758,7 +1827,7 @@ impl WalletService {
             mixin,
             &key_dests,
             &[],
-            &keys.view_public,
+            &sender,
             fee,
             &[],
             &mut rand::thread_rng(),
@@ -1830,6 +1899,7 @@ impl WalletService {
         let mixin = DEFAULT_MIXIN;
         let decoys = self.commitment_decoys(deposit, mixin).await?;
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
 
         let commitment_dests = vec![BuildCommitmentDestination {
             amount: rolled_amount,
@@ -1852,7 +1922,7 @@ impl WalletService {
             mixin,
             &[],
             &commitment_dests,
-            &keys.view_public,
+            &sender,
             fee,
             &[],
             &mut rand::thread_rng(),
@@ -1874,8 +1944,11 @@ impl WalletService {
         if amount == 0 {
             return Err("amount must be > 0".into());
         }
-        let (recv_spend, recv_view) = fuego_crypto::parse_address(address)
-            .ok_or_else(|| format!("invalid destination address: {}", address))?;
+        let destination = self.require_destination_on_this_network(address)?;
+        if destination.is_subaddress {
+            return Err("HEAT cannot be sent to a funsa sub-address; use the recipient's primary address".into());
+        }
+        let (recv_spend, recv_view) = (destination.spend_public, destination.view_public);
 
         let heat: Vec<fuego_sdk::scanner::CommitmentEntry> = self
             .wallet
@@ -1910,6 +1983,7 @@ impl WalletService {
         }
 
         let keys = self.wallet.lock().unwrap().wallet_keys();
+        let sender = self.tx_sender(&keys).await?;
         let mut commitment_dests = vec![BuildCommitmentDestination {
             amount,
             term: HEAT_TERM,
@@ -1946,7 +2020,7 @@ impl WalletService {
             mixin,
             &[],
             &commitment_dests,
-            &keys.view_public,
+            &sender,
             MINIMUM_FEE,
             &extra,
             &mut rand::thread_rng(),
@@ -1983,15 +2057,18 @@ impl WalletService {
         let prefix = fuego_sdk::serialization::parse_prefix(&serialized)
             .map_err(|e| format!("stored tx parse failed: {e}"))?;
 
-        // Recover the deterministic tx secret key.
+        // Recover the deterministic tx secret key. ProofV1 proves r*A for the
+        // main key R = r*G only: a sub-address-keyed tx needs ProofV2.
         let keys = self.wallet.lock().unwrap().wallet_keys();
-        let r = fuego_sdk::transaction_builder::recover_tx_secret(&prefix.inputs, &keys.view_secret);
-
-        // R = r*G; D = r*A (raw, no cofactor).
-        let mut r_p3 = fuego_crypto::ref10::GeP3::default();
-        fuego_crypto::ref10::ge_scalarmult_base(&mut r_p3, &r);
-        let mut r_pub = [0u8; 32];
-        fuego_crypto::ref10::ge_p3_tobytes(&mut r_pub, &r_p3);
+        let r = fuego_sdk::transaction_builder::recover_tx_secret(&prefix, &keys)
+            .ok_or("this wallet did not build the transaction's key")?;
+        let r_pub = fuego_crypto::ring::secret_key_to_public_key(&r);
+        let keyed_per_output = !fuego_sdk::serialization::parse_subaddress_tx_keys(&prefix.extra)
+            .additional_pub_keys
+            .is_empty();
+        if keyed_per_output || fuego_sdk::serialization::parse_extra_pubkey(&prefix.extra) != Some(r_pub) {
+            return Err("ProofV1 cannot prove a transaction keyed for a sub-address".into());
+        }
         let d = fuego_crypto::ring::raw_scalarmult_key(&recv_view, &r)
             .ok_or("tx proof derivation failed")?;
 
@@ -2235,17 +2312,60 @@ mod subaddress_service_tests {
             assert_eq!((i1, i2), (1, 2));
 
             let keys = svc.wallet.lock().unwrap().wallet_keys();
-            let (spend, view) = fuego_crypto::parse_address(&a1).unwrap();
-            let expect = fuego_crypto::derive_subaddress_keys(&keys.view_secret, &keys.spend_public, None, 0, 1).unwrap();
-            assert_eq!(spend, expect.spend_public);
-            assert_eq!(view, keys.view_public);
+            let parsed = fuego_crypto::parse_any_address(&a1).unwrap();
+            assert!(parsed.is_subaddress, "new sub-addresses are funsa: {a1}");
+            let expect = fuego_crypto::derive_subaddress_v2_keys(&keys.view_secret, &keys.spend_public, None, 0, 1).unwrap();
+            assert_eq!(parsed.spend_public, expect.spend_public);
+            assert_eq!(parsed.view_public, expect.view_public);
+            assert_ne!(parsed.view_public, keys.view_public, "a funsa view key is not the primary one");
         }
         // Restart: the count survives, so indices keep increasing.
         let svc = WalletService::new(seed, "http://127.0.0.1:1", dir.clone(), false).unwrap();
         assert_eq!(svc.create_subaddress().unwrap().0, 3);
-        let (subs, legacy) = svc.list_subaddresses();
-        assert_eq!(subs.iter().map(|s| s.0).collect::<Vec<_>>(), vec![1, 2, 3]);
-        assert!(legacy.is_empty());
+        let listing = svc.list_subaddresses();
+        assert_eq!(listing.v2.iter().map(|s| s.0).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert!(listing.v1.is_empty() && listing.legacy.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// V1 ("Sublime") sub-addresses handed out before funsa stay listed and
+    /// scanned after the upgrade; new ones are V2.
+    #[test]
+    fn v1_subaddresses_handed_out_before_funsa_survive() {
+        let dir = temp_dir("v1-continuity");
+        let seed = [0x43u8; 32];
+        {
+            let svc = WalletService::new(seed, "http://127.0.0.1:1", dir.clone(), false).unwrap();
+            db_put(&svc.db, KEY_SUBADDRESS_COUNT, &2u32);
+            let _ = svc.db.flush();
+        }
+        let svc = WalletService::new(seed, "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let keys = svc.wallet.lock().unwrap().wallet_keys();
+        let listing = svc.list_subaddresses();
+        assert_eq!(listing.v1.len(), 2);
+        let (spend, view) = fuego_crypto::parse_address(&listing.v1[1].1).unwrap();
+        let expect = fuego_crypto::derive_subaddress_keys(&keys.view_secret, &keys.spend_public, None, 0, 2).unwrap();
+        assert_eq!((spend, view), (expect.spend_public, keys.view_public));
+        assert_eq!(svc.create_subaddress().unwrap().0, 1, "V2 numbering starts on its own");
+        assert_eq!(svc.list_subaddresses().v1.len(), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sends_refuse_destinations_for_the_other_network() {
+        let dir = temp_dir("network-destinations");
+        let svc = WalletService::new([0x44u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let keys = svc.wallet.lock().unwrap().wallet_keys();
+        let mainnet_funsa = fuego_crypto::make_subaddress(&keys.spend_public, &keys.view_public, false).0;
+        let testnet_funsa = fuego_crypto::make_subaddress(&keys.spend_public, &keys.view_public, true).0;
+        assert!(svc.require_destination_on_this_network(&mainnet_funsa).unwrap().is_subaddress);
+        assert!(svc.require_destination_on_this_network(&testnet_funsa).unwrap_err().contains("not a mainnet address"));
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let heat = runtime.block_on(svc.send_heat(&mainnet_funsa, 1)).unwrap_err();
+        assert!(heat.contains("funsa"), "{heat}");
+        let xfg = runtime.block_on(svc.send_transaction(&[(testnet_funsa, 1)], 0, 0)).unwrap_err();
+        assert!(xfg.contains("not a mainnet address"), "{xfg}");
+        drop(svc);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -2262,7 +2382,7 @@ mod subaddress_service_tests {
         drop(svc);
         // Legacy indices survive a restart.
         let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
-        assert_eq!(svc.list_subaddresses().1.iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(svc.list_subaddresses().legacy.iter().map(|l| l.0).collect::<Vec<_>>(), vec![1, 2]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -440,7 +440,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                'Payments to any subaddress arrive in this wallet\'s balance.',
+                'Payments to any subaddress arrive in this wallet\'s balance. '
+                'A funsa… subaddress does not show that it belongs to this '
+                'wallet. Ones marked LINKABLE share your view key: anyone '
+                'holding two of them can tell they are yours.',
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -664,6 +667,24 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     }
   }
 
+  Widget _tileTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+
   Widget _buildSubaddressTile(Subaddress sub) {
     final isSelected = _selectedAddress == sub.address;
 
@@ -709,45 +730,15 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                       ),
                       if (sub.legacy) ...[
                         const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.errorColor.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: const Text(
-                            'OLD FORMAT',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.errorColor,
-                            ),
-                          ),
-                        ),
+                        _tileTag('OLD FORMAT', AppTheme.errorColor),
+                      ],
+                      if (sub.linkable) ...[
+                        const SizedBox(width: 6),
+                        _tileTag('LINKABLE', AppTheme.warningColor),
                       ],
                       if (isSelected) ...[
                         const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: const Text(
-                            'ACTIVE',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        ),
+                        _tileTag('ACTIVE', AppTheme.primaryColor),
                       ],
                     ],
                   ),

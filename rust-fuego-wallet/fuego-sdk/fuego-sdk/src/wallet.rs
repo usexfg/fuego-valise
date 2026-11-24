@@ -102,10 +102,11 @@ impl Wallet {
         fee: u64,
         mixin: usize,
         decoys: &[Vec<DecoyEntry>],
+        janus_base: bool,
         rng: &mut impl rand::RngCore,
     ) -> Result<BuiltTransaction> {
         self.scanner
-            .build_with_selection(selected, destinations, fee, mixin, decoys, rng)
+            .build_with_selection(selected, destinations, fee, mixin, decoys, janus_base, rng)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -118,6 +119,7 @@ impl Wallet {
         decoys: &[Vec<DecoyEntry>],
         unlock_time: u64,
         extra_extra: &[u8],
+        janus_base: bool,
         rng: &mut impl rand::RngCore,
     ) -> Result<BuiltTransaction> {
         self.scanner.build_with_selection_ext(
@@ -128,6 +130,7 @@ impl Wallet {
             decoys,
             unlock_time,
             extra_extra,
+            janus_base,
             rng,
         )
     }
@@ -163,6 +166,11 @@ impl Wallet {
     /// Public (spend, view) keys of suite-scheme sub-address `minor` (>= 1).
     pub fn subaddress(&self, minor: u32) -> Option<([u8; 32], [u8; 32])> {
         self.scanner.subaddress(minor)
+    }
+
+    /// Public keys (D, C) of funsa V2 sub-address `minor` (>= 1).
+    pub fn subaddress_v2(&self, minor: u32) -> Option<([u8; 32], [u8; 32])> {
+        self.scanner.subaddress_v2(minor)
     }
 
     /// Add pre-suite-scheme sub-address indices to scan; true if the set grew.

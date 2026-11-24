@@ -22,6 +22,9 @@ pub struct DaemonInfo {
     pub fee_address: String,
     pub status: String,
     pub version: String,
+    /// Major version of the tip block; 0 when the daemon does not report it.
+    #[serde(default)]
+    pub block_major_version: u8,
 }
 
 #[derive(Debug, Serialize)]

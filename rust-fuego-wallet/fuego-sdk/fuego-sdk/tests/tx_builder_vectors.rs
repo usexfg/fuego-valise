@@ -13,6 +13,20 @@ use fuego_sdk::transaction_builder::{
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+
+/// The sending wallet for these builds: only its view secret matters, since
+/// none of them pays a sub-address.
+fn sender_for(view_secret: &[u8; 32]) -> fuego_sdk::transaction_builder::TxSender {
+    let view_public = fuego_crypto::ring::secret_key_to_public_key(view_secret);
+    let keys = fuego_sdk::scanner::WalletKeys {
+        spend_secret: *view_secret,
+        spend_public: view_public,
+        view_secret: *view_secret,
+        view_public,
+    };
+    fuego_sdk::transaction_builder::TxSender::new(&keys, false)
+}
+
 fn make_output(
     amount: u64,
     secret: [u8; 32],
@@ -113,12 +127,14 @@ fn full_transaction_build() {
         amount,
         spend_pub: recv_spend,
         view_pub: recv_view,
+        is_subaddress: false,
     }];
     for chunk in change_chunks {
         dests.push(BuildDestination {
             amount: chunk,
             spend_pub,
             view_pub,
+            is_subaddress: false,
         });
     }
     if dust > 0 {
@@ -126,6 +142,7 @@ fn full_transaction_build() {
             amount: dust,
             spend_pub,
             view_pub,
+            is_subaddress: false,
         });
     }
 
@@ -141,7 +158,7 @@ fn full_transaction_build() {
         decoys.push(group);
     }
 
-    let built = build_transaction(&selected, &dests, &view_pub, fee, mixin, &decoys, 0, &[], &mut rng)
+    let built = build_transaction(&selected, &dests, &sender_for(&view_secret), fee, mixin, &decoys, 0, &[], &mut rng)
         .expect("build_transaction");
 
     // Structural invariants.
@@ -159,9 +176,10 @@ fn full_transaction_build() {
     // The tx hash and every ring signature of this exact transaction were
     // verified against the C++ daemon verification path via the
     // cross-language harness (parse + check_ring_signature). Pin the hash.
+    // Re-pinned when r stopped being seeded with the public view key.
     assert_eq!(
         hex::encode(built.tx_hash),
-        "bb11949ab604de09e9bb291b7e9b58215eb4efe04f22e833685af8a39ceb4c9b"
+        "d8dee9c29622066025ffa15bfa2f738d93ad7a166ad948a2e1a72826f40f0e96"
     );
 
     println!("TXHEX {}", hex::encode(&built.serialized));

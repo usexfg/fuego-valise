@@ -356,16 +356,20 @@ async fn handle_wallet_method(
         "create_subaddress" => {
             let wallet = need(wallet)?.lock().await;
             let (index, address) = wallet.create_subaddress()?;
-            Ok(serde_json::json!({ "index": index, "address": address }))
+            Ok(serde_json::json!({ "index": index, "address": address, "version": 2 }))
         }
         "get_subaddresses" => {
             let wallet = need(wallet)?.lock().await;
-            let (subs, legacy) = wallet.list_subaddresses();
+            let listing = wallet.list_subaddresses();
+            let entries = |subs: &[(u32, String, u64)], version: u32| {
+                subs.iter().map(|(i, a, b)| serde_json::json!({
+                    "index": i, "address": a, "balance": b, "version": version,
+                })).collect::<Vec<_>>()
+            };
             Ok(serde_json::json!({
-                "subaddresses": subs.iter().map(|(i, a, b)| serde_json::json!({
-                    "index": i, "address": a, "balance": b,
-                })).collect::<Vec<_>>(),
-                "legacy": legacy.iter().map(|(i, b)| serde_json::json!({
+                "subaddresses": entries(&listing.v2, 2),
+                "v1_subaddresses": entries(&listing.v1, 1),
+                "legacy": listing.legacy.iter().map(|(i, b)| serde_json::json!({
                     "index": i, "balance": b,
                 })).collect::<Vec<_>>(),
             }))
@@ -1453,8 +1457,8 @@ mod dispatch_tests {
     }
 
     /// A configured token must refuse a missing or wrong bearer token, and
-    /// accept only the exact value. With no token configured the API stays open
-    /// so a bare `fuego_walletd serve` still works.
+    /// accept only the exact value. With no token configured every call is
+    /// refused (6a81abe, FV-02: walletd authentication fails closed).
     #[tokio::test]
     async fn a_configured_token_gates_every_call() {
         let dir = std::env::temp_dir().join("walletd-auth-test");
@@ -1471,8 +1475,9 @@ mod dispatch_tests {
         assert!(require_token(&state, &auth_headers("Basic correct-token")).is_some());
         assert!(require_token(&state, &axum::http::HeaderMap::new()).is_some());
 
-        let open = AppState { auth_token: None, ..state };
-        assert!(require_token(&open, &axum::http::HeaderMap::new()).is_none());
+        let unconfigured = AppState { auth_token: None, ..state };
+        assert!(require_token(&unconfigured, &axum::http::HeaderMap::new()).is_some());
+        assert!(require_token(&unconfigured, &auth_headers("Bearer correct-token")).is_some());
         drop(svc);
     }
 
@@ -1560,8 +1565,14 @@ mod dispatch_tests {
 
         let created = call(&wallet, "create_subaddress", serde_json::json!({})).await.unwrap();
         assert_eq!(created["index"], 1);
+        assert_eq!(created["version"], 2);
+        let address = created["address"].as_str().unwrap();
+        let parsed = fuego_crypto::parse_any_address(address).expect("a funsa address");
+        assert!(parsed.is_subaddress && !parsed.testnet, "{address}");
         let listed = call(&wallet, "get_subaddresses", serde_json::json!({})).await.unwrap();
         assert_eq!(listed["subaddresses"][0]["address"], created["address"]);
+        assert_eq!(listed["subaddresses"][0]["version"], 2);
+        assert_eq!(listed["v1_subaddresses"].as_array().unwrap().len(), 0);
         let reg = call(&wallet, "register_legacy_subaddresses", serde_json::json!({"indices": [1]})).await.unwrap();
         assert_eq!(reg["rescan"], true);
         // No confirmed legacy outputs: nothing to sweep, and no daemon call is made.

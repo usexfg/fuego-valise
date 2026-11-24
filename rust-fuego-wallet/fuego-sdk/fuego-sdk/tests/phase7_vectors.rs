@@ -18,6 +18,20 @@ use fuego_sdk::transaction_builder::{
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+
+/// The sending wallet for these builds: only its view secret matters, since
+/// none of them pays a sub-address.
+fn sender_for(view_secret: &[u8; 32]) -> fuego_sdk::transaction_builder::TxSender {
+    let view_public = fuego_crypto::ring::secret_key_to_public_key(view_secret);
+    let keys = fuego_sdk::scanner::WalletKeys {
+        spend_secret: *view_secret,
+        spend_public: view_public,
+        view_secret: *view_secret,
+        view_public,
+    };
+    fuego_sdk::transaction_builder::TxSender::new(&keys, false)
+}
+
 fn make_output(amount: u64, secret: [u8; 32], global_index: u32) -> SpendableOutput {
     let mut p = GeP3::default();
     ge_scalarmult_base(&mut p, &secret);
@@ -186,7 +200,7 @@ fn heat_mint_transaction() {
             xfg_burned,
             heat_minted,
             change,
-            &view_sec,
+            &sender_for(&view_sec),
             (&spend_pub, &view_pub),
             fee,
             &mut rng,
@@ -313,6 +327,7 @@ fn commitment_spend_transaction() {
         amount: payout,
         spend_pub,
         view_pub,
+        is_subaddress: false,
     }];
 
     let built = build_commitment_spend_transaction(
@@ -321,7 +336,7 @@ fn commitment_spend_transaction() {
         mixin,
         &key_dests,
         &[],
-        &view_sec,
+        &sender_for(&view_sec),
         fee,
         &[],
         &mut rng,
@@ -428,7 +443,7 @@ fn print_cross_language_artifacts() {
             3_000_000,
             1_500_000_000,
             7_000_000 - 3_000_000 - MINIMUM_FEE,
-            &view_sec,
+            &sender_for(&view_sec),
             (&spend_pub, &view_pub),
             MINIMUM_FEE,
             &mut rng,
@@ -487,9 +502,10 @@ fn print_cross_language_artifacts() {
                 amount: total - MINIMUM_FEE,
                 spend_pub,
                 view_pub,
+                is_subaddress: false,
             }],
             &[],
-            &view_sec,
+            &sender_for(&view_sec),
             MINIMUM_FEE,
             &[],
             &mut rng,
@@ -567,7 +583,7 @@ fn heat_cd_transaction_structure() {
             BuildCommitmentDestination { amount, term: term_blocks, spend_pub, view_pub },
             BuildCommitmentDestination { amount: change, term: HEAT_TERM, spend_pub, view_pub },
         ],
-        &view_sec,
+        &sender_for(&view_sec),
         MINIMUM_FEE,
         &extra,
         &mut rng,
@@ -729,7 +745,7 @@ fn heat_send_recipient_view_key() {
                 BuildCommitmentDestination { amount, term: HEAT_TERM, spend_pub: recv_spend, view_pub: recv_view },
                 BuildCommitmentDestination { amount: change, term: HEAT_TERM, spend_pub, view_pub },
             ],
-            &view_sec,
+            &sender_for(&view_sec),
             MINIMUM_FEE,
             &extra,
             &mut rng,
@@ -817,7 +833,7 @@ fn heat_send_pays_fee_in_xfg() {
                 BuildCommitmentDestination { amount: 60_000_000, term: HEAT_TERM, spend_pub, view_pub },
             ],
             (&spend_pub, &view_pub),
-            &view_sec,
+            &sender_for(&view_sec),
             MINIMUM_FEE,
             &extra,
             &mut rng,

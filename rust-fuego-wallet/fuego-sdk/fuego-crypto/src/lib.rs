@@ -6,8 +6,13 @@ use zeroize::Zeroize;
 pub mod ref10;
 pub mod ring;
 pub mod subaddress;
+pub mod subaddress_v2;
 
 pub use subaddress::{derive_subaddress_keys, SubaddressKeys};
+pub use subaddress_v2::{
+    additional_tx_secret, derive_subaddress_v2_keys, janus_check, janus_filler, scalarmult_no_cofactor,
+    subaddress_tx_pub_key, SubaddressV2Keys,
+};
 pub use ring::{
     check_ring_signature, check_signature, cn_fast_hash, derive_public_key as derive_public_key_full,
     derive_secret_key, generate_key_derivation as generate_key_derivation_full,
@@ -19,6 +24,10 @@ pub use ring::{
 pub const ADDRESS_BASE58_PREFIX: u64 = 1753191;
 /// Fuego testnet address prefix (CryptoNoteConfig.h:452).
 pub const TESTNET_ADDRESS_BASE58_PREFIX: u64 = 1075740;
+/// funsa V2 sub-address ("funsa", 101 characters).
+pub const SUBADDRESS_BASE58_PREFIX: u64 = 23047589992;
+/// Testnet V2 sub-address ("Tsub", 99 characters).
+pub const TESTNET_SUBADDRESS_BASE58_PREFIX: u64 = 222156832;
 
 // ── CryptoNote block-based Base58 (exact port of Base58.cpp) ───────
 
@@ -251,13 +260,28 @@ pub fn make_address_with_prefix(spend_pub: &[u8; 32], view_pub: &[u8; 32], prefi
     Address(cn_base58_encode(&buf))
 }
 
-/// Parse a Fuego address into (spend pubkey, view pubkey). Validates base58,
-/// checksum and network prefix. The leading "fire" (mainnet) / "TEST"
-/// (testnet) is how the varint prefix encodes in base58, not a separate tag,
-/// so the whole string is decoded.
-pub fn parse_address(address: &str) -> Option<([u8; 32], [u8; 32])> {
+/// A decoded address of any kind this network uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedAddress {
+    pub spend_public: [u8; 32],
+    pub view_public: [u8; 32],
+    /// funsa / Tsub: outputs to it need sub-address tx keys (R = r*D).
+    pub is_subaddress: bool,
+    pub testnet: bool,
+}
+
+/// A V2 sub-address (D, C) as funsa (mainnet) or Tsub (testnet).
+pub fn make_subaddress(spend_pub: &[u8; 32], view_pub: &[u8; 32], testnet: bool) -> Address {
+    let prefix = if testnet { TESTNET_SUBADDRESS_BASE58_PREFIX } else { SUBADDRESS_BASE58_PREFIX };
+    make_address_with_prefix(spend_pub, view_pub, prefix)
+}
+
+/// Parse a standard (fire / TEST) or V2 sub-address (funsa / Tsub) string,
+/// checking base58, checksum and prefix. The leading characters are how the
+/// varint prefix encodes in base58, not a separate tag, so the whole string is
+/// decoded.
+pub fn parse_any_address(address: &str) -> Option<ParsedAddress> {
     let decoded = cn_base58_decode(address)?;
-    // varint prefix (3 bytes for both networks) + 64 key bytes + 4 checksum bytes.
     if decoded.len() <= ADDR_CHECKSUM_SIZE {
         return None;
     }
@@ -268,39 +292,36 @@ pub fn parse_address(address: &str) -> Option<([u8; 32], [u8; 32])> {
         return None;
     }
     let (prefix, prefix_len) = varint_decode(payload);
-    if prefix != ADDRESS_BASE58_PREFIX && prefix != TESTNET_ADDRESS_BASE58_PREFIX {
-        return None;
-    }
+    let (is_subaddress, testnet) = match prefix {
+        ADDRESS_BASE58_PREFIX => (false, false),
+        TESTNET_ADDRESS_BASE58_PREFIX => (false, true),
+        SUBADDRESS_BASE58_PREFIX => (true, false),
+        TESTNET_SUBADDRESS_BASE58_PREFIX => (true, true),
+        _ => return None,
+    };
     let rest = &payload[prefix_len..];
     if rest.len() != 64 {
         return None;
     }
-    let mut spend = [0u8; 32];
-    let mut view = [0u8; 32];
-    spend.copy_from_slice(&rest[..32]);
-    view.copy_from_slice(&rest[32..]);
-    Some((spend, view))
+    let mut spend_public = [0u8; 32];
+    let mut view_public = [0u8; 32];
+    spend_public.copy_from_slice(&rest[..32]);
+    view_public.copy_from_slice(&rest[32..]);
+    Some(ParsedAddress { spend_public, view_public, is_subaddress, testnet })
 }
 
-/// Validate a Fuego address string.
-/// Returns true if the address is a valid CryptoNote Base58 encoded address
-/// with the correct prefix and checksum.
+/// Parse a standard address into (spend pubkey, view pubkey). A funsa / Tsub
+/// sub-address is refused: callers that build outputs without sub-address tx
+/// keys (HEAT sends, mining, alias owners, ProofV1) must not receive one.
+pub fn parse_address(address: &str) -> Option<([u8; 32], [u8; 32])> {
+    parse_any_address(address)
+        .filter(|parsed| !parsed.is_subaddress)
+        .map(|parsed| (parsed.spend_public, parsed.view_public))
+}
+
+/// Validate a standard Fuego address string (prefix, checksum, length).
 pub fn is_valid_address(address: &str) -> bool {
-    let decoded = match cn_base58_decode(address) {
-        Some(d) => d,
-        None => return false,
-    };
-    if decoded.len() < 71 {
-        return false;
-    }
-    let payload = &decoded[..decoded.len() - ADDR_CHECKSUM_SIZE];
-    let checksum = &decoded[decoded.len() - ADDR_CHECKSUM_SIZE..];
-    let hash = Keccak256::digest(payload);
-    if &hash[..ADDR_CHECKSUM_SIZE] != checksum {
-        return false;
-    }
-    let (prefix, _) = varint_decode(&decoded);
-    prefix == ADDRESS_BASE58_PREFIX || prefix == TESTNET_ADDRESS_BASE58_PREFIX
+    parse_address(address).is_some()
 }
 
 fn varint_decode(data: &[u8]) -> (u64, usize) {

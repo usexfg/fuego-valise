@@ -106,6 +106,27 @@ pub unsafe extern "C" fn fuego_make_address_for_network(
     CString::new(addr.0).unwrap().into_raw()
 }
 
+/// Parse a Fuego address of any kind: standard (fire / TEST) or funsa V2
+/// sub-address (funsa / Tsub). Returns JSON
+/// `{"valid":true,"is_subaddress":bool,"testnet":bool}` or `{"valid":false}`.
+/// The caller frees the string with `fuego_string_free`.
+#[no_mangle]
+pub unsafe extern "C" fn fuego_parse_address(address: *const c_char) -> *mut c_char {
+    let parsed = if address.is_null() {
+        None
+    } else {
+        CStr::from_ptr(address)
+            .to_str()
+            .ok()
+            .and_then(|text| std::panic::catch_unwind(|| fuego_crypto::parse_any_address(text)).ok().flatten())
+    };
+    let json = match parsed {
+        Some(p) => format!(r#"{{"valid":true,"is_subaddress":{},"testnet":{}}}"#, p.is_subaddress, p.testnet),
+        None => r#"{"valid":false}"#.to_string(),
+    };
+    CString::new(json).unwrap().into_raw()
+}
+
 // ── Vault (HD wallet) ──
 
 /// Generate a new vault. Returns serialized vault bytes.
@@ -959,5 +980,53 @@ mod tests {
             )
         };
         assert_eq!(rc, -2, "blob too short for the nonce");
+    }
+}
+
+#[cfg(test)]
+mod address_tests {
+    use super::{fuego_parse_address, fuego_string_free};
+    use std::ffi::{CStr, CString};
+
+    const FUNSA: &str = "funsa13H";
+
+    fn parse(address: Option<&str>) -> String {
+        let input = address.map(|a| CString::new(a).unwrap());
+        let ptr = input.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
+        unsafe {
+            let out = fuego_parse_address(ptr);
+            let text = CStr::from_ptr(out).to_str().unwrap().to_string();
+            fuego_string_free(out);
+            text
+        }
+    }
+
+    fn vector(path: &[&str]) -> String {
+        let v: serde_json::Value =
+            serde_json::from_str(include_str!("../../../test-vectors/funsa_v2_vectors.json")).unwrap();
+        path.iter().fold(&v, |node, key| match key.parse::<usize>() {
+            Ok(i) => &node[i],
+            Err(_) => &node[*key],
+        }).as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn reports_the_address_kind_and_network() {
+        let funsa = vector(&["subaddresses", "0", "address"]);
+        assert!(funsa.starts_with(FUNSA));
+        assert_eq!(parse(Some(&funsa)), r#"{"valid":true,"is_subaddress":true,"testnet":false}"#);
+        let tsub = vector(&["subaddresses", "0", "testnet_address"]);
+        assert_eq!(parse(Some(&tsub)), r#"{"valid":true,"is_subaddress":true,"testnet":true}"#);
+        let fire = vector(&["recipient", "address"]);
+        assert_eq!(parse(Some(&fire)), r#"{"valid":true,"is_subaddress":false,"testnet":false}"#);
+    }
+
+    #[test]
+    fn refuses_null_garbage_and_corrupted_input() {
+        assert_eq!(parse(None), r#"{"valid":false}"#);
+        assert_eq!(parse(Some("not an address")), r#"{"valid":false}"#);
+        let mut funsa = vector(&["subaddresses", "0", "address"]);
+        funsa.pop();
+        assert_eq!(parse(Some(&funsa)), r#"{"valid":false}"#);
     }
 }

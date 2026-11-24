@@ -204,22 +204,31 @@ wallet's mining hash with no Rust diff. On such a PR:
 
 ## Sub-addresses
 
-Sub-addresses follow fuego-suite's scheme (`crypto/subaddress.cpp`, ported
-as `fuego_crypto::derive_subaddress_keys`):
-- The spend key is `D = B + H_s("Sublime" || a || major || minor)·G`.
-- The view key is the master `A`.
-- The prefix is the same as the primary address, so senders need no
-  support for them.
+`fuego_walletd` hands out funsa V2 sub-addresses (`create_subaddress`,
+major 0, minor from 1), matching fuego-suite's `crypto/subaddress.cpp`
+(ported as `fuego_crypto::subaddress_v2`, pinned by
+`rust-fuego-wallet/test-vectors/funsa_v2_vectors.json`):
+- `m = H_s("FuegoSubAddrV2" || a || major || minor)`, spend key
+  `D = B + m·G`, view key `C = a·D`. Each has its own view key, so no
+  address shows that it belongs to the same wallet as another.
+- Prefix `funsa` (mainnet, 101 chars) or `Tsub` (testnet). Senders must
+  support them: a payment needs `R = r·D` (single-key) or the 0x06 / 0x09
+  per-output keys. `fuego_crypto::parse_address` is standard-only;
+  `parse_any_address` and the FFI `fuego_parse_address` accept both.
+- The scanner credits a V2 output only if `(b+m)·J == R` for the 0x09 key
+  that matched it (Janus check).
+- HEAT and commitment sends to a funsa address are refused.
 
-`fuego_walletd` hands them out (`create_subaddress`, major 0, minor from
-1). It finds outputs with one master derivation per transaction plus a
-spend-key table that looks 50 sub-addresses ahead. Every sub-address
-carries `A`, so they are linkable to each other. The UI copy says so.
+Sub-addresses handed out before funsa used the V1 scheme
+(`D = B + H_s("Sublime" || a || major || minor)·G`, view key `A`, standard
+prefix). They keep scanning and spending; `get_subaddresses` lists them as
+`v1_subaddresses`, and the Dart store keeps them with `scheme = 1` and the
+LINKABLE tag, since every one carries `A`.
 
-Earlier "sub-addresses" were vault keypairs `n` (spend) and `n+1` (view),
-starting at n = 1. As a result, sub-address 1's spend key is the main view
-key. Dart marks those entries `legacy`, and walletd scans them after
-`register_legacy_subaddresses` (one rescan from genesis).
+Before that, "sub-addresses" were vault keypairs `n` (spend) and `n+1`
+(view), starting at n = 1. As a result, sub-address 1's spend key is the
+main view key. Dart marks those entries `legacy`, and walletd scans them
+after `register_legacy_subaddresses` (one rescan from genesis).
 `sweep_legacy_subaddresses` moves their funds to the primary address.
 Never hand one out again.
 
