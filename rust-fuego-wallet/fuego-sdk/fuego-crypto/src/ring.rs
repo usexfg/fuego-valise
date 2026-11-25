@@ -471,7 +471,7 @@ pub fn generate_afk_lock_data(
 
 // ---------------------------------------------------------------- deposits
 
-/// TransactionExtra.cpp deriveCommitmentKeys.
+/// TransactionExtra.cpp deriveCommitmentKeys (pre-v11, retained for rescans).
 pub struct CommitmentKeys {
     pub key_scalar: [u8; 32],
     pub commit_key: [u8; 32],
@@ -479,9 +479,12 @@ pub struct CommitmentKeys {
     pub amount_mask: [u8; 32],
 }
 
-/// TransactionExtra.cpp deriveCommitmentKeys:
+/// TransactionExtra.cpp deriveCommitmentKeys (pre-v11):
 /// keyScalar = Hs("fuego_commit_key" || depositSecret), commitKey = keyScalar*G,
 /// keyImage = x*Hp(commitKey), amountMask = Hs("fuego_amount_mask" || secret).
+///
+/// Sender- and view-key-spendable. Never use for new user-owned outputs; see
+/// `derive_owner_bound_commit_key`.
 pub fn derive_commitment_keys(deposit_secret: &[u8; 32]) -> CommitmentKeys {
     const COMMIT_LABEL: &[u8; 16] = b"fuego_commit_key";
     const AMOUNT_LABEL: &[u8; 17] = b"fuego_amount_mask";
@@ -517,6 +520,100 @@ pub fn derive_deposit_secret(derivation: &[u8; 32], output_index: u32) -> [u8; 3
     pre[..32].copy_from_slice(derivation);
     pre[32..].copy_from_slice(&output_index.to_le_bytes());
     cn_fast_hash(&pre)
+}
+
+// ------------------------------------------------- owner-bound commitments
+
+/// TransactionExtra.cpp `deriveOwnerBoundCommitKey`.
+///
+/// `P = derive_public_key(D, i, B)` — spendable only by the holder of the
+/// recipient spend secret `b`, via `derive_owner_bound_key_image`. The sender
+/// and any holder of the recipient view secret know `D` and therefore `t`, but
+/// cannot produce `x = b + t`.
+pub fn derive_owner_bound_commit_key(
+    derivation: &[u8; 32],
+    output_index: u64,
+    recipient_spend_public: &[u8; 32],
+) -> Option<[u8; 32]> {
+    let mut point = GeP3::default();
+    if !ge_frombytes_vartime(&mut point, recipient_spend_public) {
+        return None;
+    }
+    derive_public_key(derivation, output_index, recipient_spend_public)
+}
+
+/// TransactionExtra.cpp `matchOwnerBoundCommitKey`: recover the recipient spend
+/// key that produced `commit_key`, then check it against the registered set.
+///
+/// `underive_public_key` solves for the single `B` that produced this output, so
+/// it is evaluated once. Returns the matched key on a unique hit, or `None` when
+/// there is no match or the recovered key does not re-derive the output.
+pub fn match_owner_bound_commit_key(
+    derivation: &[u8; 32],
+    output_index: u64,
+    commit_key: &[u8; 32],
+    registered_spend_keys: &[[u8; 32]],
+) -> Option<[u8; 32]> {
+    let candidate = underive_public_key(derivation, output_index, commit_key)?;
+    if !registered_spend_keys.iter().any(|k| *k == candidate) {
+        return None;
+    }
+    // Confirm the recovered key really re-derives the published output rather
+    // than trusting the subtraction alone.
+    match derive_public_key(derivation, output_index, &candidate) {
+        Some(verify) if verify == *commit_key => Some(candidate),
+        _ => None,
+    }
+}
+
+/// TransactionExtra.cpp `deriveOwnerBoundKeyImage`.
+///
+/// `x = b + t` and `I = x * H_p(P)`. Returns `None` if the secret is
+/// non-canonical or if `x*G != P` (i.e. the wrong spend secret), so callers get
+/// a rejection rather than an exception.
+pub fn derive_owner_bound_key_image(
+    derivation: &[u8; 32],
+    output_index: u64,
+    commit_key: &[u8; 32],
+    recipient_spend_secret: &[u8; 32],
+) -> Option<([u8; 32], [u8; 32])> {
+    let mut commit_point = GeP3::default();
+    if !ge_frombytes_vartime(&mut commit_point, commit_key) {
+        return None;
+    }
+    if !sc_check(recipient_spend_secret) {
+        return None;
+    }
+    let spend_secret = derive_secret_key(derivation, output_index, recipient_spend_secret)?;
+    let derived_pub = secret_key_to_public_key(&spend_secret);
+    if derived_pub != *commit_key {
+        return None;
+    }
+    let key_image = generate_key_image(commit_key, &spend_secret);
+    Some((spend_secret, key_image))
+}
+
+/// TransactionExtra.cpp `deriveCommitmentOutputKey` — the single creation entry
+/// point, mirroring C++.
+///
+/// With a recipient spend key this returns the owner-bound form. `None` means a
+/// hard failure; callers must not fall back to `derive_commitment_keys`, which
+/// would silently recreate the sender/view-key-spendable derivation.
+pub fn derive_commitment_output_key(
+    derivation: &[u8; 32],
+    output_index: u64,
+    recipient_spend_public: Option<&[u8; 32]>,
+) -> Option<[u8; 32]> {
+    match recipient_spend_public {
+        // Protocol-owned output (pool escrow marker): unspendable by design and
+        // excluded from rings by term. Mirrors the C++ null-key escape hatch.
+        None => {
+            let deposit_secret = derive_deposit_secret(derivation, output_index as u32);
+            let legacy = derive_commitment_keys(&deposit_secret);
+            Some(legacy.commit_key)
+        }
+        Some(spend_public) => derive_owner_bound_commit_key(derivation, output_index, spend_public),
+    }
 }
 
 // ---------------------------------------------------------------- tx proofs

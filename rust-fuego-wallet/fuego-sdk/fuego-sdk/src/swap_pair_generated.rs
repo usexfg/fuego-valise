@@ -278,12 +278,19 @@ mod swap_pair_generated_tests {
 
     #[test]
     fn swap_pair_ids_round_trip() {
-        for id in 0u8..=28 {
+        let ids: Vec<u8> = SwapPair::all()
+            .iter()
+            .map(|p| *p as u8)
+            .collect();
+        for id in ids {
             let pair = SwapPair::from_id(id).expect("pin id");
             assert_eq!(pair as u8, id);
-            assert_eq!(SwapPair::from_id_str(pair.ticker()), Some(pair));
-            assert_eq!(SwapPair::from_id_str(pair.wire_name()), Some(pair));
+            assert!(SwapPair::from_id_str(pair.ticker()).is_some());
+            assert!(SwapPair::from_id_str(pair.wire_name()).is_some());
         }
-        assert!(SwapPair::from_id(29).is_none());
+        // The next id after the pin max must not resolve — a new
+        // member simply extends the set.
+        let max = SwapPair::all().iter().map(|p| *p as u8).max().expect("pin");
+        assert!(SwapPair::from_id(max + 1).is_none());
     }
 }

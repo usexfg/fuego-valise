@@ -169,19 +169,44 @@ class PortfolioCubit extends Cubit<PortfolioState> {
     }
   }
 
+  /// True when the wallet's active account changed since the loaded sweep.
+  bool _accountChanged() {
+    if (!state.hasAccount) return false;
+    return state.accountAddress != _accounts.activeAccount?.address;
+  }
+
   /// Read native balances for every EVM chain on the active account.
   Future<void> loadChains({bool force = false}) async {
     if (state.chainsLoading) return;
-    if (state.chainsLoaded && !force) return;
+    if (state.chainsLoaded && !force && !_accountChanged()) return;
 
-    await _accounts.init();
-    if (isClosed) return;
+    // Mark loading synchronously so two concurrent calls serialize instead
+    // of both starting a sweep.
+    emit(state.copyWith(chainsLoading: true));
+
+    String address;
+    try {
+      await _accounts.init();
+      if (isClosed) return;
+    } on Object {
+      if (isClosed) return;
+      // Registry read failed: make the failure visible instead of failing
+      // silently on the caller that happened to open the sheet.
+      emit(
+        state.copyWith(
+          chainsLoading: false,
+          chainsError: 'Accounts unavailable',
+        ),
+      );
+      return;
+    }
 
     final account = _accounts.activeAccount;
+    address = account?.address ?? '';
+
     final chains = kChains
         .where((chain) => chain.family == 'evm')
         .toList(growable: false);
-    final address = account?.address ?? '';
 
     emit(
       state.copyWith(
@@ -223,8 +248,12 @@ class PortfolioCubit extends Cubit<PortfolioState> {
 
     Future<void> worker() async {
       while (cursor < chains.length) {
+        // Account switched while this sweep was in flight: stop early rather
+        // than publishing the other account's results.
+        if (_accountChanged()) return;
         final chain = chains[cursor++];
         final probe = await web3.probeNativeBalance(address, chain.key);
+        if (_accountChanged()) return;
         rows[chain.key] = PortfolioHolding.fromChain(
           chain,
           amount: probe.amount,

@@ -15,12 +15,12 @@ on:
 env:
   FLUTTER_VERSION: "3.44.4"
   MACOS_BUNDLE_ID: "com.fuego.fuego-wallet"
-  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
 jobs:
   macos-build:
     name: Build macOS App
     runs-on: macos-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -35,34 +35,28 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
 
-      - name: Verify code signing prerequisites
-        run: |
-          echo "=== Code Signing Prerequisites ==="
-
-          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then
-            echo "WARNING: APPLE_CERTIFICATE not set"
-          fi
-
-          if [ -z "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]; then
-            echo "WARNING: APPLE_CERTIFICATE_PASSWORD not set"
-          fi
-
-          if [ -z "${{ secrets.APPLE_TEAM_ID }}" ]; then
-            echo "WARNING: APPLE_TEAM_ID not set"
-          fi
-
-          echo "Bundle ID: ${MACOS_BUNDLE_ID}"
-          echo "Team ID: ${APPLE_TEAM_ID}"
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@v1
         with: { toolchain: stable }
 
-      - name: Build backends
-        uses: ./.github/actions/build-desktop-backends
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: flutter-pub-cache-macos-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-cache-macos-
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          for retry in 1 2 3; do
+            if flutter pub get; then
+              echo "✅ Flutter pub get successful on attempt $retry"
+              break
+            fi
+            echo "❌ Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            sleep 10
+          done
 
       - name: Run tests
         continue-on-error: true
@@ -71,236 +65,37 @@ jobs:
       - name: Analyze code
         run: flutter analyze --no-fatal-infos
 
-      - name: Check signing secrets
-        id: signing
-        env:
-          CERT: ${{ secrets.APPLE_CERTIFICATE }}
-        run: echo "available=$([ -n "$CERT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-      - name: Setup macOS code signing
-        if: inputs.dry_run != true && steps.signing.outputs.available == 'true'
-        run: |
-          echo "=== Setting up code signing ==="
-
-          # Decode certificate
-          echo "${{ secrets.APPLE_CERTIFICATE }}" | base64 --decode > certificate.p12
-
-          # Create temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Import certificate
-          security import certificate.p12 \
-            -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" \
-            -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-
-          # Set key partition list
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Add keychain to search list
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
-
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-          echo "✅ Code signing configured"
+      - name: Build backends
+        uses: ./.github/actions/build-desktop-backends
 
       - name: Build macOS app (Release)
-        run: |
-          echo "=== Building macOS app ==="
-
-          if [ -n "$KEYCHAIN_PATH" ]; then
-            flutter build macos --release
-          else
-            flutter build macos --release --no-codesign
-          fi
-
-          echo "✅ macOS app built"
+        run: flutter build macos --release --no-codesign
 
       - name: Bundle backends into app
         uses: ./.github/actions/bundle-desktop-backends
         with:
-          app: build/macos/Build/Products/Release/fuego_wallet.app
+          app: build/macos/Build/Products/Release/fuego-valise.app
 
       - name: Sign app
-        run: |
-          IDENTITY="-"
-          if [ -n "${KEYCHAIN_PATH:-}" ]; then
-            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' 'NR==1 {print $2}')"
-          fi
-          ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego_wallet.app "${IDENTITY:--}"
+        run: ./scripts/sign-macos-app.sh build/macos/Build/Products/Release/fuego-valise.app -
 
       - name: Verify macOS app
         run: |
-          echo "=== Verifying macOS app ==="
-
-          APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
-
+          APP_PATH="build/macos/Build/Products/Release/fuego-valise.app"
           if [ ! -d "$APP_PATH" ]; then
             echo "ERROR: App bundle not found at $APP_PATH"
             exit 1
           fi
-
-          # Check bundle structure
-          echo "App bundle contents:"
-          ls -la "$APP_PATH"
-
-          # Verify Info.plist
-          if [ -f "$APP_PATH/Contents/Info.plist" ]; then
-            echo "✅ Info.plist found"
-            defaults read "$APP_PATH/Contents/Info.plist" CFBundleIdentifier
-            defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString
-          else
-            echo "ERROR: Info.plist missing"
-            exit 1
-          fi
-
-          # Check for required entitlements
-          echo "Checking entitlements..."
-          if [ -f "$APP_PATH/Contents/Info.plist" ]; then
-            echo "✅ Entitlements configured"
-          fi
-
           echo "✅ Verification complete"
 
-      - name: Create DMG for distribution
-        if: inputs.dry_run != true
+      - name: Package app
         run: |
-          echo "=== Creating DMG ==="
+          cd build/macos/Build/Products/Release
+          zip -r -y fuego-valise-macOS.zip "fuego-valise.app"
 
-          APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
-          DMG_PATH="build/macos/Build/Products/Release/Fuego-Wallet.dmg"
-
-          # Create temporary directory for DMG contents
-          mkdir -p dmg-contents
-          cp -r "$APP_PATH" dmg-contents/
-          ln -s /Applications dmg-contents/Applications
-
-          # Create DMG
-          hdiutil create -volname "Fuego Wallet" \
-            -srcfolder dmg-contents \
-            -ov -format UDZO \
-            "$DMG_PATH"
-
-          # Clean up
-          rm -rf dmg-contents
-
-          echo "DMG created at $DMG_PATH"
-          ls -lh "$DMG_PATH"
-
-      - name: Notarize app
-        if: inputs.dry_run != true && env.APPLE_TEAM_ID != ''
-        run: |
-          echo "=== Notarizing app ==="
-
-          DMG_PATH="build/macos/Build/Products/Release/Fuego-Wallet.dmg"
-
-          if [ -z "${{ secrets.APPLE_ID }}" ] || [ -z "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" ]; then
-            echo "WARNING: Apple ID credentials not set - skipping notarization"
-            echo "Manual notarization required before App Store submission"
-          else
-            xcrun notarytool submit "$DMG_PATH" \
-              --apple-id "${{ secrets.APPLE_ID }}" \
-              --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-              --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
-              --wait
-
-            # Staple notarization
-            xcrun stapler staple "$DMG_PATH"
-
-            echo "✅ Notarization complete"
-          fi
-
-      - name: Generate store metadata
-        run: |
-          echo "=== Generating App Store Metadata ==="
-
-          VERSION="${{ inputs.version }}"
-          if [ -z "$VERSION" ]; then
-            VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}')
-          fi
-
-          mkdir -p app-store-metadata
-
-          cat > app-store-metadata/metadata.json << EOF
-          {
-            "bundle_id": "${MACOS_BUNDLE_ID}",
-            "title": "Fuego Wallet",
-            "subtitle": "Privacy-focused cryptocurrency wallet",
-            "description": "Fuego Wallet is a privacy-focused cryptocurrency wallet that supports the Fuego blockchain and cross-chain atomic swaps.\n\nFeatures:\n- Send and receive Fuego (XFG) and HEAT\n- Cross-chain atomic swaps with 12 blockchains\n- Certificate of Deposit (CD) staking\n- Built-in node connectivity\n- Privacy-focused with RingCT transactions",
-            "keywords": ["fuego","wallet","cryptocurrency","privacy","blockchain","atomic swap"],
-            "category": "Finance",
-            "version": "${VERSION}",
-            "copyright": "Copyright 2024 Fuego Blockchain",
-            "support_url": "https://github.com/usexfg/fuego-wallet/issues",
-            "privacy_url": "https://fuegoblockchain.org/privacy"
-          }
-          EOF
-
-          echo "✅ Store metadata generated"
-
-      - name: Create submission checklist
-        run: |
-          echo "## macOS App Store Submission Checklist" > submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### Pre-Submission" >> submission-checklist.md
-          echo "- [ ] App builds successfully" >> submission-checklist.md
-          echo "- [ ] App is signed" >> submission-checklist.md
-          echo "- [ ] App is notarized" >> submission-checklist.md
-          echo "- [ ] DMG is created" >> submission-checklist.md
-          echo "- [ ] App launches correctly" >> submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### App Store Connect" >> submission-checklist.md
-          echo "- [ ] Create app in App Store Connect" >> submission-checklist.md
-          echo "- [ ] Upload screenshots (1280x800, 2560x1600)" >> submission-checklist.md
-          echo "- [ ] Add app description" >> submission-checklist.md
-          echo "- [ ] Set pricing and availability" >> submission-checklist.md
-          echo "- [ ] Add privacy policy URL" >> submission-checklist.md
-          echo "- [ ] Complete age rating questionnaire" >> submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### Submission" >> submission-checklist.md
-          echo "- [ ] Upload build to App Store Connect" >> submission-checklist.md
-          echo "- [ ] Add build to version" >> submission-checklist.md
-          echo "- [ ] Submit for review" >> submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### Post-Submission" >> submission-checklist.md
-          echo "- [ ] Monitor review status" >> submission-checklist.md
-          echo "- [ ] Respond to review feedback" >> submission-checklist.md
-          echo "- [ ] Release when approved" >> submission-checklist.md
-
-      - name: Upload artifacts
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build
-          path: |
-            build/macos/Build/Products/Release/fuego_wallet.app
-            build/macos/Build/Products/Release/Fuego-Wallet.dmg
-            app-store-metadata/
-            submission-checklist.md
-          retention-days: 90
-
-      - name: Release summary
-        run: |
-          echo "## macOS App Store Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ macOS app built" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ App signed" >> $GITHUB_STEP_SUMMARY
-          if [ -n "$KEYCHAIN_PATH" ]; then
-            echo "- ✅ App notarized" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- ⚠️ App not notarized (no signing credentials)" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "- ✅ Store metadata generated" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Upload to App Store Connect" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "xcrun altool --upload-app \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --type macos \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --file Fuego-Wallet.dmg \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --username \"\${APPLE_ID}\" \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --password \"\${APP_SPECIFIC_PASSWORD}\"" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          name: fuego-wallet-macos
+          path: build/macos/Build/Products/Release/fuego-valise-macOS.zip
+          retention-days: 30

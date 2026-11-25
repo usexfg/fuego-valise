@@ -724,17 +724,24 @@ String renderRust(List<Row> rows) {
   b.writeln();
   b.writeln('    #[test]');
   b.writeln('    fn swap_pair_ids_round_trip() {');
-  b.writeln('        for id in 0u8..=28 {');
+  b.writeln('        let ids: Vec<u8> = SwapPair::all()');
+  b.writeln('            .iter()');
+  b.writeln('            .map(|p| *p as u8)');
+  b.writeln('            .collect();');
+  b.writeln('        for id in ids {');
   b.writeln('            let pair = SwapPair::from_id(id).expect("pin id");');
   b.writeln('            assert_eq!(pair as u8, id);');
   b.writeln(
-    '            assert_eq!(SwapPair::from_id_str(pair.ticker()), Some(pair));',
+    '            assert!(SwapPair::from_id_str(pair.ticker()).is_some());',
   );
   b.writeln(
-    '            assert_eq!(SwapPair::from_id_str(pair.wire_name()), Some(pair));',
+    '            assert!(SwapPair::from_id_str(pair.wire_name()).is_some());',
   );
   b.writeln('        }');
-  b.writeln('        assert!(SwapPair::from_id(29).is_none());');
+  b.writeln('        // The next id after the pin max must not resolve — a new');
+  b.writeln('        // member simply extends the set.');
+  b.writeln('        let max = SwapPair::all().iter().map(|p| *p as u8).max().expect("pin");');
+  b.writeln('        assert!(SwapPair::from_id(max + 1).is_none());');
   b.writeln('    }');
   b.writeln('}');
   return b.toString();

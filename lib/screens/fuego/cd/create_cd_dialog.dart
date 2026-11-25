@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../bloc/cd/cd_cubit.dart';
+import '../../../services/fuego_rpc_service.dart';
 import '../../../utils/theme.dart';
 
 class CreateCdDialog extends StatefulWidget {
@@ -26,9 +27,13 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
   bool _submitting = false;
   String? _error;
 
-  static const _epochBlocks = 900;
-
   bool get _isAutoRoll => _selectedAmount == _autoRollAmount;
+
+  int get _epochBlocks =>
+      context.read<FuegoRPCService>().networkConfig.epochBlocks;
+
+  int get _blockTimeSec =>
+      context.read<FuegoRPCService>().networkConfig.blockTimeSec;
 
   String _fmtHeat(double value) {
     if (value >= 1000000) {
@@ -51,7 +56,7 @@ class _CreateCdDialogState extends State<CreateCdDialog> {
     final totalBlocks = _isAutoRoll
         ? _epochBlocks
         : _selectedTerm * _epochBlocks;
-    final blockTimeSec = 480;
+    final blockTimeSec = _blockTimeSec;
     final days = (totalBlocks * blockTimeSec) ~/ 86400;
     final interest = _selectedAmount * 0.02;
     final apy = (_selectedTerm == 6)

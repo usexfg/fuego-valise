@@ -10,7 +10,7 @@ if [ "$IDENTITY" != "-" ]; then
     opts+=(--options runtime --timestamp)
 fi
 
-for b in fuego_walletd fuegod xfg-swapd unified; do
+for b in fuego_walletd fuegod xfg-swapd unifyd; do
     if [ -f "$APP/Contents/MacOS/$b" ]; then codesign "${opts[@]}" "$APP/Contents/MacOS/$b"; fi
 done
 find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 \( -name "*.dylib" -o -name "*.framework" \) -print0 |

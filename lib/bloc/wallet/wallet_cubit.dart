@@ -376,7 +376,8 @@ class WalletCubit extends Cubit<WalletState> {
             final heat = await _rpcService!.getHeatBalance();
             unlockedHeat = heat.unlockedHeat;
             lockedHeat = heat.lockedHeat;
-            heatAvailable = heat.available;
+            // The call succeeded; there is no per-balance availability flag.
+            heatAvailable = true;
           } catch (_) {}
         }
 

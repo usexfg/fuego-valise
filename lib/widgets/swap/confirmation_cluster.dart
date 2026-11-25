@@ -236,7 +236,7 @@ class ConfirmationCluster extends StatelessWidget {
           ? const Icon(
               Icons.check,
               size: 7,
-              color: Color(0xFF0D0B08),
+              color: Color(0xFF000000),
             ) // Black check on gold
           : null,
     );

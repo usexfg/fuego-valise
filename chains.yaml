@@ -318,7 +318,7 @@ chains:
     rpc: https://public-node.rsk.co
     gasToken: RBTC
     color: "#E9B64E"
-    icon: assets/coin-icons/rsk.png
+    icon: assets/coin-icons/rootstock.png
     tier: wallet
     activation: wallet_only
     note: "RBTC and a different address format. Not an Optimism clone until that is proven."

@@ -167,6 +167,10 @@ class CdMarketListResult {
   final List<CdMarketListing> listings;
   const CdMarketListResult({required this.listings});
 
+  /// Stand-in used when the CD market cannot be reached, so one unavailable
+  /// section does not discard the rest of the screen.
+  const CdMarketListResult.empty() : listings = const [];
+
   factory CdMarketListResult.fromJson(Map<String, dynamic> json) =>
       CdMarketListResult(
         listings:
@@ -236,6 +240,14 @@ class CdApyResult {
     required this.averageApy,
     this.epoch,
   });
+
+  /// Zero-yield stand-in used when the APY endpoint is unavailable, so the
+  /// user's own CDs still render instead of the screen erroring out.
+  const CdApyResult.empty()
+    : coin = 'XFG',
+      currentApy = 0.0,
+      averageApy = 0.0,
+      epoch = null;
 
   factory CdApyResult.fromJson(Map<String, dynamic> json) => CdApyResult(
     coin: json['coin'] as String? ?? 'XFG',

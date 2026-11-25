@@ -52,9 +52,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showBalance = true;
 
   PortfolioCubit? _portfolio;
-  List<Candlestick>? _history;
+  final ValueNotifier<List<Candlestick>?> _historyNotifier = ValueNotifier(
+    null,
+  );
 
-  /// Guards the one-shot price retry per connection transition.
+  /// True once the post-frame price retry actually ran.
   bool _priceSettled = false;
 
   @override
@@ -71,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadHistory() async {
     final candles = await PriceHistoryService().loadAll();
-    if (mounted) setState(() => _history = candles);
+    if (mounted) _historyNotifier.value = candles;
   }
 
   @override
@@ -135,30 +137,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       : math.min(440.0, width - 28);
                   return Align(
                     alignment: Alignment.centerRight,
-                    child: SizedBox(
-                      width: sheetWidth,
-                      height: double.infinity,
-                      child: PortfolioSheet(
-                        portfolio: livePortfolio,
-                        valuation: valuation,
-                        xfgAmount: liveWallet.balanceXfg,
-                        heatTotal: liveWallet.totalHeatXfg,
-                        heatUnlocked: liveWallet.unlockedHeatXfg,
-                        heatLocked: liveWallet.lockedHeatXfg,
-                        heatKnown: liveWallet.heatBalanceAvailable,
-                        masked: !_showBalance,
-                        candles: _history ?? const [],
-                        historyLoading: _history == null,
-                        onClose: () => nav.pop(),
-                        onToggleMask: _toggleMask,
-                        onRefresh: () {
-                          unawaited(cubit.loadPrice(force: true));
-                          unawaited(cubit.loadChains(force: true));
-                        },
-                        onManage: () => closeThen(const EvmWalletsScreen()),
-                        onSend: () => closeThen(const SendScreen()),
-                        onReceive: () => closeThen(const ReceiveScreen()),
-                        onMint: () => closeThen(const MintHeatScreen()),
+                    child: ValueListenableBuilder<List<Candlestick>?>(
+                      valueListenable: _historyNotifier,
+                      builder: (dialogContext, history, _) => SizedBox(
+                        width: sheetWidth,
+                        height: double.infinity,
+                        child: PortfolioSheet(
+                          portfolio: livePortfolio,
+                          valuation: valuation,
+                          xfgAmount: liveWallet.balanceXfg,
+                          heatTotal: liveWallet.totalHeatXfg,
+                          heatUnlocked: liveWallet.unlockedHeatXfg,
+                          heatLocked: liveWallet.lockedHeatXfg,
+                          heatKnown: liveWallet.heatBalanceAvailable,
+                          masked: !_showBalance,
+                          candles: history ?? const [],
+                          historyLoading: history == null,
+                          onClose: () => nav.pop(),
+                          onToggleMask: _toggleMask,
+                          onRefresh: () {
+                            // Refresh the wallet too, so XFG/HEAT change
+                            // while the sheet is open.
+                            unawaited(
+                              context.read<WalletCubit>().refreshWallet().then(
+                                (_) => cubit.loadPrice(force: true),
+                              ),
+                            );
+                            unawaited(cubit.loadChains(force: true));
+                          },
+                          onManage: () => closeThen(const EvmWalletsScreen()),
+                          onSend: () => closeThen(const SendScreen()),
+                          onReceive: () => closeThen(const ReceiveScreen()),
+                          onMint: () => closeThen(const MintHeatScreen()),
+                        ),
                       ),
                     ),
                   );
@@ -190,12 +201,14 @@ class _HomeScreenState extends State<HomeScreen> {
               // live price once the wallet reports a real connection, so a
               // slow local backend never leaves the portfolio stuck unpriced.
               if (state.isConnected && !_priceSettled) {
-                _priceSettled = true;
                 if (portfolio.price == null) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted && !(_portfolio?.isClosed ?? true)) {
-                      unawaited(_portfolio!.loadPrice(force: true));
-                    }
+                    if (!mounted || (_portfolio?.isClosed ?? true)) return;
+                    // Mark settled once the retry actually runs: a retry that
+                    // lands while the initial request is still loading is
+                    // discarded, and a later transition can retry again.
+                    _priceSettled = true;
+                    unawaited(_portfolio!.loadPrice(force: true));
                   });
                 }
               } else if (!state.isConnected) {

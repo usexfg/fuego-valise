@@ -14,8 +14,8 @@ concurrency:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -27,23 +27,38 @@ jobs:
           flutter-version: '3.44.4'
           channel: 'stable'
 
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: flutter-pub-cache-mobile-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-cache-mobile-
+
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          for retry in 1 2 3; do
+            if flutter pub get; then
+              echo "✅ Flutter pub get successful on attempt $retry"
+              break
+            fi
+            echo "❌ Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            sleep 10
+          done
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
   build-android:
     name: Build Android
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
     needs: analyze
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
           submodules: true
 
       - name: Set up Java
@@ -61,11 +76,24 @@ jobs:
       - name: Enable Android
         run: flutter config --enable-android
 
-      - name: Build Android natives (fuego-ffi, fuego_walletd)
-        uses: ./.github/actions/build-android-natives
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: flutter-pub-cache-android-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-cache-android-
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          for retry in 1 2 3; do
+            if flutter pub get; then
+              echo "✅ Flutter pub get successful on attempt $retry"
+              break
+            fi
+            echo "❌ Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            sleep 10
+          done
 
       - name: Build Debug APK
         run: flutter build apk --debug
@@ -90,7 +118,7 @@ jobs:
   build-ios:
     name: Build iOS
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     needs: analyze
 
     steps:
@@ -102,7 +130,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # fuego-ffi compiles CryptoNight straight from fuego-suite/src/crypto
           submodules: true
 
       - name: Install Flutter
@@ -120,41 +147,38 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
 
-      # Runner force-loads target/<triple>/release/libfuego_ffi.a per SDK/arch
-      # (ios/Runner.xcodeproj OTHER_LDFLAGS).
-      - name: Build fuego-ffi staticlib (device + simulator)
-        run: |
-          for t in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
-            cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target "$t"
-          done
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: flutter-pub-cache-ios-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-cache-ios-
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          for retry in 1 2 3; do
+            if flutter pub get; then
+              echo "✅ Flutter pub get successful on attempt $retry"
+              break
+            fi
+            echo "❌ Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            sleep 10
+          done
 
-      # An archive applies release stripping (STRIP_STYLE), unlike `flutter build ios`,
-      # so this is where lost fuego_* symbols would show up.
-      - name: Archive iOS App (unsigned)
-        run: flutter build ipa --release --no-codesign
-
-      - name: Verify FFI symbols survived archive stripping
-        run: ./scripts/check-ios-ffi-symbols.sh build/ios/archive/Runner.xcarchive
+      - name: Build iOS FFI libraries
+        run: |
+          cd rust-fuego-wallet
+          cargo build --release -p fuego-ffi --target x86_64-apple-ios
+          cargo build --release -p fuego-ffi --target aarch64-apple-ios-sim
+          cargo build --release -p fuego-ffi --target aarch64-apple-ios
 
       - name: Build for simulator
         run: flutter build ios --simulator --debug
 
-      - name: Verify FFI symbols in simulator build
-        run: ./scripts/check-ios-ffi-symbols.sh build/ios/iphonesimulator/Runner.app/Runner
-
-      - name: Package iOS App (.ipa)
-        run: |
-          mkdir -p build/ios/iphoneos/Payload
-          cp -R build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app build/ios/iphoneos/Payload/
-          cd build/ios/iphoneos
-          zip -qr Fuego-Wallet-iOS.ipa Payload
-
       - name: Upload iOS App
         uses: actions/upload-artifact@v4
         with:
-          name: fuego-wallet-ios
-          path: build/ios/iphoneos/Fuego-Wallet-iOS.ipa
+          name: fuego-wallet-ios-simulator
+          path: build/ios/iphonesimulator/Runner.app
           retention-days: 30

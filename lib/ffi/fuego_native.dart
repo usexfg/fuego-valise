@@ -95,14 +95,15 @@ class FuegoNative {
   }
 
   /// Generate Fuego address from spend + view public keys.
-  String makeAddress(List<int> spendPub, List<int> viewPub) {
+  /// `testnet` selects the testnet prefix; default is mainnet.
+  String makeAddress(List<int> spendPub, List<int> viewPub, {bool testnet = false}) {
     _requireLengths({'spendPub': (spendPub, 32), 'viewPub': (viewPub, 32)});
     final spendPtr = _allocBytes(spendPub);
     final viewPtr = _allocBytes(viewPub);
-    final fn = _lib.lookupFunction<_MakeAddressNative, _MakeAddressDart>(
-      'fuego_make_address',
+    final fn = _lib.lookupFunction<_MakeAddressNetNative, _MakeAddressNetDart>(
+      'fuego_make_address_for_network',
     );
-    final result = fn(spendPtr, viewPtr);
+    final result = fn(spendPtr, viewPtr, testnet ? 1 : 0);
     final addr = result.toDartString();
     _freeString(result);
     calloc.free(spendPtr);
@@ -133,13 +134,14 @@ class FuegoNative {
   }
 
   /// Get address from vault at index.
-  String vaultGetAddress(Uint8List vaultBytes, int index) {
+  /// `testnet` selects the testnet prefix; default is mainnet.
+  String vaultGetAddress(Uint8List vaultBytes, int index, {bool testnet = false}) {
     _requireKeyIndex(index);
     final vaultPtr = _allocUint8List(vaultBytes);
-    final fn = _lib.lookupFunction<_VaultGetAddrNative, _VaultGetAddrDart>(
-      'fuego_vault_get_address',
+    final fn = _lib.lookupFunction<_VaultGetAddrNetNative, _VaultGetAddrNetDart>(
+      'fuego_vault_get_address_for_network',
     );
-    final result = fn(vaultPtr, vaultBytes.length, index);
+    final result = fn(vaultPtr, vaultBytes.length, index, testnet ? 1 : 0);
     final addr = result.toDartString();
     _freeString(result);
     _freeSecret(vaultPtr, vaultBytes.length);
@@ -539,6 +541,11 @@ typedef _MakeAddressNative =
 typedef _MakeAddressDart =
     Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>);
 
+typedef _MakeAddressNetNative =
+    Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, Uint8);
+typedef _MakeAddressNetDart =
+    Pointer<Utf8> Function(Pointer<Uint8>, Pointer<Uint8>, int);
+
 typedef _VaultGenNative = FuegoBytes Function();
 typedef _VaultGenDart = FuegoBytes Function();
 
@@ -548,6 +555,11 @@ typedef _VaultFromSeedDart = FuegoBytes Function(Pointer<Uint8>);
 typedef _VaultGetAddrNative =
     Pointer<Utf8> Function(Pointer<Uint8>, Size, Uint32);
 typedef _VaultGetAddrDart = Pointer<Utf8> Function(Pointer<Uint8>, int, int);
+
+typedef _VaultGetAddrNetNative =
+    Pointer<Utf8> Function(Pointer<Uint8>, Size, Uint32, Uint8);
+typedef _VaultGetAddrNetDart =
+    Pointer<Utf8> Function(Pointer<Uint8>, int, int, int);
 
 typedef _VaultGetSeedNative = Pointer<Utf8> Function(Pointer<Uint8>, Size);
 typedef _VaultGetSeedDart = Pointer<Utf8> Function(Pointer<Uint8>, int);

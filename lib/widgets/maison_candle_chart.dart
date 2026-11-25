@@ -20,7 +20,7 @@ class MaisonCandleChart extends StatefulWidget {
     this.upColor = const Color(0xFFC5A059),
     this.downColor = const Color(0xFF8C734B),
     this.gridColor = const Color(0x148C734B),
-    this.textColor = const Color(0xFF8A8278),
+    this.textColor = const Color(0xFF808080),
     this.maxVisible = 120,
   });
 

@@ -275,6 +275,8 @@ class ChainInfo {
     'MON': 'HashedTimelock + PtlcLocked event (BRIDGE)',
     'OP': 'HashedTimelock + PtlcLocked event (BRIDGE)',
     'BCH': 'HashedTimelock + DLEQ bridge',
+    'KMD': 'P2SH hashlock (SHA-256 H(t))',
+    'DCR': 'P2SH hashlock (SHA-256 H(t))',
     'XMR': 'native adaptor (no HTLC)',
     'ZANO': 'native adaptor (no HTLC)',
     'XFG': 'MuSig2 adaptor T=t*G (always PTLC)',
@@ -350,6 +352,10 @@ class ChainInfo {
     'AVAX': 'https://snowscan.xyz/tx/{txid}',
     'BOB': 'https://explorer.gobob.xyz/tx/{txid}',
     'CRO': 'https://cronoscan.com/tx/{txid}',
+    'OP': 'https://optimistic.etherscan.io/tx/{txid}',
+    'PLS': 'https://scan.pulsechain.com/tx/{txid}',
+    'MON': 'https://monadscan.com/tx/{txid}',
+    'UNI': 'https://uniscan.xyz/tx/{txid}',
     'SOL': 'https://solscan.io/tx/{txid}',
     'XMR': 'https://xmrchain.net/tx/{txid}',
     'ZANO': 'https://explorer.zano.org/transaction/{txid}',
@@ -362,9 +368,17 @@ class ChainInfo {
     return tmpl.replaceAll('{txid}', txid);
   }
 
-  static double amountToDecimal(String ticker, int atomic) {
+  static double amountToDecimal(String ticker, dynamic atomic) {
     final d = decimals[ticker] ?? 7;
-    return atomic / _pow10(d);
+    final divisor = _pow10(d);
+    if (atomic is BigInt) return atomic.toDouble() / divisor;
+    if (atomic is num) return atomic.toDouble() / divisor;
+    if (atomic is String) {
+      final text = atomic.trim();
+      if (text.isEmpty) return 0;
+      return BigInt.parse(text).toDouble() / divisor;
+    }
+    throw ArgumentError.value(atomic, 'atomic', 'number or decimal string');
   }
 
   static double _pow10(int n) {

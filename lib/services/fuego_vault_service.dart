@@ -69,6 +69,7 @@ class FuegoVaultService {
   FuegoNative? _native;
   Uint8List? _vaultBytes;
   String? _cachedAddress;
+  bool _testnet = false;
   String? _spendPublicKey;
   String? _viewSecretKey;
   bool _unlocked = false;
@@ -410,8 +411,19 @@ class FuegoVaultService {
     return _ffi.vaultDeriveKeypair(_vaultBytes!, index);
   }
 
-  String makeAddress(List<int> spendPub, List<int> viewPub) {
-    return _ffi.makeAddress(spendPub, viewPub);
+  String makeAddress(List<int> spendPub, List<int> viewPub, {bool? testnet}) {
+    return _ffi.makeAddress(spendPub, viewPub, testnet: testnet ?? _testnet);
+  }
+
+  /// Set the network used for locally derived addresses. Re-derives the
+  /// cached address if the vault is unlocked.
+  void setTestnet(bool testnet) {
+    if (_testnet == testnet) return;
+    _testnet = testnet;
+    final bytes = _vaultBytes;
+    if (bytes != null && _unlocked) {
+      _cachedAddress = _ffi.vaultGetAddress(bytes, 0, testnet: _testnet);
+    }
   }
 
   String generateKeyDerivation(List<int> key1, List<int> secret2) {
@@ -491,7 +503,7 @@ class FuegoVaultService {
 
   Future<void> _loadInMemory(Uint8List bytes) async {
     _vaultBytes = bytes;
-    _cachedAddress = _ffi.vaultGetAddress(bytes, 0);
+    _cachedAddress = _ffi.vaultGetAddress(bytes, 0, testnet: _testnet);
     final spendKp = _ffi.vaultDeriveKeypair(bytes, 0);
     _spendPublicKey = spendKp['public'] as String?;
     final viewKp = _ffi.vaultDeriveKeypair(bytes, 1);

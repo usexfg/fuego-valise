@@ -123,7 +123,10 @@ class TradingSeries {
     double center,
   ) {
     if (window.isEmpty || zoom <= 1.001) return window;
-    final visible = (window.length / zoom).round().clamp(2, window.length);
+    // A one-candle window can't satisfy the 2-point floor: keep it.
+    final visible = window.length <= 2
+        ? window.length
+        : (window.length / zoom).round().clamp(2, window.length);
     final maxStart = window.length - visible;
     final v = visible / window.length;
     final startFrac = (center - v / 2).clamp(0.0, 1.0 - v);

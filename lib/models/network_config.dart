@@ -10,6 +10,8 @@ class NetworkConfig {
   final List<String> seedNodes;
   final String? explorerUrl;
   final String? faucetUrl;
+  final int epochBlocks;
+  final int blockTimeSec;
 
   const NetworkConfig({
     required this.type,
@@ -21,6 +23,8 @@ class NetworkConfig {
     required this.seedNodes,
     this.explorerUrl,
     this.faucetUrl,
+    this.epochBlocks = 900,
+    this.blockTimeSec = 480,
   });
 
   // Mainnet configuration
@@ -40,6 +44,8 @@ class NetworkConfig {
       'fuego.communitynode.net:18180',
     ],
     explorerUrl: 'https://explorer.usexfg.org',
+    epochBlocks: 900,
+    blockTimeSec: 480,
   );
 
   // Testnet configuration
@@ -58,6 +64,8 @@ class NetworkConfig {
     ],
     explorerUrl: 'https://testnet-explorer.usexfg.org',
     faucetUrl: 'https://testnet-faucet.usexfg.org',
+    epochBlocks: 900,
+    blockTimeSec: 480,
   );
 
   // Get configuration by type

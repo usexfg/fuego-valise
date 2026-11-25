@@ -9,6 +9,7 @@ import '../../models/chain_info.dart';
 import '../../models/erc20_token.dart';
 import 'peer_swap_screen.dart';
 import '../../services/price_history_service.dart';
+import '../../services/swap_daemon_client.dart';
 import '../../services/web3_multi_chain_service.dart';
 import '../../utils/theme.dart';
 import '../../widgets/trading/trading_chart.dart';
@@ -36,9 +37,6 @@ class _DexScreenState extends State<DexScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _loadPriceData();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => context.read<DexCubit>().init(),
-    );
     _takerKeyController.addListener(_onTakerKeyChanged);
   }
 
@@ -193,8 +191,8 @@ class _DexScreenState extends State<DexScreen>
           Text(
             'XFG',
             style: TextStyle(
-              color: TradingStyle.text,
-              fontSize: 14,
+              color: AppTheme.primaryColor,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -361,7 +359,11 @@ class _DexScreenState extends State<DexScreen>
           if (!state.isConnected)
             const Icon(Icons.cloud_off, color: TradingStyle.loss, size: 16)
           else
-            const Icon(Icons.cloud_done, color: TradingStyle.gain, size: 16),
+            const Icon(
+              Icons.cloud_done,
+              color: TradingStyle.gain,
+              size: 16,
+            ),
           const SizedBox(width: 4),
           IconButton(
             icon: const Icon(
@@ -815,33 +817,12 @@ class _DexScreenState extends State<DexScreen>
   }
 
   Future<void> _cancelOffer(SwapOfferSdk offer) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.cardColor,
-        title: const Text(
-          'Cancel offer?',
-          style: TextStyle(color: AppTheme.textPrimary),
-        ),
-        content: Text(
-          'Remove your offer for ${(offer.amount / 1e7).toStringAsFixed(2)} '
-          'XFG @ ${offer.rate.toStringAsFixed(4)}?',
-          style: const TextStyle(color: AppTheme.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Cancel Offer',
-              style: TextStyle(color: AppTheme.errorColor),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await _requireTypedConfirmation(
+      title: 'Cancel offer',
+      details:
+          'Remove ${(offer.amount / 1e7).toStringAsFixed(2)} XFG @ ${offer.rate.toStringAsFixed(4)}?',
+      action: 'Cancel Offer',
+      destructive: true,
     );
     if (confirmed != true || !mounted) return;
     final cubit = context.read<DexCubit>();
@@ -1348,21 +1329,30 @@ class _DexScreenState extends State<DexScreen>
     ),
   );
 
-  void _submitOffer(DexState state) async {
+  Future<void> _submitOffer(DexState state) async {
     final amountStr = _amountController.text.trim();
     final rateStr = _rateController.text.trim();
     if (amountStr.isEmpty || rateStr.isEmpty) return;
-    final amountXfg = double.tryParse(amountStr);
-    final rate = double.tryParse(rateStr);
-    if (amountXfg == null || rate == null || amountXfg <= 0 || rate <= 0)
+    int xfgAtomic;
+    int rateNum;
+    try {
+      xfgAtomic = int.parse(SwapDaemonClient.xfgToAtomic(amountStr));
+      rateNum = SwapDaemonClient.counterpartyPerXfgToRateNum(rateStr);
+    } catch (error) {
+      _showActionError(error);
       return;
+    }
 
-    final xfgAtomic = (amountXfg * 1e7).round();
-    // Form rate = counterparty token per XFG; wire rateNum = XFG per token
-    // (matches the orderbook convention used by /getswapprice and the
-    // composite price oracle), both scaled by 1e7.
-    final rateNum = (1e7 / rate).round();
+    if (!await _requireTypedConfirmation(
+      title: 'Post offer',
+      details:
+          'Post $amountStr XFG at $rateStr ${state.selectedPair.ticker} per XFG?',
+      action: 'Post Offer',
+    )) {
+      return;
+    }
 
+    if (!mounted) return;
     final cubit = context.read<DexCubit>();
     await cubit.submitOffer(xfgAmount: xfgAtomic, rateNum: rateNum);
     if (!mounted) return;
@@ -1384,29 +1374,109 @@ class _DexScreenState extends State<DexScreen>
     }
   }
 
-  void _requestSwap(DexState state) async {
-    final offer =
-        state.selectedOffer ??
-        (state.offers.isNotEmpty ? state.offers.first : null);
-    if (offer == null) return;
+  Future<void> _requestSwap(DexState state) async {
+    final offer = state.selectedOffer;
+    if (offer == null) {
+      _showActionError('Select the specific offer to fill');
+      return;
+    }
     final amountStr = _amountController.text.trim();
     if (amountStr.isEmpty) return;
-    final amountXfg = double.tryParse(amountStr);
-    if (amountXfg == null || amountXfg <= 0) return;
+    int amount;
+    try {
+      amount = int.parse(SwapDaemonClient.xfgToAtomic(amountStr));
+    } catch (error) {
+      _showActionError(error);
+      return;
+    }
+    if (amount > offer.amount) {
+      _showActionError('Requested XFG amount exceeds the selected offer');
+      return;
+    }
     final isMonero = state.selectedChain == ChainTypeSdk.monero;
     final takerKey = isMonero
         ? _xmrAddressController.text.trim()
         : _takerKeyController.text.trim();
-    context.read<DexCubit>().requestSwap(
-      offerId: offer.offerId,
-      amount: (amountXfg * 1e7).toInt(),
+    if (!await _requireTypedConfirmation(
+      title: 'Request swap',
+      details:
+          'Request $amountStr XFG from the selected ${offer.pairLabel} offer?',
+      action: 'Request Swap',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    await context.read<DexCubit>().requestSwap(
+      offer: offer,
+      amount: amount,
       takerPubKey: '',
       proofOfFunds: '',
       takerChainKey: takerKey,
     );
-    // Don't let the counterparty chain key linger in the widget for the
-    // rest of the session.
     if (!isMonero) _takerKeyController.clear();
+  }
+
+  void _showActionError(Object error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$error'), backgroundColor: AppTheme.errorColor),
+    );
+  }
+
+  Future<bool> _requireTypedConfirmation({
+    required String title,
+    required String details,
+    required String action,
+    bool destructive = false,
+  }) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppTheme.cardColor,
+        title: Text(title, style: const TextStyle(color: AppTheme.textPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              details,
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Type YES to confirm',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            ),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(hintText: 'YES'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Back'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim() == 'YES'),
+            child: Text(
+              action,
+              style: TextStyle(
+                color: destructive
+                    ? AppTheme.errorColor
+                    : AppTheme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return confirmed == true;
   }
 
   // ── ERC20 balances inline (EVM chains) ──────────────────────────────

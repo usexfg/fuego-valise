@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Fuego Wallet Build & Run Script
-# Builds unified daemon + Flutter app, then runs with debug logging
+# Builds unifyd daemon + Flutter app, then runs with debug logging
 
 set -e
 
@@ -24,8 +24,8 @@ echo " Fuego Wallet Build & Run"
 echo "==========================================="
 echo ""
 
-# ── Step 1: Build unified daemon ──
-print_status "Step 1: Building unified daemon..."
+# ── Step 1: Build unifyd daemon ──
+print_status "Step 1: Building unifyd daemon..."
 
 if [ ! -f "fuego-suite/CMakeLists.txt" ]; then
     print_status "Initializing fuego-suite submodule..."
@@ -34,7 +34,7 @@ fi
 
 cd fuego-suite
 
-if [ ! -f "build/src/unified" ]; then
+if [ ! -f "build/src/unifyd" ]; then
     print_status "Configuring build..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
         brew install boost openssl icu4c jsoncpp cmake ninja 2>/dev/null || true
@@ -48,10 +48,10 @@ if [ ! -f "build/src/unified" ]; then
     fi
     
     print_status "Building..."
-    ninja -C build unified
-    print_success "Unified daemon built"
+    ninja -C build unifyd
+    print_success "Unifyd daemon built"
 else
-    print_success "Unified daemon already built"
+    print_success "Unifyd daemon already built"
 fi
 
 cd ..
@@ -72,19 +72,19 @@ print_status "Step 3: Building Flutter app..."
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     flutter build macos --release
-    APP_PATH="build/macos/Build/Products/Release/fuego_wallet.app"
+    APP_PATH="build/macos/Build/Products/Release/fuego-valise.app"
 
-    # Bundle unified daemon into app
-    print_status "Bundling unified daemon into app..."
-    cp fuego-suite/build/src/unified "$APP_PATH/Contents/MacOS/"
-    chmod +x "$APP_PATH/Contents/MacOS/unified"
-    print_success "Unified daemon bundled at: $APP_PATH/Contents/MacOS/unified"
+    # Bundle unifyd daemon into app
+    print_status "Bundling unifyd daemon into app..."
+    cp fuego-suite/build/src/unifyd "$APP_PATH/Contents/MacOS/"
+    chmod +x "$APP_PATH/Contents/MacOS/unifyd"
+    print_success "Unifyd daemon bundled at: $APP_PATH/Contents/MacOS/unifyd"
 else
     flutter build linux --release
     APP_PATH="build/linux/x64/release/bundle"
-    cp fuego-suite/build/src/unified "$APP_PATH/"
-    chmod +x "$APP_PATH/unified"
-    print_success "Unified daemon bundled at: $APP_PATH/unified"
+    cp fuego-suite/build/src/unifyd "$APP_PATH/"
+    chmod +x "$APP_PATH/unifyd"
+    print_success "Unifyd daemon bundled at: $APP_PATH/unifyd"
 fi
 
 # ── Step 4: Run app ──
@@ -96,8 +96,8 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "Run manually:"
     echo "  open \"$APP_PATH\""
     echo ""
-    echo "Or run the unified daemon standalone to test:"
-    echo "  $APP_PATH/Contents/MacOS/unified --bind-port 18189 --container-file /tmp/fuego_wallet --container-password test123 --local"
+    echo "Or run the unifyd daemon standalone to test:"
+    echo "  $APP_PATH/Contents/MacOS/unifyd --bind-port 18189 --container-file /tmp/fuego_wallet --container-password test123 --local"
     echo ""
     echo "Then test connectivity:"
     echo "  curl http://127.0.0.1:18189/health"
@@ -107,8 +107,8 @@ else
     echo "Run the app:"
     echo "  $APP_PATH/fuego_wallet"
     echo ""
-    echo "Or test unified daemon standalone:"
-    echo "  $APP_PATH/unified --bind-port 18189 --container-file /tmp/fuego_wallet --container-password test123 --local"
+    echo "Or test unifyd daemon standalone:"
+    echo "  $APP_PATH/unifyd --bind-port 18189 --container-file /tmp/fuego_wallet --container-password test123 --local"
 fi
 
 print_success "Build complete"

@@ -20,6 +20,7 @@ class SecurityService {
   static const _failedAttemptsKey = 'pin_failed_attempts';
   static const _lockUntilKey = 'pin_lock_until_ms';
   static const _walletdPasswordKey = 'walletd_container_password';
+  static const _walletdAuthTokenKey = 'walletd_auth_token';
 
   /// Max consecutive failed PIN attempts before temporary lockout.
   static const int maxFailedAttempts = 8;
@@ -350,6 +351,7 @@ class SecurityService {
     await _delete(_failedAttemptsKey);
     await _delete(_lockUntilKey);
     await _delete(_walletdPasswordKey);
+    await _delete(_walletdAuthTokenKey);
   }
 
   // ── Walletd container password (random, stored securely) ─────────────
@@ -364,6 +366,19 @@ class SecurityService {
     // created with this password — a different one on next call breaks it).
     await _write(_walletdPasswordKey, password);
     return password;
+  }
+
+  /// Bearer token the walletd API requires on every state-changing call.
+  /// Persisted so a walletd the app adopts rather than starts still knows the
+  /// token; rotating it would lock the running daemon out.
+  Future<String> getOrCreateWalletdAuthToken() async {
+    try {
+      final existing = await _read(_walletdAuthTokenKey);
+      if (existing != null && existing.isNotEmpty) return existing;
+    } catch (_) {}
+    final token = base64UrlEncode(_secureRandomBytes(32));
+    await _write(_walletdAuthTokenKey, token);
+    return token;
   }
 
   // ── Encrypt / decrypt helpers ────────────────────────────────────────

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../services/walletd_auth.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -36,6 +37,9 @@ class DexState {
   final bool isConnected;
 
   final bool isSwapDaemonConnected;
+  final String? swapDaemonError;
+  final List<SwapChain> swapChains;
+  final int? selectedSwapChainId;
   final List<SwapInfo> spvSwaps;
   final bool isSwapInitiating;
 
@@ -64,6 +68,9 @@ class DexState {
     this.lastResult,
     this.isConnected = false,
     this.isSwapDaemonConnected = false,
+    this.swapDaemonError,
+    this.swapChains = const [],
+    this.selectedSwapChainId,
     this.spvSwaps = const [],
     this.isSwapInitiating = false,
     this.evmBalance = 0.0,
@@ -90,6 +97,9 @@ class DexState {
     String? lastResult,
     bool? isConnected,
     bool? isSwapDaemonConnected,
+    String? swapDaemonError,
+    List<SwapChain>? swapChains,
+    int? selectedSwapChainId,
     List<SwapInfo>? spvSwaps,
     bool? isSwapInitiating,
     double? evmBalance,
@@ -114,6 +124,9 @@ class DexState {
     lastResult: lastResult,
     isConnected: isConnected ?? this.isConnected,
     isSwapDaemonConnected: isSwapDaemonConnected ?? this.isSwapDaemonConnected,
+    swapDaemonError: swapDaemonError,
+    swapChains: swapChains ?? this.swapChains,
+    selectedSwapChainId: selectedSwapChainId ?? this.selectedSwapChainId,
     spvSwaps: spvSwaps ?? this.spvSwaps,
     isSwapInitiating: isSwapInitiating ?? this.isSwapInitiating,
     evmBalance: evmBalance ?? this.evmBalance,
@@ -124,12 +137,22 @@ class DexState {
     lastLockType: lastLockType ?? this.lastLockType,
     lastPtlcPoint: lastPtlcPoint ?? this.lastPtlcPoint,
   );
+
+  SwapChain? get selectedSwapChain {
+    for (final chain in swapChains) {
+      if (chain.id == selectedSwapChainId) return chain;
+    }
+    return null;
+  }
 }
 
 class DexCubit extends Cubit<DexState> {
   final http.Client _http;
   String _baseUrl = '';
   SwapDaemonClient? _swapClient;
+  String _swapDaemonNetwork = 'mainnet';
+  SwapTokenProvider? _swapDaemonTokenProvider;
+  int _swapDaemonPort = 18902;
   Web3MultiChainService? _web3;
   String? _userAddress;
 
@@ -137,8 +160,23 @@ class DexCubit extends Cubit<DexState> {
 
   void configure(String host, {int port = 18189}) =>
       _baseUrl = 'http://$host:$port';
-  void configureSwapDaemon({String host = '127.0.0.1', int port = 18902}) =>
-      _swapClient = SwapDaemonClient(host: host, port: port);
+  void configureSwapDaemon({
+    String host = '127.0.0.1',
+    int port = 18902,
+    required String expectedNetwork,
+    SwapTokenProvider? tokenProvider,
+  }) {
+    _swapClient?.dispose();
+    _swapDaemonNetwork = expectedNetwork;
+    _swapDaemonTokenProvider = tokenProvider;
+    _swapDaemonPort = port;
+    _swapClient = SwapDaemonClient(
+      host: host,
+      port: port,
+      expectedNetwork: expectedNetwork,
+      tokenProvider: tokenProvider,
+    );
+  }
 
   void configureWeb3({
     String ethRpcUrl = '',
@@ -223,9 +261,19 @@ class DexCubit extends Cubit<DexState> {
     );
   }
 
-  Future<void> init({String host = '127.0.0.1', int port = 18189}) async {
+  Future<void> init({
+    String host = '127.0.0.1',
+    int port = 18189,
+    int? swapDaemonPort,
+    String? expectedNetwork,
+    SwapTokenProvider? swapDaemonTokenProvider,
+  }) async {
     configure(host, port: port);
-    configureSwapDaemon();
+    configureSwapDaemon(
+      port: swapDaemonPort ?? _swapDaemonPort,
+      expectedNetwork: expectedNetwork ?? _swapDaemonNetwork,
+      tokenProvider: swapDaemonTokenProvider ?? _swapDaemonTokenProvider,
+    );
     configureWeb3();
     await _checkConnection();
     await _checkSwapDaemon();
@@ -235,7 +283,7 @@ class DexCubit extends Cubit<DexState> {
     if (_baseUrl.isEmpty) return;
     try {
       final resp = await _http
-          .get(Uri.parse('$_baseUrl/getinfo'))
+          .get(Uri.parse('$_baseUrl/getinfo'), headers: WalletdAuth.headers())
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode == 200) {
         emit(state.copyWith(isConnected: true, error: null));
@@ -251,7 +299,7 @@ class DexCubit extends Cubit<DexState> {
     Map<String, String>? query,
   }) async {
     final resp = await _http
-        .get(_rest(path, query: query))
+        .get(_rest(path, query: query), headers: WalletdAuth.headers())
         .timeout(const Duration(seconds: 10));
     if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
     return jsonDecode(resp.body) as Map<String, dynamic>;
@@ -264,7 +312,10 @@ class DexCubit extends Cubit<DexState> {
     final resp = await _http
         .post(
           _rest(path),
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletdAuth.headers(),
+          },
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 10));
@@ -279,7 +330,10 @@ class DexCubit extends Cubit<DexState> {
     final resp = await _http
         .post(
           _rest('/json_rpc'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletdAuth.headers(),
+          },
           body: jsonEncode({
             'jsonrpc': '2.0',
             'id': 'dex',
@@ -652,12 +706,37 @@ class DexCubit extends Cubit<DexState> {
   }
 
   Future<void> requestSwap({
-    required String offerId,
+    required SwapOfferSdk offer,
     required int amount,
     required String takerPubKey,
     required String proofOfFunds,
     String? takerChainKey,
   }) async {
+    if (_swapClient == null) {
+      emit(state.copyWith(error: 'Swap daemon not connected'));
+      return;
+    }
+    if (amount <= 0 || amount > offer.amount) {
+      emit(state.copyWith(error: 'Requested XFG amount is outside the offer'));
+      return;
+    }
+    final runtimeChain = _readyRuntimeChainForOffer(offer);
+    if (runtimeChain == null) return;
+    try {
+      final daemonStatus = await _swapClient!.verifyContext();
+      if (!daemonStatus.afkSoftOrdersEnabled) {
+        emit(
+          state.copyWith(
+            error:
+                'Soft-order fills are disabled until the AFK payout path is trustless',
+          ),
+        );
+        return;
+      }
+    } catch (error) {
+      emit(state.copyWith(error: 'Swap daemon status failed: $error'));
+      return;
+    }
     // The taker identity (Ed25519 keypair from the native crypto lib) and the
     // chain reserve proof are required; the maker verifies both before locking.
     var pubKey = takerPubKey;
@@ -670,12 +749,12 @@ class DexCubit extends Cubit<DexState> {
       final chain = state.selectedChain;
       if (chain.isEvm) {
         proof = ReserveProofService.buildEvmProof(
-          offerId: offerId,
+          offerId: offer.offerId,
           privateKeyHex: takerChainKey,
         );
       } else if (chain == ChainTypeSdk.solana) {
         proof = await ReserveProofService.buildSolProof(
-          offerId: offerId,
+          offerId: offer.offerId,
           privateKeyHex: takerChainKey,
         );
       } else if (chain.isSignedMessageUtxo) {
@@ -683,7 +762,7 @@ class DexCubit extends Cubit<DexState> {
         // message magic and P2PKH prefix are chain-specific.
         proof = BitcoinReserveProof.build(
           wif: takerChainKey,
-          offerId: offerId,
+          offerId: offer.offerId,
           p2pkhVersion: _btcP2pkhVersion(chain).$1,
           p2pkhVersion2: _btcP2pkhVersion(chain).$2,
           messageMagic: _signedMessageMagic(chain),
@@ -692,7 +771,7 @@ class DexCubit extends Cubit<DexState> {
         // XMR reserve proofs are produced by monero-wallet-rpc. Bridge via
         // the local swap daemon: the user's XMR address is the taker input.
         final xmrProof = await _xmrReserveProof(
-          offerId: offerId,
+          offerId: offer.offerId,
           address: takerChainKey,
         );
         if (xmrProof == null) return;
@@ -721,11 +800,14 @@ class DexCubit extends Cubit<DexState> {
     emit(state.copyWith(isLoading: true, lastResult: null, error: null));
     try {
       final r = await _post('/requestswap', {
-        'offerId': offerId,
+        'offerId': offer.offerId,
         'amount': amount,
         'takerPubKey': pubKey,
         'proofOfFunds': proof,
       });
+      if (r['status']?.toString() != 'pending') {
+        throw StateError(r['status']?.toString() ?? 'Swap request rejected');
+      }
       emit(
         state.copyWith(
           isLoading: false,
@@ -737,7 +819,8 @@ class DexCubit extends Cubit<DexState> {
       // publishes the fill result. Poll for it, then drive the local swap
       // daemon into the AFK flow.
       await _awaitFillResult(
-        offerId: offerId,
+        offer: offer,
+        runtimeChain: runtimeChain,
         takerPubKey: pubKey,
         amount: amount,
       );
@@ -751,7 +834,8 @@ class DexCubit extends Cubit<DexState> {
   static const _fillResultMaxAttempts = 30; // 2.5 minutes
 
   Future<void> _awaitFillResult({
-    required String offerId,
+    required SwapOfferSdk offer,
+    required SwapChain runtimeChain,
     required String takerPubKey,
     required int amount,
   }) async {
@@ -769,7 +853,7 @@ class DexCubit extends Cubit<DexState> {
       Map<String, dynamic>? match;
       for (final q in requests) {
         final m = q as Map<String, dynamic>;
-        if (m['offerId'] == offerId) {
+        if (m['offerId'] == offer.offerId) {
           match = m;
           break;
         }
@@ -803,7 +887,9 @@ class DexCubit extends Cubit<DexState> {
       await _initiateAfkSwap(
         lockId: lockId,
         makerEndpoint: makerEndpoint,
-        amount: amount,
+        xfgAmount: amount,
+        offer: offer,
+        runtimeChain: runtimeChain,
         adaptorPoint: adaptorPoint,
         hashLock: hashLock,
         preSig: preSig,
@@ -823,7 +909,9 @@ class DexCubit extends Cubit<DexState> {
   Future<void> _initiateAfkSwap({
     required String lockId,
     required String makerEndpoint,
-    required int amount,
+    required int xfgAmount,
+    required SwapOfferSdk offer,
+    required SwapChain runtimeChain,
     String adaptorPoint = '',
     String hashLock = '',
     String preSig = '',
@@ -838,36 +926,30 @@ class DexCubit extends Cubit<DexState> {
       emit(state.copyWith(error: 'Taker identity missing — retry the request'));
       return;
     }
-    final pair = _pairNameForChain(state.selectedChain);
     try {
-      // Bind this daemon's record to the maker's lock and sign with the exact
-      // identity published in the request (the maker pre-bound it). The
-      // pre-lock material lets the daemon lock the counterparty HTLC and
-      // complete the maker's pre-sig after extracting t.
-      final swapId = await _swapClient!.initiateSwap(
-        pair: pair,
-        xfgAmount: amount,
-        ctrAmount:
-            amount, // approximate; the maker's offer terms govern the on-chain lock
+      final ctrAmount = SwapDaemonClient.counterpartyAmountForOffer(
+        xfgAmount: xfgAmount,
+        rateNum: offer.rateNum,
+        counterpartyDecimals: runtimeChain.decimals,
+      );
+      final swapId = await _swapClient!.initiateAfkSwap(
+        pair: runtimeChain.key,
+        xfgAmount: xfgAmount.toString(),
+        ctrAmount: ctrAmount,
         peer: makerEndpoint,
-        role: 'alice',
         swapId: lockId,
         ourSwapSecretKey: _takerSecretKeyHex!,
-        afk: true,
         adaptorPoint: adaptorPoint,
         hashLock: hashLock,
         preSig: preSig,
         ctrAddress: ctrAddress,
-        // Pin the daemon's peer connection to the offer's maker key so a
-        // relay-supplied endpoint cannot redirect the fill (H13).
-        expectedPeerPubkey: expectedPeerPubkey,
+        expectedPeerPubkey: offer.makerPubKey,
         requirePtlc: state.requirePtlc,
       );
       final accept = await _swapClient!.acceptSwap(swapId);
       emit(
         state.copyWith(
-          lastResult:
-              'Maker locked XFG. AFK swap ${swapId}: ${accept['state']}',
+          lastResult: 'Maker locked XFG. AFK swap $swapId: ${accept['state']}',
         ),
       );
       await loadSpvSwaps();
@@ -911,6 +993,24 @@ class DexCubit extends Cubit<DexState> {
       default:
         return 'SOL';
     }
+  }
+
+  SwapChain? _readyRuntimeChainForOffer(SwapOfferSdk offer) {
+    final runtimeChain = state.selectedSwapChain;
+    if (runtimeChain == null || !runtimeChain.executable) {
+      emit(state.copyWith(error: 'Select a ready counterparty chain'));
+      return null;
+    }
+    if (runtimeChain.id != offer.pair.id) {
+      emit(
+        state.copyWith(
+          error:
+              'Selected runtime chain does not match the orderbook offer pair',
+        ),
+      );
+      return null;
+    }
+    return runtimeChain;
   }
 
   /// Signmessage magic per UTXO chain. The leading byte is the message
@@ -1155,14 +1255,51 @@ class DexCubit extends Cubit<DexState> {
     if (_swapClient != null) await loadSpvSwaps();
   }
 
+  Future<void> refreshSwapDaemon() => _checkSwapDaemon();
+
   Future<void> _checkSwapDaemon() async {
     if (_swapClient == null) return;
     try {
-      final available = await _swapClient!.isAvailable();
-      emit(state.copyWith(isSwapDaemonConnected: available));
-      if (available) await loadSpvSwaps();
+      final chains = await _swapClient!.listChains();
+      var selectedId = state.selectedSwapChainId;
+      final selectedReady = chains.any(
+        (chain) => chain.id == selectedId && chain.executable,
+      );
+      if (!selectedReady) {
+        selectedId = null;
+        for (final chain in chains) {
+          if (chain.executable) {
+            selectedId = chain.id;
+            break;
+          }
+        }
+      }
+      emit(
+        state.copyWith(
+          isSwapDaemonConnected: true,
+          swapDaemonError: null,
+          swapChains: chains,
+          selectedSwapChainId: selectedId,
+        ),
+      );
+      await loadSpvSwaps();
     } catch (e) {
-      emit(state.copyWith(isSwapDaemonConnected: false));
+      emit(
+        state.copyWith(
+          isSwapDaemonConnected: false,
+          swapDaemonError: e.toString(),
+          swapChains: const [],
+        ),
+      );
+    }
+  }
+
+  void selectSwapChain(int id) {
+    for (final chain in state.swapChains) {
+      if (chain.id == id && chain.executable) {
+        emit(state.copyWith(selectedSwapChainId: id));
+        return;
+      }
     }
   }
 
@@ -1187,15 +1324,17 @@ class DexCubit extends Cubit<DexState> {
 
   Future<void> initiateSpvSwap({
     required String pair,
-    required int xfgAmount,
-    required int ctrAmount,
+    required String xfgAmount,
+    required String ctrAmount,
     required String peer,
+    required String expectedPeerPubkey,
   }) async {
     await initiateCrossChainSwap(
       pair: pair,
       xfgAmount: xfgAmount,
       ctrAmount: ctrAmount,
       peer: peer,
+      expectedPeerPubkey: expectedPeerPubkey,
     );
   }
 
@@ -1223,11 +1362,11 @@ class DexCubit extends Cubit<DexState> {
   /// `requirePtlc` enforces PTLC (no HTLC fallback) — daemon aborts if CTR cannot do PTLC.
   Future<void> initiateCrossChainSwap({
     required String pair,
-    required int xfgAmount,
-    required int ctrAmount,
+    required String xfgAmount,
+    required String ctrAmount,
     required String peer,
     String role = 'alice',
-    String? expectedPeerPubkey,
+    required String expectedPeerPubkey,
     bool? requirePtlc,
   }) async {
     if (_swapClient == null) {
@@ -1236,7 +1375,7 @@ class DexCubit extends Cubit<DexState> {
     }
     emit(state.copyWith(isSwapInitiating: true, error: null, lastResult: null));
     try {
-      final swapId = await _swapClient!.initiateSwap(
+      final swapId = await _swapClient!.initiatePeerSwap(
         pair: pair,
         xfgAmount: xfgAmount,
         ctrAmount: ctrAmount,
@@ -1278,12 +1417,13 @@ class DexCubit extends Cubit<DexState> {
     if (_swapClient == null) return;
     try {
       final result = await _swapClient!.checkTimeouts();
-      if (result.refunded.isNotEmpty)
+      if (result.refunded.isNotEmpty) {
         emit(
           state.copyWith(
             lastResult: 'Refunded ${result.refunded.length} timed-out swap(s)',
           ),
         );
+      }
       await loadSpvSwaps();
     } catch (e) {
       debugPrint('DexCubit: checkSpvTimeouts failed: $e');

@@ -11,11 +11,18 @@ use tokio::sync::Mutex;
 
 use crate::wallet_service::WalletService;
 use crate::wallet_slot::WalletSlot;
+use fuego_sdk::chain::{BitcoinChain, ChainSpv, ChainType, EvmChain, PaymentProof};
+use fuego_sdk::Wallet;
 use zeroize::Zeroize;
 
 pub struct AppState {
     pub slot: Arc<WalletSlot>,
     pub fuegod_url: String,
+    /// Bearer token required on every state-changing or wallet-reading call.
+    /// `None` means no token was configured and the API is open to any local
+    /// process — that is the pre-token behaviour and is not a safe default on
+    /// a shared host, but it keeps a bare `fuego_walletd serve` usable.
+    pub auth_token: Option<Arc<str>>,
 }
 
 /// Error for wallet methods called while no wallet is open (walletd started with
@@ -57,12 +64,16 @@ fn is_fuegod_method(method: &str) -> bool {
         "check_tx_proof" | "check_reserve_proof" |
         "start_mining" | "stop_mining" |
         "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
+        // cd::apy has a real fuegod endpoint (remapped to estimate_cd_yield).
+        // The other four cd::* market methods have none, so they are not
+        // allowlisted here: an unknown cd:: method must fail loudly rather
+        // than reach the daemon and render an empty CD screen.
+        "cd::apy" |
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_state" | "get_orderbook_info" | "get_orderbook_estimates" |
         "get_fuego_price" | "getswapoffers" | "getswapprice" | "getswaptrades" |
         "submitswap" | "cancelswap" | "requestswap" |
-        "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
+        "getactiveswaps" | "getswapstatus" | "htlc_create_hash_lock" | "htlc_build_script" |
         "initiate" | "accept" | "processswap" | "refundswap" |
         "getdeposits" | "get_block_range" | "get_maturing_deposits" |
         "rollover_deposit" | "get_fee_pool_info" | "get_epoch_history" |
@@ -197,16 +208,28 @@ async fn proxy_to_fuegod(fuegod_url: &str, body: &serde_json::Value) -> Result<s
                 .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
         }
         "getcdoffers" | "submitcd" | "cancelcd" | "estimate_cd_yield" |
-        "cd::market_list" | "cd::sell" | "cd::buy" | "cd::cancel_listing" | "cd::apy" |
         "getswapoffers" | "getswapprice" | "getswaptrades" |
         "submitswap" | "cancelswap" | "requestswap" |
-        "getactiveswaps" | "getswapstatus" | "verify_payment" | "htlc_create_hash_lock" | "htlc_build_script" |
+        "getactiveswaps" | "getswapstatus" | "htlc_create_hash_lock" | "htlc_build_script" |
         "initiate" | "accept" | "processswap" | "refundswap" |
         "getdeposits" | "get_block_range" | "get_maturing_deposits" |
         "rollover_deposit" | "get_fee_pool_info" | "get_epoch_history" |
         "get_treasury_info" | "get_alias" | "get_alias_by_address" | "get_all_aliases" |
         "heat_metrics" | "amm_quote" | "amm_pool_info" |
         "get_orderbook_info" | "get_orderbook_estimates" |
+        // CD abstraction: the Dart layer speaks cd::*, fuegod speaks its own
+        // names. cd::apy is the only cd::* call with a real fuegod endpoint.
+        "cd::apy" => {
+            client.post(format!("{}/estimate_cd_yield", fuegod_url))
+                .json(&params).send().await
+                .map_err(|e| sanitize_error(&format!("fuego daemon: {}", e)))?
+        }
+        // cd::market_list / sell / buy / cancel_listing have no fuegod endpoint
+        // (no CD secondary market exists yet), so they are deliberately absent
+        // from every forward arm and fall through to "unknown fuegod method".
+        // They used to be forwarded verbatim, which posted the literal
+        // "cd::market_list" to the daemon and left the CD screen silently empty.
+        // Re-add them here once fuegod grows a CD market.
         "get_fuego_price" |
         "create_cd" | "withdraw_cd" | "create_deposit" | "withdraw_deposit" => {
             client.post(format!("{}/{}", fuegod_url, method))
@@ -245,15 +268,10 @@ async fn handle_wallet_method(
         "getBalance" | "getbalance" => {
             let wallet = need(wallet)?.lock().await;
             let balance = wallet.balance_full().await;
-            let (heat_unlocked, heat_locked) = wallet.heat_balance().await;
             Ok(serde_json::json!({
                 "availableBalance": balance.confirmed,
                 "lockedAmount": balance.pending + balance.immature,
                 "blockCount": wallet.height().await,
-                // Atomic HEAT. Presence of these keys is the version signal the
-                // GUI uses to tell "no HEAT" from "walletd cannot report HEAT".
-                "unlockedHeatBalance": heat_unlocked,
-                "lockedHeatBalance": heat_locked,
             }))
         }
         "getAddress" | "getAddresses" | "get_address" => {
@@ -582,6 +600,15 @@ async fn handle_wallet_method(
                 "txHash": tx_hash,
             }))
         }
+        // SPV payment verification. Handled here, never proxied: fuegod has no
+        // such endpoint, so the proof is built and verified by the SDK's chain
+        // adapters. Needs no open wallet — the wallet plays no part in a
+        // foreign-chain query.
+        "verify_payment" => {
+            let req: VerifyPaymentRequest = serde_json::from_value(params.clone())
+                .map_err(|e| format!("invalid verify_payment params: {e}"))?;
+            verify_payment_impl(&req).await
+        }
         "swap" => {
             let direction_raw = params.get("direction")
                 .and_then(|d| d.as_str())
@@ -703,18 +730,89 @@ async fn handle_wallet_method(
     }
 }
 
-fn is_authorized_host(headers: &axum::http::HeaderMap) -> bool {
-    if let Some(host_val) = headers.get(axum::http::header::HOST) {
-        if let Ok(host_str) = host_val.to_str() {
-            let host_clean = host_str.split(':').next().unwrap_or("").to_lowercase();
-            if host_clean == "localhost" || host_clean == "127.0.0.1" || host_clean == "[::1]" || host_clean.is_empty() {
-                return true;
-            }
-        }
-        false
-    } else {
-        true
+/// Compare a presented bearer token against the expected one without leaking
+/// the match position through timing.
+///
+/// The length is compared up front. Folding it into the accumulator instead
+/// (e.g. `(e.len() ^ p.len()) as u8`) truncates to eight bits, so a token
+/// followed by 256 junk bytes produces a zero length term and authenticates.
+/// The token's length is not secret — it is always the same fixed-width
+/// base64url string — so an early return leaks nothing worth hiding.
+fn token_matches(expected: &str, presented: &str) -> bool {
+    let e = expected.as_bytes();
+    let p = presented.as_bytes();
+    if e.len() != p.len() {
+        return false;
     }
+    let mut diff = 0u8;
+    for i in 0..e.len() {
+        diff |= e[i] ^ p[i];
+    }
+    diff == 0
+}
+
+/// Extract the token from an `Authorization: Bearer <token>` header.
+fn bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
+    let raw = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let rest = raw.strip_prefix("Bearer ").or_else(|| raw.strip_prefix("bearer "))?;
+    Some(rest.trim())
+}
+
+/// Enforce the bearer token when one is configured. Returns a 401 response when
+/// the token is absent or wrong.
+fn require_token(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Option<axum::response::Response> {
+    let Some(expected) = state.auth_token.as_deref() else {
+        // No token configured: the API stays open so a bare
+        // `fuego_walletd serve` is usable.
+        return None;
+    };
+    if expected.is_empty() {
+        return Some((
+            axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({
+                "error": "unauthorized",
+                "hint": "server has empty auth token"
+            })),
+        )
+            .into_response());
+    }
+    let ok = bearer_token(headers).is_some_and(|t| token_matches(expected, t));
+    if ok {
+        return None;
+    }
+    Some((
+        axum::http::StatusCode::UNAUTHORIZED,
+        axum::Json(serde_json::json!({
+            "error": "unauthorized",
+            "hint": "present Authorization: Bearer <token> from the auth token file"
+        })),
+    )
+        .into_response())
+}
+
+fn is_authorized_host(headers: &axum::http::HeaderMap) -> bool {
+    // walletd serves plaintext HTTP/1.1, where Host is mandatory. HTTP/2's
+    // :authority is a pseudo-header: hyper folds it into the URI and never
+    // places it in this map, so asking for it here could not succeed. A
+    // request that carries no Host is therefore not a loopback client.
+    let Some(raw) = headers.get(axum::http::header::HOST) else {
+        return false;
+    };
+    let Ok(host_str) = raw.to_str() else {
+        return false;
+    };
+    // "[::1]:18189" must not be split on the first colon, which lands inside
+    // the brackets and leaves a bare "[".
+    let host_clean = if let Some(rest) = host_str.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else {
+        host_str.split(':').next().unwrap_or("")
+    }
+    .to_lowercase();
+    matches!(host_clean.as_str(), "localhost" | "127.0.0.1" | "::1")
 }
 
 /// Decode a 32-byte hex seed, wiping the intermediate buffer.
@@ -817,6 +915,9 @@ async fn json_rpc_handler(
         };
         return (StatusCode::FORBIDDEN, Json(serde_json::to_value(error).unwrap())).into_response();
     }
+    if let Some(denied) = require_token(&state, &headers) {
+        return denied;
+    }
 
     let result: Result<serde_json::Value, String> =
         match handle_slot_method(&state.slot, &method, &mut body).await {
@@ -856,6 +957,9 @@ async fn fuegod_get(
     if !is_authorized_host(req.headers()) {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response();
     }
+    if let Some(denied) = require_token(&state, req.headers()) {
+        return denied;
+    }
     let fuegod_path = req.uri().path();
     let fuegod_query = req.uri().query().unwrap_or("");
     let client = reqwest::Client::new();
@@ -887,6 +991,9 @@ async fn fuegod_post(
 ) -> impl IntoResponse {
     if !is_authorized_host(req.headers()) {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "forbidden host"}))).into_response();
+    }
+    if let Some(denied) = require_token(&state, req.headers()) {
+        return denied;
     }
     let fuegod_path = req.uri().path().to_string();
     let (parts, body) = req.into_parts();
@@ -929,6 +1036,12 @@ async fn status_handler(
     if !is_authorized_host(&headers) {
         return forbidden();
     }
+    // Address and balance are wallet data, not liveness. Without this check
+    // /status answered any local process while the other wallet routes 401'd,
+    // so it was the one way to read them without the token.
+    if let Some(denied) = require_token(&state, &headers) {
+        return denied;
+    }
     let Some(wallet) = state.slot.current().await else { return no_wallet() };
     let wallet = wallet.lock().await;
     let balance = wallet.balance_full().await;
@@ -952,6 +1065,11 @@ async fn health_check(
     if !is_authorized_host(&headers) {
         return forbidden();
     }
+    // Liveness stays reachable without a token so the app can probe startup.
+    // The wallet's address and balance are not liveness, so they are only
+    // included when the caller presents the token — otherwise any local
+    // process, and on Android any app with INTERNET, could read them.
+    let authorized = require_token(&state, &headers).is_none();
     let client = reqwest::Client::new();
     let fuegod_ok = client.get(format!("{}/getinfo", state.fuegod_url))
         .send().await
@@ -980,8 +1098,8 @@ async fn health_check(
         "fuego": fuegod_ok,
         "daemon": fuegod_ok,
         "swap": crate::swapd::swapd_healthy(crate::swapd::SWAPD_RPC_PORT).await,
-        "wallet": wallet_json,
-        "scanned_height": scanned,
+        "wallet": if authorized { wallet_json } else { serde_json::Value::Null },
+        "scanned_height": if authorized { scanned } else { serde_json::Value::Null },
     }))
     .into_response()
 }
@@ -1002,6 +1120,10 @@ async fn scan_balance_handler(
     if !is_authorized_host(&headers) {
         req.view_secret.zeroize();
         return forbidden();
+    }
+    if let Some(denied) = require_token(&state, &headers) {
+        req.view_secret.zeroize();
+        return denied;
     }
     let Some(wallet) = state.slot.current().await else {
         req.view_secret.zeroize();
@@ -1029,14 +1151,172 @@ async fn scan_balance_handler(
     .into_response()
 }
 
+// ── SPV payment verification ─────────────────────────────────────────────
+
+/// POST /verify_payment — build and verify a payment proof on a foreign chain.
+///
+/// walletd's own handler, not a proxy arm: fuegod has no `/verify_payment`
+/// endpoint, so the SDK's chain adapters do the work. The response body is the
+/// proof map the Dart `PaymentProofSdk.fromJson` parses.
+#[derive(Deserialize)]
+struct VerifyPaymentRequest {
+    /// Chain id — the Dart `ChainTypeSdk` enum discriminant.
+    chain: i64,
+    tx_hash: String,
+    from_address: String,
+    to_address: String,
+    /// Amount in the chain's atomic units (satoshis / wei).
+    amount: u64,
+    #[serde(default = "default_min_confirmations")]
+    min_confirmations: u32,
+}
+
+fn default_min_confirmations() -> u32 {
+    6
+}
+
+/// Map a Dart `ChainTypeSdk` id to the SDK `ChainType`. The two enums declare
+/// their common chains in the same order, so the id is the discriminant.
+fn chain_type_from_id(id: i64) -> Option<ChainType> {
+    Some(match id {
+        0 => ChainType::Fuego,
+        1 => ChainType::Solana,
+        2 => ChainType::Ethereum,
+        3 => ChainType::Monero,
+        4 => ChainType::BitcoinCash,
+        5 => ChainType::Arbitrum,
+        6 => ChainType::Base,
+        7 => ChainType::Komodo,
+        8 => ChainType::Bnb,
+        9 => ChainType::Decred,
+        10 => ChainType::Bitcoin,
+        11 => ChainType::Litecoin,
+        12 => ChainType::Polygon,
+        _ => return None,
+    })
+}
+
+/// The Dart `ChainTypeSdk` id for an SDK chain (see `chain_type_from_id`).
+fn chain_id(chain: ChainType) -> i64 {
+    match chain {
+        ChainType::Fuego => 0,
+        ChainType::Solana => 1,
+        ChainType::Ethereum => 2,
+        ChainType::Monero => 3,
+        ChainType::BitcoinCash => 4,
+        ChainType::Arbitrum => 5,
+        ChainType::Base => 6,
+        ChainType::Komodo => 7,
+        ChainType::Bnb => 8,
+        ChainType::Decred => 9,
+        ChainType::Bitcoin => 10,
+        ChainType::Litecoin => 11,
+        ChainType::Polygon => 12,
+    }
+}
+
+/// The SPV adapter for `chain` against its default RPC endpoint. The
+/// Bitcoin-family defaults are the local bitcoind-style ports the swap
+/// daemon's RPC mode documents; the EVM defaults are the same public
+/// endpoints the swap config uses.
+fn chain_spv_for(chain: ChainType) -> Result<Box<dyn ChainSpv>, String> {
+    let spv: Box<dyn ChainSpv> = match chain {
+        ChainType::Bitcoin => Box::new(BitcoinChain::new(chain, "http://127.0.0.1:8332", "", "")
+            .map_err(|e| e.to_string())?),
+        ChainType::BitcoinCash => Box::new(BitcoinChain::new(chain, "http://127.0.0.1:8332", "", "")
+            .map_err(|e| e.to_string())?),
+        ChainType::Litecoin => Box::new(BitcoinChain::new(chain, "http://127.0.0.1:9332", "", "")
+            .map_err(|e| e.to_string())?),
+        ChainType::Komodo => Box::new(BitcoinChain::new(chain, "http://127.0.0.1:7771", "", "")
+            .map_err(|e| e.to_string())?),
+        ChainType::Decred => Box::new(BitcoinChain::new(chain, "http://127.0.0.1:9108", "", "")
+            .map_err(|e| e.to_string())?),
+        ChainType::Ethereum => Box::new(EvmChain::new(chain, "https://eth.llamarpc.com", 0)
+            .map_err(|e| e.to_string())?),
+        ChainType::Arbitrum => Box::new(EvmChain::new(chain, "https://arb1.arbitrum.io/rpc", 0)
+            .map_err(|e| e.to_string())?),
+        ChainType::Base => Box::new(EvmChain::new(chain, "https://mainnet.base.org", 0)
+            .map_err(|e| e.to_string())?),
+        ChainType::Bnb => Box::new(EvmChain::new(chain, "https://bsc-dataseed.binance.org", 0)
+            .map_err(|e| e.to_string())?),
+        ChainType::Polygon => Box::new(EvmChain::new(chain, "https://polygon-rpc.com", 0)
+            .map_err(|e| e.to_string())?),
+        other => return Err(format!("{} has no SPV verification adapter", other.name())),
+    };
+    Ok(spv)
+}
+
+/// Build and verify the payment proof. Shared by the `/verify_payment` REST
+/// handler and the `verify_payment` JSON-RPC method so both emit exactly what
+/// the Dart side parses.
+async fn verify_payment_impl(req: &VerifyPaymentRequest) -> Result<serde_json::Value, String> {
+    let chain = chain_type_from_id(req.chain)
+        .ok_or_else(|| format!("unsupported chain id {} for SPV verification", req.chain))?;
+    let spv = chain_spv_for(chain)?;
+    let proof = Wallet::verify_payment(
+        &*spv,
+        &req.tx_hash,
+        &req.from_address,
+        &req.to_address,
+        req.amount,
+        req.min_confirmations,
+    )
+    .await
+    .map_err(|e| format!("verify_payment failed: {e}"))?;
+    Ok(payment_proof_json(&proof))
+}
+
+/// Serialize a proof to the field names `PaymentProofSdk.fromJson` parses.
+fn payment_proof_json(proof: &PaymentProof) -> serde_json::Value {
+    serde_json::json!({
+        "chain_id": chain_id(proof.chain),
+        "tx_hash": proof.tx_hash,
+        "amount": proof.amount,
+        "from_address": proof.from_address,
+        "to_address": proof.to_address,
+        "confirmations": proof.confirmations,
+        "block_height": proof.block_height,
+        "block_hash": proof.block_hash,
+        "merkle_root": proof.merkle_root,
+        "merkle_proof": proof.merkle_proof,
+        "tx_index": proof.tx_index,
+        "total_txs": proof.total_txs,
+        "verified": proof.verified,
+    })
+}
+
+async fn verify_payment_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<VerifyPaymentRequest>,
+) -> axum::response::Response {
+    if !is_authorized_host(&headers) {
+        return forbidden();
+    }
+    // Same gate as every other wallet route: a configured bearer token must
+    // be presented. The proof is chain data, so no open wallet is required.
+    if let Some(denied) = require_token(&state, &headers) {
+        return denied;
+    }
+    match verify_payment_impl(&req).await {
+        Ok(val) => Json(val).into_response(),
+        // The failure is the upstream chain RPC's, like the proxy's own.
+        Err(msg) => {
+            (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": msg}))).into_response()
+        }
+    }
+}
+
 pub async fn run_server(
     slot: Arc<WalletSlot>,
     fuegod_url: &str,
     bind_addr: &str,
+    auth_token: Option<String>,
 ) -> Result<(), String> {
     let state = Arc::new(AppState {
         slot,
         fuegod_url: fuegod_url.to_string(),
+        auth_token: auth_token.map(Arc::from),
     });
 
     let cors = tower_http::cors::CorsLayer::new()
@@ -1074,7 +1354,7 @@ pub async fn run_server(
         .route("/requestswap", post(fuegod_post))
         .route("/getactiveswaps", post(fuegod_post))
         .route("/getswapstatus", post(fuegod_post))
-        .route("/verify_payment", post(fuegod_post))
+        .route("/verify_payment", post(verify_payment_handler))
         .route("/htlc_create_hash_lock", post(fuegod_post))
         .route("/htlc_build_script", post(fuegod_post))
         // Extra robustness GET endpoints
@@ -1099,6 +1379,129 @@ pub async fn run_server(
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+
+    fn headers_with(value: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(axum::http::header::HOST, axum::http::HeaderValue::from_str(value).unwrap());
+        h
+    }
+
+    #[test]
+    fn loopback_hosts_are_authorized_and_others_are_not() {
+        // RFC 3986 requires the bracketed form for an IPv6 host, so a bare
+        // "::1" is not a legal Host value and is refused along with the rest.
+        for v in ["127.0.0.1:18189", "localhost:18189", "[::1]:18189", "127.0.0.1"] {
+            assert!(is_authorized_host(&headers_with(v)), "{v}");
+        }
+        for v in ["evil.com", "attacker.test:18189", "192.168.1.5:18189", "127.0.0.1.evil.com", "::1"] {
+            assert!(!is_authorized_host(&headers_with(v)), "{v}");
+        }
+    }
+
+    #[test]
+    fn a_request_carrying_no_host_at_all_is_refused() {
+        // Regression: the check used to fall through to `true` when neither
+        // header was present, which authorized any client that omitted both.
+        assert!(!is_authorized_host(&axum::http::HeaderMap::new()));
+    }
+
+    fn auth_headers(value: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_str(value).unwrap(),
+        );
+        h
+    }
+
+    #[test]
+    fn token_comparison_is_exact() {
+        assert!(token_matches("s3cret", "s3cret"));
+        assert!(!token_matches("s3cret", "s3cre"));
+        assert!(!token_matches("s3cret", "s3cretx"));
+        assert!(!token_matches("s3cret", "S3CRET"));
+        assert!(!token_matches("s3cret", ""));
+        // Two empty strings compare equal; the refusal of an unset token is
+        // require_token's job, not this function's.
+        assert!(token_matches("", ""));
+    }
+
+    #[test]
+    fn a_longer_token_with_junk_appended_is_rejected() {
+        // Regression: folding the length into the accumulator as u8 made
+        // 13 ^ 269 truncate to zero, so the token plus 256 bytes authenticated.
+        let base = "correct-token";
+        for extra in [1usize, 2, 43, 243, 256, 512, 1024] {
+            let presented = format!("{base}{}", "x".repeat(extra));
+            assert!(!token_matches(base, &presented), "extra={extra}");
+        }
+    }
+
+    #[test]
+    fn bearer_token_is_parsed_only_from_a_bearer_header() {
+        assert_eq!(bearer_token(&auth_headers("Bearer abc123")), Some("abc123"));
+        assert_eq!(bearer_token(&auth_headers("bearer abc123")), Some("abc123"));
+        assert_eq!(bearer_token(&auth_headers("Bearer  abc123 ")), Some("abc123"));
+        assert_eq!(bearer_token(&auth_headers("Basic abc123")), None);
+        assert_eq!(bearer_token(&auth_headers("abc123")), None);
+        assert_eq!(bearer_token(&axum::http::HeaderMap::new()), None);
+    }
+
+    /// A configured token must refuse a missing or wrong bearer token, and
+    /// accept only the exact value. With no token configured the API stays open
+    /// so a bare `fuego_walletd serve` still works.
+    #[tokio::test]
+    async fn a_configured_token_gates_every_call() {
+        let dir = std::env::temp_dir().join("walletd-auth-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let state = AppState {
+            slot: Arc::new(WalletSlot::new(dir, "http://127.0.0.1:1", false)),
+            fuegod_url: "http://127.0.0.1:1".to_string(),
+            auth_token: Some(Arc::from("correct-token")),
+        };
+
+        assert!(require_token(&state, &auth_headers("Bearer correct-token")).is_none());
+        assert!(require_token(&state, &auth_headers("Bearer wrong-token")).is_some());
+        assert!(require_token(&state, &auth_headers("Basic correct-token")).is_some());
+        assert!(require_token(&state, &axum::http::HeaderMap::new()).is_some());
+
+        let open = AppState { auth_token: None, ..state };
+        assert!(require_token(&open, &axum::http::HeaderMap::new()).is_none());
+        drop(svc);
+    }
+
+    /// Every handler that returns wallet data must call require_token. This is
+    /// the guard that caught /status answering unauthenticated while its
+    /// siblings 401'd, so the route list is pinned here rather than trusted.
+    #[test]
+    fn wallet_data_handlers_are_all_token_gated() {
+        let src = include_str!("server.rs");
+        for (handler, data) in [
+            ("json_rpc_handler", "wallet methods"),
+            ("fuegod_get", "proxied GET"),
+            ("fuegod_post", "proxied POST"),
+            ("status_handler", "address + balance"),
+            ("scan_balance_handler", "balance"),
+            ("verify_payment_handler", "SPV payment proof"),
+        ] {
+            let tail = src
+                .split_once(&format!("async fn {handler}("))
+                .expect("handler exists")
+                .1;
+            // Cut at the next top-level `async fn` / `fn` so we read only this
+            // handler's body regardless of what follows it.
+            let body = tail
+                .find("\nfn ")
+                .or_else(|| tail.find("\nasync fn "))
+                .map(|i| &tail[..i])
+                .unwrap_or(tail);
+            assert!(
+                body.contains("require_token"),
+                "{handler} returns {data} but never calls require_token"
+            );
+        }
+    }
 
     async fn call(wallet: &Mutex<WalletService>, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
         handle_wallet_method(Some(wallet), "http://127.0.0.1:1", method, &params).await
@@ -1144,23 +1547,6 @@ mod dispatch_tests {
     }
 
     #[tokio::test]
-    async fn get_balance_reports_heat_separately_from_xfg() {
-        let dir = std::env::temp_dir().join(format!("fuego-heatbal-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let svc = WalletService::new([7u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
-        let wallet = Mutex::new(svc);
-
-        let balance = call(&wallet, "getBalance", serde_json::json!({})).await.unwrap();
-        // A fresh wallet holds nothing, but it must still answer for HEAT: the
-        // GUI treats a missing key as "this walletd cannot read HEAT".
-        assert_eq!(balance["unlockedHeatBalance"], 0);
-        assert_eq!(balance["lockedHeatBalance"], 0);
-        assert_eq!(balance["availableBalance"], 0);
-        assert!(balance["blockCount"].is_u64());
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[tokio::test]
     async fn subaddress_methods_reach_the_wallet() {
         let dir = std::env::temp_dir().join(format!("fuego-dispatch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1180,5 +1566,93 @@ mod dispatch_tests {
         // Names the handler does not implement fall through to the fuegod proxy.
         assert_eq!(call(&wallet, "getinfo", serde_json::json!({})).await.unwrap_err(), NOT_A_WALLET_METHOD);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn verify_payment_params(chain: i64) -> serde_json::Value {
+        serde_json::json!({
+            "chain": chain,
+            "tx_hash": "0xabc",
+            "from_address": "0xfrom",
+            "to_address": "0xto",
+            "amount": 1000,
+            "min_confirmations": 6,
+        })
+    }
+
+    /// verify_payment is walletd's own method: it is dispatched without an
+    /// open wallet (a foreign-chain query needs none) and never falls through
+    /// to the fuegod proxy. Chain 1 (Solana) fails in the adapter lookup,
+    /// before any RPC call, so this runs offline.
+    #[tokio::test]
+    async fn verify_payment_is_a_wallet_method_that_needs_no_open_wallet() {
+        let err = handle_wallet_method(None, "http://127.0.0.1:1", "verify_payment", &verify_payment_params(1))
+            .await
+            .unwrap_err();
+        assert_ne!(err, NOT_A_WALLET_METHOD);
+        assert_ne!(err, NO_WALLET_OPEN);
+        assert!(err.contains("no SPV verification adapter"));
+    }
+
+    /// Missing params are a plain validation error, still not a proxy fallthrough.
+    #[tokio::test]
+    async fn verify_payment_params_are_validated() {
+        let err = handle_wallet_method(None, "http://127.0.0.1:1", "verify_payment", &serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert_ne!(err, NOT_A_WALLET_METHOD);
+        assert_ne!(err, NO_WALLET_OPEN);
+    }
+
+    /// The method must not be allowlisted for the proxy anywhere.
+    #[test]
+    fn verify_payment_is_not_a_fuegod_method() {
+        assert!(!is_fuegod_method("verify_payment"));
+    }
+
+    /// Chain ids round-trip between the Dart enum and the SDK enum, and the
+    /// ids past the SDK's 13 chains are refused.
+    #[test]
+    fn chain_ids_match_the_dart_enum() {
+        for id in 0..=12i64 {
+            assert_eq!(chain_id(chain_type_from_id(id).unwrap()), id);
+        }
+        for id in [13, 22, -1, 100] {
+            assert_eq!(chain_type_from_id(id), None, "id {id}");
+        }
+    }
+
+    /// The proof serializes to the exact field names PaymentProofSdk.fromJson
+    /// parses.
+    #[test]
+    fn payment_proof_serializes_to_the_dart_field_names() {
+        let proof = PaymentProof {
+            chain: ChainType::Ethereum,
+            tx_hash: "0xabc".into(),
+            amount: 123,
+            from_address: "0xfrom".into(),
+            to_address: "0xto".into(),
+            confirmations: 7,
+            block_height: 100,
+            block_hash: "0xblk".into(),
+            verified: true,
+            merkle_root: "0xroot".into(),
+            merkle_proof: vec!["0xsib".into()],
+            tx_index: 3,
+            total_txs: 9,
+        };
+        let json = payment_proof_json(&proof);
+        assert_eq!(json["chain_id"], 2);
+        assert_eq!(json["tx_hash"], "0xabc");
+        assert_eq!(json["amount"], 123);
+        assert_eq!(json["from_address"], "0xfrom");
+        assert_eq!(json["to_address"], "0xto");
+        assert_eq!(json["confirmations"], 7);
+        assert_eq!(json["block_height"], 100);
+        assert_eq!(json["block_hash"], "0xblk");
+        assert_eq!(json["merkle_root"], "0xroot");
+        assert_eq!(json["merkle_proof"], serde_json::json!(["0xsib"]));
+        assert_eq!(json["tx_index"], 3);
+        assert_eq!(json["total_txs"], 9);
+        assert_eq!(json["verified"], true);
     }
 }

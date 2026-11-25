@@ -77,6 +77,7 @@ class _TradingChartState extends State<TradingChart> {
   }
 
   List<Candlestick> get _window {
+    if (widget.loading) return const [];
     // No pair history: start at the launch rate, not "no history".
     final all = widget.candles.isEmpty
         ? PriceHistoryService().launchSeries()

@@ -1577,7 +1577,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'Configure xfg-swapd chain RPCs, keys and SPV servers',
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SwapSettingsScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => SwapSettingsScreen(
+                      networkConfig: app.nodeConnection.networkConfig,
+                    ),
+                  ),
                 ),
               ),
 

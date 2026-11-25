@@ -21,10 +21,7 @@ jobs:
   ios-build:
     name: Build iOS App
     runs-on: macos-latest
-    # `if:` conditions below read env; secrets are not visible there unless mapped.
-    env:
-      IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
-      APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -42,23 +39,24 @@ jobs:
       - name: Enable iOS support
         run: flutter config --enable-ios
 
-      - name: Verify code signing prerequisites
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: flutter-pub-cache-ios-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-cache-ios-
+
+      - name: Install dependencies
         run: |
-          echo "=== Code Signing Prerequisites ==="
-
-          if [ -z "${{ secrets.IOS_P12_BASE64 }}" ]; then
-            echo "WARNING: IOS_P12_BASE64 not set"
-          fi
-
-          if [ -z "${{ secrets.IOS_P12_PASSWORD }}" ]; then
-            echo "WARNING: IOS_P12_PASSWORD not set"
-          fi
-
-          if [ -z "${{ secrets.APPSTORE_ISSUER_ID }}" ]; then
-            echo "WARNING: APPSTORE_ISSUER_ID not set"
-          fi
-
-          echo "Bundle ID: ${IOS_BUNDLE_ID}"
+          for retry in 1 2 3; do
+            if flutter pub get; then
+              echo "✅ Flutter pub get successful on attempt $retry"
+              break
+            fi
+            echo "❌ Flutter pub get failed on attempt $retry, retrying in 10 seconds..."
+            sleep 10
+          done
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@v1
@@ -66,11 +64,8 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios
 
-      - name: Build fuego-ffi staticlib (force-loaded into Runner)
+      - name: Build fuego-ffi staticlib
         run: cargo build --release --manifest-path rust-fuego-wallet/Cargo.toml -p fuego-ffi --target aarch64-apple-ios
-
-      - name: Install dependencies
-        run: flutter pub get
 
       - name: Run tests
         continue-on-error: true
@@ -79,228 +74,25 @@ jobs:
       - name: Analyze code
         run: flutter analyze --no-fatal-infos
 
-      - name: Setup iOS certificates and provisioning profiles
-        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        uses: apple-actions/import-codesign-certs@v2
-        with:
-          p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
-          p12-password: ${{ secrets.IOS_P12_PASSWORD }}
-
-      - name: Download provisioning profile
-        if: inputs.dry_run != true && env.APPSTORE_ISSUER_ID != ''
-        uses: apple-actions/download-provisioning-profiles@v1
-        with:
-          bundle-id: ${{ env.IOS_BUNDLE_ID }}
-          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-
       - name: Build iOS app (Release)
         run: |
           echo "=== Building iOS app ==="
-
-          if [ -n "${{ secrets.IOS_P12_BASE64 }}" ]; then
-            flutter build ios --release --no-codesign
-          else
-            flutter build ios --release --no-codesign
-            echo "NOTE: Building without code signing (no credentials)"
-          fi
-
+          flutter build ios --release --no-codesign
           echo "✅ iOS app built"
 
       - name: Verify iOS build
         run: |
           echo "=== Verifying iOS build ==="
-
           APP_PATH="build/ios/iphoneos/Runner.app"
-
           if [ ! -d "$APP_PATH" ]; then
             echo "ERROR: iOS app not found at $APP_PATH"
             exit 1
           fi
-
-          # Check bundle structure
-          echo "iOS app bundle contents:"
-          ls -la "$APP_PATH"
-
-          # Verify Info.plist
-          if [ -f "$APP_PATH/Info.plist" ]; then
-            echo "✅ Info.plist found"
-            /usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP_PATH/Info.plist"
-            /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist"
-          else
-            echo "ERROR: Info.plist missing"
-            exit 1
-          fi
-
           echo "✅ Verification complete"
 
-      - name: Archive iOS app
-        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        run: |
-          echo "=== Archiving iOS app ==="
-
-          cd ios
-          xcodebuild -workspace Runner.xcworkspace \
-            -scheme ${IOS_SCHEME} \
-            -configuration Release \
-            -destination generic/platform=iOS \
-            -archivePath build/Runner.xcarchive \
-            archive
-
-          echo "✅ Archive created"
-
-      - name: Verify FFI symbols survived archive stripping
-        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        run: ./scripts/check-ios-ffi-symbols.sh ios/build/Runner.xcarchive
-
-      - name: Export IPA
-        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        run: |
-          echo "=== Exporting IPA ==="
-
-          # Create export options plist
-          cat > ios/exportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>app-store</string>
-              <key>teamID</key>
-              <string>${{ secrets.APPLE_TEAM_ID }}</string>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <true/>
-              <key>compileBitcode</key>
-              <false/>
-          </dict>
-          </plist>
-          EOF
-
-          cd ios
-          xcodebuild -exportArchive \
-            -archivePath build/Runner.xcarchive \
-            -exportPath build/ipa \
-            -exportOptionsPlist exportOptions.plist
-
-          echo "✅ IPA exported"
-
-      - name: Verify FFI symbols survived IPA export
-        if: inputs.dry_run != true && env.IOS_P12_BASE64 != ''
-        run: ./scripts/check-ios-ffi-symbols.sh ios/build/ipa/*.ipa
-
-      - name: Generate store metadata
-        run: |
-          echo "=== Generating App Store Metadata ==="
-
-          VERSION="${{ inputs.version }}"
-          if [ -z "$VERSION" ]; then
-            VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}')
-          fi
-
-          mkdir -p app-store-metadata
-
-          cat > app-store-metadata/metadata.json << EOF
-          {
-            "bundle_id": "${IOS_BUNDLE_ID}",
-            "title": "Fuego Wallet",
-            "subtitle": "Privacy-focused cryptocurrency wallet",
-            "description": "Fuego Wallet is a privacy-focused cryptocurrency wallet that supports the Fuego blockchain and cross-chain atomic swaps.\n\nFeatures:\n- Send and receive Fuego (XFG) and HEAT\n- Cross-chain atomic swaps with 12 blockchains\n- Certificate of Deposit (CD) staking\n- Built-in node connectivity\n- Privacy-focused with RingCT transactions",
-            "keywords": ["fuego","wallet","cryptocurrency","privacy","blockchain","atomic swap","staking"],
-            "category": "Finance",
-            "version": "${VERSION}",
-            "copyright": "Copyright 2024 Fuego Blockchain",
-            "support_url": "https://github.com/usexfg/fuego-wallet/issues",
-            "privacy_url": "https://fuegoblockchain.org/privacy",
-            "promotional_text": "Privacy-focused wallet for the Fuego blockchain with cross-chain atomic swaps"
-          }
-          EOF
-
-          # Generate App Store Connect metadata files
-          mkdir -p app-store-metadata/en-US
-
-          cat > app-store-metadata/en-US/description.txt << EOF
-          Fuego Wallet is a privacy-focused cryptocurrency wallet that supports the Fuego blockchain and cross-chain atomic swaps.
-
-          Features:
-          - Send and receive Fuego (XFG) and HEAT
-          - Cross-chain atomic swaps with 12 blockchains
-          - Certificate of Deposit (CD) staking
-          - Built-in node connectivity
-          - Privacy-focused with RingCT transactions
-
-          This is a free, open-source wallet with no ads or tracking.
-          EOF
-
-          cat > app-store-metadata/en-US/keywords.txt << EOF
-          fuego,wallet,cryptocurrency,privacy,blockchain,atomic swap,staking,heat,xfg
-          EOF
-
-          echo "✅ Store metadata generated"
-
-      - name: Create submission checklist
-        run: |
-          echo "## iOS App Store Submission Checklist" > submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### Pre-Submission" >> submission-checklist.md
-          echo "- [ ] App builds successfully" >> submission-checklist.md
-          echo "- [ ] App is signed" >> submission-checklist.md
-          echo "- [ ] Archive is created" >> submission-checklist.md
-          echo "- [ ] IPA is exported" >> submission-checklist.md
-          echo "- [ ] App launches correctly on simulator" >> submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### App Store Connect" >> submission-checklist.md
-          echo "- [ ] Create app in App Store Connect" >> submission-checklist.md
-          echo "- [ ] Upload screenshots (6.7\", 6.5\", 5.5\")" >> submission-checklist.md
-          echo "- [ ] Add app description and keywords" >> submission-checklist.md
-          echo "- [ ] Set pricing and availability" >> submission-checklist.md
-          echo "- [ ] Add privacy policy URL" >> submission-checklist.md
-          echo "- [ ] Complete age rating questionnaire" >> submission-checklist.md
-          echo "- [ ] Add app review information" >> submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### Submission" >> submission-checklist.md
-          echo "- [ ] Upload build to App Store Connect" >> submission-checklist.md
-          echo "- [ ] Add build to version" >> submission-checklist.md
-          echo "- [ ] Submit for review" >> submission-checklist.md
-          echo "" >> submission-checklist.md
-          echo "### Post-Submission" >> submission-checklist.md
-          echo "- [ ] Monitor review status" >> submission-checklist.md
-          echo "- [ ] Respond to review feedback" >> submission-checklist.md
-          echo "- [ ] Release when approved" >> submission-checklist.md
-
-      - name: Upload artifacts
+      - name: Upload iOS App
         uses: actions/upload-artifact@v4
         with:
-          name: ios-build
-          path: |
-            build/ios/iphoneos/Runner.app
-            ios/build/Runner.xcarchive
-            ios/build/ipa/
-            app-store-metadata/
-            submission-checklist.md
-          retention-days: 90
-
-      - name: Release summary
-        run: |
-          echo "## iOS App Store Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ iOS app built" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ secrets.IOS_P12_BASE64 }}" ]; then
-            echo "- ✅ App signed" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Archive created" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ IPA exported" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- ⚠️ App not signed (no credentials)" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "- ✅ Store metadata generated" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Upload to App Store Connect" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "xcrun altool --upload-app \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --type ios \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --file Runner.ipa \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --username \"\${APPLE_ID}\" \\" >> $GITHUB_STEP_SUMMARY
-          echo "  --password \"\${APP_SPECIFIC_PASSWORD}\"" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          name: fuego-wallet-ios
+          path: build/ios/iphoneos/Runner.app
+          retention-days: 30

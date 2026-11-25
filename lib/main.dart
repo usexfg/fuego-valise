@@ -29,6 +29,7 @@ import 'services/fuego_rpc_service.dart';
 import 'services/fuego_vault_service.dart';
 import 'services/node_connection.dart';
 import 'services/security_service.dart';
+import 'services/swap_config_service.dart';
 import 'utils/theme.dart';
 import 'utils/xfg_ticker.dart';
 
@@ -344,13 +345,31 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
                     final ep = nodeConnection.lastEndpoints;
                     final host = ep?.walletHost ?? '127.0.0.1';
                     final port = ep?.walletPort ?? _backendPort;
-                    return dex.init(host: host, port: port);
+                    return dex.init(
+                      host: host,
+                      port: port,
+                      swapDaemonPort: daemonManager.swapdPort,
+                      expectedNetwork: nodeConnection.networkConfig.isTestnet
+                          ? 'testnet'
+                          : 'mainnet',
+                      swapDaemonTokenProvider:
+                          SwapConfigService.readControlToken,
+                    );
                   }),
                 );
                 nodeConnection.addListener((ep) {
                   if (ep.proxyRunning) {
                     unawaited(
-                      dex.init(host: ep.walletHost, port: ep.walletPort),
+                      dex.init(
+                        host: ep.walletHost,
+                        port: ep.walletPort,
+                        swapDaemonPort: daemonManager.swapdPort,
+                        expectedNetwork: nodeConnection.networkConfig.isTestnet
+                            ? 'testnet'
+                            : 'mainnet',
+                        swapDaemonTokenProvider:
+                            SwapConfigService.readControlToken,
+                      ),
                     );
                   }
                 });

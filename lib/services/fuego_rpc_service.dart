@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import '../models/wallet.dart';
+import 'walletd_auth.dart';
 import '../models/network_config.dart';
 import '../models/cd.dart';
 
@@ -22,7 +23,7 @@ class FuegoRPCService {
     NetworkConfig? networkConfig,
   }) : _baseUrl = 'http://$host:${port ?? NetworkConfig.mainnet.walletRpcPort}',
        _networkConfig = networkConfig ?? NetworkConfig.mainnet,
-       _dio = Dio(
+       _dio = WalletdAuth.dio(
          BaseOptions(
            connectTimeout: const Duration(seconds: 30),
            receiveTimeout: const Duration(seconds: 30),
@@ -302,36 +303,15 @@ class FuegoRPCService {
     }
   }
 
-  /// HEAT balances in atomic units.
-  ///
-  /// [available] is false when `getBalance` answers without the HEAT keys, i.e.
-  /// a walletd older than the HEAT balance fields. Callers must then show
-  /// ΗΞΔŦ as unreadable — never as zero.
-  Future<({bool available, int unlockedHeat, int lockedHeat})>
-  getHeatBalance() async {
+  Future<({int unlockedHeat, int lockedHeat})> getHeatBalance() async {
     try {
       final response = await _makeRPCCall('getBalance', {});
-      final unlocked = response['unlockedHeatBalance'];
-      final locked = response['lockedHeatBalance'];
-      if (unlocked == null && locked == null) {
-        return (available: false, unlockedHeat: 0, lockedHeat: 0);
-      }
-      return (
-        available: true,
-        unlockedHeat: _atomic(unlocked),
-        lockedHeat: _atomic(locked),
-      );
+      final unlockedHeat = (response['unlockedHeatBalance'] ?? 0) as int;
+      final lockedHeat = (response['lockedHeatBalance'] ?? 0) as int;
+      return (unlockedHeat: unlockedHeat, lockedHeat: lockedHeat);
     } catch (e) {
       throw FuegoRPCException('Failed to get ΗΞΔŦ balance: $e');
     }
-  }
-
-  /// walletd may serialise atomic amounts as JSON numbers or strings.
-  static int _atomic(Object? value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value.trim()) ?? 0;
-    return 0;
   }
 
   // ── CD Methods ──

@@ -1,4 +1,4 @@
-use fuego_crypto::{Keypair, PublicKey, make_address, generate_key_derivation, derive_public_key, underive_public_key, generate_key_image, cn_base58_encode, cn_fast_hash, generate_signature, check_signature};
+use fuego_crypto::{Keypair, PublicKey, make_address, make_address_with_prefix, ADDRESS_BASE58_PREFIX, TESTNET_ADDRESS_BASE58_PREFIX, generate_key_derivation, derive_public_key, underive_public_key, generate_key_image, cn_base58_encode, cn_fast_hash, generate_signature, check_signature};
 use fuego_vault::Vault;
 use fuego_sdk::types::SwapPair;
 use std::ffi::{CStr, CString};
@@ -85,6 +85,27 @@ pub unsafe extern "C" fn fuego_make_address(
     CString::new(addr.0).unwrap().into_raw()
 }
 
+/// Network-aware address. `testnet` != 0 selects the testnet prefix.
+#[no_mangle]
+pub unsafe extern "C" fn fuego_make_address_for_network(
+    spend_pub_ptr: *const u8,
+    view_pub_ptr: *const u8,
+    testnet: u8,
+) -> *mut c_char {
+    if spend_pub_ptr.is_null() || view_pub_ptr.is_null() {
+        return CString::new("").unwrap().into_raw();
+    }
+    let spend_pub = slice::from_raw_parts(spend_pub_ptr, 32);
+    let view_pub = slice::from_raw_parts(view_pub_ptr, 32);
+    let mut spend = [0u8; 32];
+    let mut view = [0u8; 32];
+    spend.copy_from_slice(spend_pub);
+    view.copy_from_slice(view_pub);
+    let prefix = if testnet != 0 { TESTNET_ADDRESS_BASE58_PREFIX } else { ADDRESS_BASE58_PREFIX };
+    let addr = make_address_with_prefix(&spend, &view, prefix);
+    CString::new(addr.0).unwrap().into_raw()
+}
+
 // ── Vault (HD wallet) ──
 
 /// Generate a new vault. Returns serialized vault bytes.
@@ -131,6 +152,27 @@ pub unsafe extern "C" fn fuego_vault_get_address(
     match bincode::deserialize::<Vault>(data) {
         Ok(vault) => {
             let addr = vault.get_address(index);
+            CString::new(addr.0).unwrap().into_raw()
+        }
+        Err(_) => CString::new("").unwrap().into_raw(),
+    }
+}
+
+/// Network-aware vault address. `testnet` != 0 selects the testnet prefix.
+#[no_mangle]
+pub unsafe extern "C" fn fuego_vault_get_address_for_network(
+    vault_ptr: *const u8,
+    vault_len: usize,
+    index: u32,
+    testnet: u8,
+) -> *mut c_char {
+    if vault_ptr.is_null() {
+        return CString::new("").unwrap().into_raw();
+    }
+    let data = slice::from_raw_parts(vault_ptr, vault_len);
+    match bincode::deserialize::<Vault>(data) {
+        Ok(vault) => {
+            let addr = vault.get_address_for_network(index, testnet != 0);
             CString::new(addr.0).unwrap().into_raw()
         }
         Err(_) => CString::new("").unwrap().into_raw(),

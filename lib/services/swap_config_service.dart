@@ -1,29 +1,30 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:solana/base58.dart' as solana_base58;
 
 import '../models/chain_registry.g.dart';
-import '../models/network_catalog.g.dart';
+import 'evm_account_service.dart';
+import 'swap_daemon_client.dart';
 
 /// Manages xfg-swapd configuration and process lifecycle.
 class SwapConfigService {
-  static const _daemonConfigPrefixes = {'xpl': 'plasma', 'pls': 'pulsex'};
-
-  static final Set<String> _evmSwapChains = kReadyEvmKeys;
-
-  /// UTXO chains with no SPV branch. The pin registers these only when
-  /// `<key>_rpc_host` is set, and signs from `<key>_wif`.
-  static const Map<String, int> _fullNodeSwapChains = {
-    'doge': 22556,
-    'dash': 9998,
-    'zec': 8232,
-  };
+  static final Set<String> _evmSwapChains = kChains
+      .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
+      .map((chain) => chain.key)
+      .toSet();
 
   Process? _swapDaemon;
   String? _configPath;
   String? _swapdPath;
+  Map<String, SwapChainConfig>? _lastChains;
+  String? _lastNetwork;
+  String? _lastXfgSecret;
+  String? _runtimeConfigPath;
 
   Future<String> _dataDir() async {
     final dir = await getApplicationSupportDirectory();
@@ -67,90 +68,346 @@ class SwapConfigService {
     return null;
   }
 
-  Future<String> generateConfig({
-    required Map<String, SwapChainConfig> chains,
-    String? xfgSecretKey,
-  }) async {
-    final config = buildConfig(chains: chains, xfgSecretKey: xfgSecretKey);
+  static Future<String> controlTokenPath() async {
+    final dir = await getApplicationSupportDirectory();
+    return '${dir.path}/xfg-swapd.rpc-token';
+  }
 
-    final path = await configPath();
-    // The config contains chain private keys + the XFG spend key. Restrict
-    // to the owning user on POSIX platforms; never write to a shared temp
-    // dir (configPathSync's /tmp fallback is dead code — do not use it).
-    final file = File(path);
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(config),
-    );
-    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux)) {
+  static Future<void> _requireOwnerOnly(File file) async {
+    if (kIsWeb || Platform.isWindows) {
+      throw UnsupportedError(
+        'xfg-swapd credentials require a verified owner-only filesystem',
+      );
+    }
+    if (await FileSystemEntity.type(file.path, followLinks: false) !=
+        FileSystemEntityType.file) {
+      throw StateError('xfg-swapd credential path must be a regular file');
+    }
+    final metadata = await file.stat();
+    if (metadata.type != FileSystemEntityType.file ||
+        (metadata.mode & 0x1ff) != 0x180) {
+      throw StateError('xfg-swapd credential file must be owner-only');
+    }
+  }
+
+  static Future<void> _setOwnerOnly(File file) async {
+    final result = await Process.run('chmod', ['600', file.path]);
+    if (result.exitCode != 0) {
+      throw StateError('could not set xfg-swapd credential permissions');
+    }
+    await _requireOwnerOnly(file);
+  }
+
+  static Future<void> _writeOwnerOnlyFile(
+    String destination,
+    String contents,
+  ) async {
+    if (kIsWeb || Platform.isWindows) {
+      throw UnsupportedError(
+        'xfg-swapd credentials require a verified owner-only filesystem',
+      );
+    }
+    final directory = File(destination).parent;
+    await directory.create(recursive: true);
+    final random = Random.secure();
+    File? temporary;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final suffix = random.nextInt(1 << 32).toRadixString(16);
+      final candidate = File('$destination.tmp.$suffix');
       try {
-        await Process.run('chmod', ['600', path]);
-      } catch (_) {
-        // Non-fatal: the write still succeeded; perms stay umask-dependent.
+        await candidate.create(exclusive: true);
+        temporary = candidate;
+        break;
+      } on FileSystemException {
+        continue;
       }
+    }
+    if (temporary == null) {
+      throw StateError('could not create xfg-swapd credential file');
+    }
+
+    var renamed = false;
+    try {
+      await _setOwnerOnly(temporary);
+      await temporary.writeAsString(contents, flush: true);
+      await _setOwnerOnly(temporary);
+      await temporary.rename(destination);
+      renamed = true;
+      await _requireOwnerOnly(File(destination));
+    } catch (_) {
+      if (!renamed && await temporary.exists()) {
+        await temporary.delete();
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> _createOwnerOnlyFile(
+    String destination,
+    String contents,
+  ) async {
+    if (kIsWeb || Platform.isWindows) {
+      throw UnsupportedError(
+        'xfg-swapd credentials require a verified owner-only filesystem',
+      );
+    }
+    final file = File(destination);
+    await file.parent.create(recursive: true);
+    await file.create(exclusive: true);
+    await _setOwnerOnly(file);
+    await file.writeAsString(contents, flush: true);
+    await _requireOwnerOnly(file);
+  }
+
+  static String _newControlToken() {
+    final random = Random.secure();
+    return List<String>.generate(
+      32,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+  }
+
+  static Future<String> readControlToken() async {
+    final path = await controlTokenPath();
+    final file = File(path);
+    await _requireOwnerOnly(file);
+    return SwapDaemonClient.validateControlToken(await file.readAsString());
+  }
+
+  static Future<String> ensureControlTokenFile() async {
+    final path = await controlTokenPath();
+    final file = File(path);
+    if (await file.exists()) {
+      await _requireOwnerOnly(file);
+      SwapDaemonClient.validateControlToken(await file.readAsString());
+      return path;
+    }
+    try {
+      await _createOwnerOnlyFile(path, _newControlToken());
+    } on FileSystemException {
+      await _requireOwnerOnly(file);
+      SwapDaemonClient.validateControlToken(await file.readAsString());
     }
     return path;
   }
 
+  Future<String> generateConfig({
+    required Map<String, SwapChainConfig> chains,
+    required String network,
+    String? xfgSecretKey,
+  }) async {
+    _lastChains = chains;
+    _lastNetwork = network;
+    _lastXfgSecret = xfgSecretKey;
+    final config = stripSecrets(
+      buildConfig(chains: chains, network: network, xfgSecretKey: xfgSecretKey),
+    );
+    final path = await configPath();
+    await _writeOwnerOnlyFile(
+      path,
+      const JsonEncoder.withIndent('  ').convert(config),
+    );
+    return path;
+  }
+
+  /// Full config for a single launch. Owner-only, not the persisted file.
+  /// Caller deletes it after xfg-swapd has read it.
+  Future<String> writeRuntimeConfig({
+    required Map<String, SwapChainConfig> chains,
+    required String network,
+    String? xfgSecretKey,
+  }) async {
+    final config = buildConfig(
+      chains: chains,
+      network: network,
+      xfgSecretKey: xfgSecretKey,
+    );
+    final dir = await _dataDir();
+    final path = '$dir/swap_config.runtime.json';
+    // Drop any residue from a prior crash before writing a new runtime file.
+    try {
+      await File(path).delete();
+    } catch (_) {}
+    await _writeOwnerOnlyFile(
+      path,
+      const JsonEncoder.withIndent('  ').convert(config),
+    );
+    return path;
+  }
+
+  static const _secretKeys = {
+    'private_key',
+    'sol_keypair',
+    'xfg_secret_key',
+    'xmr_spend_key',
+    'xmr_view_key',
+  };
+
+  static bool _isSecretKey(String key) =>
+      _secretKeys.contains(key) || key.endsWith('_wif');
+
+  /// Remove raw private keys. Addresses, RPCs, registries, and modes stay.
+  static Map<String, dynamic> stripSecrets(Map<String, dynamic> config) {
+    final out = <String, dynamic>{};
+    for (final entry in config.entries) {
+      if (_isSecretKey(entry.key)) continue;
+      final value = entry.value;
+      if (value is Map<String, dynamic>) {
+        out[entry.key] = stripSecrets(value);
+      } else if (value is Map) {
+        out[entry.key] = stripSecrets(Map<String, dynamic>.from(value));
+      } else {
+        out[entry.key] = value;
+      }
+    }
+    return out;
+  }
+
   static Map<String, dynamic> buildConfig({
     required Map<String, SwapChainConfig> chains,
+    required String network,
     String? xfgSecretKey,
   }) {
-    final config = <String, dynamic>{};
+    if (network != 'mainnet' && network != 'testnet') {
+      throw ArgumentError.value(
+        network,
+        'network',
+        'must be mainnet or testnet',
+      );
+    }
+    final config = <String, dynamic>{'network': network};
+    final evmChains = <String, dynamic>{};
 
     for (final entry in chains.entries) {
       final chain = entry.key.toLowerCase();
       final cfg = entry.value;
-      if (cfg.wif.isEmpty) continue;
+      final credential = cfg.wif.trim();
+      if (credential.isEmpty) continue;
 
-      final isSol = chain == 'sol';
-      final isEvm = _evmSwapChains.contains(chain);
-      final daemonPrefix = _daemonConfigPrefixes[chain] ?? chain;
+      if (_evmSwapChains.contains(chain)) {
+        final rpcUrl = cfg.rpcUrl?.trim() ?? '';
+        final registry = cfg.htlcRegistry?.trim() ?? '';
+        final ptlcRegistry = cfg.ptlcRegistry?.trim() ?? '';
+        final chainId = cfg.chainId;
+        final uri = Uri.tryParse(rpcUrl);
+        if (uri == null ||
+            uri.host.isEmpty ||
+            (uri.scheme != 'http' && uri.scheme != 'https')) {
+          throw ArgumentError('$chain requires an HTTP(S) RPC URL');
+        }
+        if (chainId == null || chainId <= 0) {
+          throw ArgumentError('$chain requires an explicit chain ID');
+        }
+        if (network == 'mainnet' && chainId != kChainIds[chain]) {
+          throw ArgumentError(
+            '$chain chain ID does not match the mainnet catalog',
+          );
+        }
+        if (!_isEvmAddress(registry)) {
+          throw ArgumentError(
+            '$chain requires a deployed HTLC registry address',
+          );
+        }
+        if (ptlcRegistry.isNotEmpty && !_isEvmAddress(ptlcRegistry)) {
+          throw ArgumentError('$chain PTLC registry address is invalid');
+        }
+        final privateKey = EvmAccountService.normalizePrivateKey(credential);
+        evmChains[chain] = <String, dynamic>{
+          'rpc_url': rpcUrl,
+          'private_key': privateKey,
+          'address': EvmAccountService.deriveAddress(privateKey),
+          'htlc_registry': registry,
+          if (ptlcRegistry.isNotEmpty) 'ptlc_registry': ptlcRegistry,
+          'chain_id': chainId,
+        };
+        continue;
+      }
 
-      if ((isEvm || isSol) && cfg.rpcUrl != null && cfg.rpcUrl!.isNotEmpty) {
-        config['${daemonPrefix}_mode'] = 'rpc';
-        if (isSol) {
-          config['${daemonPrefix}_keypair_path'] = cfg.wif;
-        } else {
-          config['${daemonPrefix}_priv_key'] = cfg.wif;
-          config['${daemonPrefix}_chain_id'] = kChainIds[chain]!;
+      if (network == 'testnet') {
+        throw ArgumentError(
+          '$chain is not executable on testnet; configure a supported EVM deployment instead',
+        );
+      }
+
+      if (chain == 'xmr') {
+        final daemonHost = cfg.xmrDaemonHost?.trim() ?? '';
+        final walletHost = cfg.xmrWalletHost?.trim() ?? '';
+        final viewKey = cfg.xmrViewKey?.trim() ?? '';
+        if (daemonHost.isEmpty || walletHost.isEmpty) {
+          throw ArgumentError('XMR requires daemon and wallet RPC hosts');
         }
-        final uri = Uri.tryParse(cfg.rpcUrl!);
-        if (uri != null) {
-          config['${daemonPrefix}_rpc_host'] = uri.host;
-          config['${daemonPrefix}_rpc_port'] = uri.port;
+        if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(credential) ||
+            !RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(viewKey)) {
+          throw ArgumentError('XMR requires 64-character spend and view keys');
         }
-      } else if (_fullNodeSwapChains.containsKey(chain)) {
-        // No SPV branch exists for these clients. A host is the registration
-        // switch; `_mode=spv` would be a lie and is ignored by the daemon.
-        config['${chain}_rpc_host'] = cfg.rpcHost ?? '127.0.0.1';
-        config['${chain}_rpc_port'] =
-            cfg.rpcPort ?? _fullNodeSwapChains[chain]!;
-        if (cfg.rpcUser != null) config['${chain}_rpc_user'] = cfg.rpcUser!;
-        if (cfg.rpcPass != null) config['${chain}_rpc_pass'] = cfg.rpcPass!;
-        config['${chain}_wif'] = cfg.wif;
-      } else if (!isEvm && !isSol) {
-        config['${chain}_mode'] = 'spv';
-        config['${chain}_wif'] = cfg.wif;
-        if (cfg.servers.isNotEmpty) {
-          for (var i = 0; i < cfg.servers.length && i < 16; i++) {
-            config['${chain}_spv_server_$i'] = cfg.servers[i];
-          }
+        config['xmr_daemon_host'] = daemonHost;
+        config['xmr_wallet_host'] = walletHost;
+        config['xmr_spend_key'] = credential;
+        config['xmr_view_key'] = viewKey;
+        continue;
+      }
+
+      if (chain == 'sol') {
+        final rpcUrl = cfg.rpcUrl?.trim() ?? '';
+        final programId = cfg.solProgramId?.trim() ?? '';
+        final uri = Uri.tryParse(rpcUrl);
+        if (uri == null ||
+            uri.host.isEmpty ||
+            uri.scheme != 'http' ||
+            !isLocalSolanaRpcHost(uri.host)) {
+          throw ArgumentError('SOL requires a local HTTP RPC at 127.0.0.1');
         }
-        if (cfg.minServers != null)
-          config['${chain}_spv_min_servers'] = cfg.minServers!;
-        if (cfg.checkpointHeight != null && cfg.checkpointHeight! > 0) {
-          config['${chain}_spv_checkpoint_height'] = cfg.checkpointHeight!;
+        if (!_isSolanaBase58(programId, 32)) {
+          throw ArgumentError('SOL requires a 32-byte base58 program ID');
         }
-        if (cfg.checkpointHash != null && cfg.checkpointHash!.isNotEmpty) {
-          config['${chain}_spv_checkpoint_hash'] = cfg.checkpointHash!;
+        if (!_isSolanaBase58(credential, 64)) {
+          throw ArgumentError('SOL requires a 64-byte base58 keypair');
         }
+        config['sol_rpc_host'] = uri.host;
+        config['sol_rpc_port'] = uri.hasPort ? uri.port : 80;
+        config['sol_program_id'] = programId;
+        config['sol_keypair'] = credential;
+        continue;
+      }
+
+      config['${chain}_mode'] = 'spv';
+      config['${chain}_wif'] = credential;
+      for (var index = 0; index < cfg.servers.length && index < 16; index++) {
+        config['${chain}_spv_server_$index'] = cfg.servers[index];
+      }
+      if (cfg.minServers != null) {
+        config['${chain}_spv_min_servers'] = cfg.minServers!;
+      }
+      if (cfg.checkpointHeight != null && cfg.checkpointHeight! > 0) {
+        config['${chain}_spv_checkpoint_height'] = cfg.checkpointHeight!;
+      }
+      if (cfg.checkpointHash != null && cfg.checkpointHash!.isNotEmpty) {
+        config['${chain}_spv_checkpoint_hash'] = cfg.checkpointHash!;
       }
     }
 
+    if (evmChains.isNotEmpty) config['evm_chains'] = evmChains;
     if (xfgSecretKey != null && xfgSecretKey.isNotEmpty) {
+      if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(xfgSecretKey)) {
+        throw ArgumentError('XFG secret key must be 64 hexadecimal characters');
+      }
       config['xfg_secret_key'] = xfgSecretKey;
     }
     return config;
+  }
+
+  static bool _isEvmAddress(String value) =>
+      RegExp(r'^0x[0-9a-fA-F]{40}$').hasMatch(value);
+
+  static bool isLocalSolanaRpcHost(String host) => host == '127.0.0.1';
+
+  static bool _isSolanaBase58(String value, int expectedLength) {
+    if (!RegExp(r'^[1-9A-HJ-NP-Za-km-z]+$').hasMatch(value)) return false;
+    try {
+      return solana_base58.base58decode(value).length == expectedLength;
+    } on FormatException {
+      return false;
+    }
   }
 
   static String? validateWif(String wif, String chain) {
@@ -179,41 +436,68 @@ class SwapConfigService {
         if (!wif.startsWith('7') && !wif.startsWith('U'))
           return 'Must start with 7 or U';
         break;
-      case 'doge':
-        if (!wif.startsWith('Q'))
-          return 'Must start with Q (Dogecoin WIF prefix 0x9E)';
-        break;
-      case 'dash':
-        if (!wif.startsWith('X'))
-          return 'Must start with X (Dash WIF prefix 0xCC)';
-        break;
-      case 'zec':
-        if (!wif.startsWith('5') &&
-            !wif.startsWith('K') &&
-            !wif.startsWith('L'))
-          return 'Must start with 5, K, or L';
-        break;
     }
     return null;
   }
 
-  Future<bool> startDaemon({String? configPath}) async {
+  Future<bool> startDaemon({
+    String? configPath,
+    Map<String, SwapChainConfig>? chains,
+    String? network,
+    String? xfgSecretKey,
+    bool testnet = false,
+  }) async {
     final binary = findSwapdBinary();
     if (binary == null) return false;
-    final cfgPath = configPath ?? await this.configPath();
+    String? runtimePath;
+    final String cfgPath;
+    final launchChains = chains ?? _lastChains;
+    final launchNetwork = network ?? _lastNetwork;
+    final launchXfg = xfgSecretKey ?? _lastXfgSecret;
+    if (launchChains != null && launchNetwork != null) {
+      runtimePath = await writeRuntimeConfig(
+        chains: launchChains,
+        network: launchNetwork,
+        xfgSecretKey: launchXfg,
+      );
+      cfgPath = runtimePath;
+    } else {
+      cfgPath = configPath ?? await this.configPath();
+    }
     if (!File(cfgPath).existsSync()) return false;
     try {
-      _swapDaemon = await Process.start(binary, [
+      final tokenPath = await ensureControlTokenFile();
+      final arguments = <String>[
         '--swap-config',
         cfgPath,
+        '--rpc-token-file',
+        tokenPath,
+        if (testnet) '--testnet',
         '--service',
+      ];
+      _swapDaemon = await Process.start(binary, arguments);
+      final exitedImmediately = await Future.any<int?>([
+        _swapDaemon!.exitCode,
+        Future<int?>.delayed(const Duration(milliseconds: 300), () => null),
       ]);
-      _swapDaemon!.stdout.drain<void>();
-      _swapDaemon!.stderr.drain<void>();
-      _swapDaemon!.exitCode.then((code) {
-        debugPrint('[swapd] Exited with code $code');
+      if (exitedImmediately != null) {
         _swapDaemon = null;
-      });
+        if (runtimePath != null) {
+          try {
+            await File(runtimePath).delete();
+          } catch (_) {}
+        }
+        return false;
+      }
+      _runtimeConfigPath = runtimePath;
+      unawaited(_swapDaemon!.stdout.drain<void>());
+      unawaited(_swapDaemon!.stderr.drain<void>());
+      unawaited(
+        _swapDaemon!.exitCode.then((code) {
+          debugPrint('[swapd] Exited with code $code');
+          _swapDaemon = null;
+        }),
+      );
       return true;
     } catch (e) {
       debugPrint('[swapd] Failed to start: $e');
@@ -222,6 +506,13 @@ class SwapConfigService {
   }
 
   Future<void> stopDaemon() async {
+    final runtime = _runtimeConfigPath;
+    _runtimeConfigPath = null;
+    if (runtime != null) {
+      try {
+        await File(runtime).delete();
+      } catch (_) {}
+    }
     final p = _swapDaemon;
     _swapDaemon = null;
     if (p == null) return;
@@ -250,12 +541,13 @@ class SwapChainConfig {
   final int? checkpointHeight;
   final String? checkpointHash;
   final String? rpcUrl;
-
-  /// Full-node RPC (DOGE/DASH/ZEC). [rpcUrl] is the EVM/SOL form.
-  final String? rpcHost;
-  final int? rpcPort;
-  final String? rpcUser;
-  final String? rpcPass;
+  final int? chainId;
+  final String? htlcRegistry;
+  final String? ptlcRegistry;
+  final String? solProgramId;
+  final String? xmrDaemonHost;
+  final String? xmrWalletHost;
+  final String? xmrViewKey;
 
   const SwapChainConfig({
     required this.wif,
@@ -264,10 +556,13 @@ class SwapChainConfig {
     this.checkpointHeight,
     this.checkpointHash,
     this.rpcUrl,
-    this.rpcHost,
-    this.rpcPort,
-    this.rpcUser,
-    this.rpcPass,
+    this.chainId,
+    this.htlcRegistry,
+    this.ptlcRegistry,
+    this.solProgramId,
+    this.xmrDaemonHost,
+    this.xmrWalletHost,
+    this.xmrViewKey,
   });
 
   Map<String, dynamic> toJson() => {
@@ -277,10 +572,13 @@ class SwapChainConfig {
     if (checkpointHeight != null) 'checkpointHeight': checkpointHeight,
     if (checkpointHash != null) 'checkpointHash': checkpointHash,
     if (rpcUrl != null) 'rpcUrl': rpcUrl,
-    if (rpcHost != null) 'rpcHost': rpcHost,
-    if (rpcPort != null) 'rpcPort': rpcPort,
-    if (rpcUser != null) 'rpcUser': rpcUser,
-    if (rpcPass != null) 'rpcPass': rpcPass,
+    if (chainId != null) 'chainId': chainId,
+    if (htlcRegistry != null) 'htlcRegistry': htlcRegistry,
+    if (ptlcRegistry != null) 'ptlcRegistry': ptlcRegistry,
+    if (solProgramId != null) 'solProgramId': solProgramId,
+    if (xmrDaemonHost != null) 'xmrDaemonHost': xmrDaemonHost,
+    if (xmrWalletHost != null) 'xmrWalletHost': xmrWalletHost,
+    if (xmrViewKey != null) 'xmrViewKey': xmrViewKey,
   };
 
   factory SwapChainConfig.fromJson(Map<String, dynamic> j) => SwapChainConfig(
@@ -292,9 +590,12 @@ class SwapChainConfig {
     checkpointHeight: j['checkpointHeight'] as int?,
     checkpointHash: j['checkpointHash'] as String?,
     rpcUrl: j['rpcUrl'] as String?,
-    rpcHost: j['rpcHost'] as String?,
-    rpcPort: j['rpcPort'] as int?,
-    rpcUser: j['rpcUser'] as String?,
-    rpcPass: j['rpcPass'] as String?,
+    chainId: j['chainId'] as int?,
+    htlcRegistry: j['htlcRegistry'] as String?,
+    ptlcRegistry: j['ptlcRegistry'] as String?,
+    solProgramId: j['solProgramId'] as String?,
+    xmrDaemonHost: j['xmrDaemonHost'] as String?,
+    xmrWalletHost: j['xmrWalletHost'] as String?,
+    xmrViewKey: j['xmrViewKey'] as String?,
   );
 }

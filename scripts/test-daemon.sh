@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Fuego Wallet Daemon Test Script
-# Builds unified daemon, starts it, and verifies all endpoints work
+# Builds unifyd daemon, starts it, and verifies all endpoints work
 
 set -e
 
@@ -35,7 +35,7 @@ UNIFIED_PID=""
 
 cleanup() {
     if [ -n "$UNIFIED_PID" ] && kill -0 "$UNIFIED_PID" 2>/dev/null; then
-        print_status "Stopping unified daemon (PID $UNIFIED_PID)"
+        print_status "Stopping unifyd daemon (PID $UNIFIED_PID)"
         kill "$UNIFIED_PID" 2>/dev/null || true
         sleep 2
         kill -9 "$UNIFIED_PID" 2>/dev/null || true
@@ -49,20 +49,20 @@ echo " Fuego Wallet Daemon Test Suite"
 echo "==========================================="
 echo ""
 
-# ── Step 1: Find or build unified binary ──
-print_status "Step 1: Finding unified daemon binary..."
+# ── Step 1: Find or build unifyd binary ──
+print_status "Step 1: Finding unifyd daemon binary..."
 
 UNIFIED_BIN=""
-if [ -f "fuego-suite/build/src/unified" ]; then
-    UNIFIED_BIN="$(pwd)/fuego-suite/build/src/unified"
-elif [ -f "fuego-suite/build/release/src/unified" ]; then
-    UNIFIED_BIN="$(pwd)/fuego-suite/build/release/src/unified"
-elif [ -f "build/src/unified" ]; then
-    UNIFIED_BIN="$(pwd)/build/src/unified"
+if [ -f "fuego-suite/build/src/unifyd" ]; then
+    UNIFIED_BIN="$(pwd)/fuego-suite/build/src/unifyd"
+elif [ -f "fuego-suite/build/release/src/unifyd" ]; then
+    UNIFIED_BIN="$(pwd)/fuego-suite/build/release/src/unifyd"
+elif [ -f "build/src/unifyd" ]; then
+    UNIFIED_BIN="$(pwd)/build/src/unifyd"
 fi
 
 if [ -z "$UNIFIED_BIN" ]; then
-    print_warn "Unified binary not found. Building from source..."
+    print_warn "Unifyd binary not found. Building from source..."
     
     if [ ! -f "fuego-suite/CMakeLists.txt" ]; then
         print_status "Initializing fuego-suite submodule..."
@@ -72,7 +72,7 @@ if [ -z "$UNIFIED_BIN" ]; then
     cd fuego-suite
     
     if [ ! -d "build" ]; then
-        print_status "Building unified daemon..."
+        print_status "Building unifyd daemon..."
         if [[ "$OSTYPE" == "darwin"* ]]; then
             brew install boost openssl icu4c jsoncpp cmake ninja 2>/dev/null || true
             cmake -B build -G Ninja \
@@ -83,26 +83,26 @@ if [ -z "$UNIFIED_BIN" ]; then
             cmake -B build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release
         fi
-        ninja -C build unified
+        ninja -C build unifyd
     fi
     
     cd ..
-    UNIFIED_BIN="$(pwd)/fuego-suite/build/src/unified"
+    UNIFIED_BIN="$(pwd)/fuego-suite/build/src/unifyd"
 fi
 
 if [ ! -f "$UNIFIED_BIN" ]; then
-    print_fail "Unified binary not found at: $UNIFIED_BIN"
+    print_fail "Unifyd binary not found at: $UNIFIED_BIN"
     exit 1
 fi
 
-print_success "Unified binary: $UNIFIED_BIN"
+print_success "Unifyd binary: $UNIFIED_BIN"
 print_success "Binary size: $(du -h "$UNIFIED_BIN" | cut -f1)"
 
 # ── Step 2: Verify binary runs ──
 print_status "Step 2: Verifying binary runs..."
 
 # Test that binary starts and shows help/usage
-if timeout 5 "$UNIFIED_BIN" --help 2>/dev/null | head -1 | grep -qi "usage\|help\|fuego\|unified"; then
+if timeout 5 "$UNIFIED_BIN" --help 2>/dev/null | head -1 | grep -qi "usage\|help\|fuego\|unifyd"; then
     print_success "Binary runs and shows usage info"
 else
     # Binary might not have --help, just check it doesn't crash immediately
@@ -123,8 +123,8 @@ done
 
 print_success "Ports $UNIFIED_PORT and $FUEGOD_PORT are free"
 
-# ── Step 4: Start unified daemon ──
-print_status "Step 4: Starting unified daemon..."
+# ── Step 4: Start unifyd daemon ──
+print_status "Step 4: Starting unifyd daemon..."
 
 WALLET_DIR="/tmp/fuego_test_wallet"
 mkdir -p "$WALLET_DIR"
@@ -138,7 +138,7 @@ CONTAINER_PASSWORD="test_password_$(date +%s)"
     --local &
 UNIFIED_PID=$!
 
-print_success "Unified daemon started (PID $UNIFIED_PID)"
+print_success "Unifyd daemon started (PID $UNIFIED_PID)"
 
 # ── Step 5: Wait for health ──
 print_status "Step 5: Waiting for daemon to be ready..."
@@ -153,9 +153,9 @@ for i in $(seq 1 30); do
 done
 
 if [ "$HEALTHY" = true ]; then
-    print_success "Unified daemon is healthy on port $UNIFIED_PORT"
+    print_success "Unifyd daemon is healthy on port $UNIFIED_PORT"
 else
-    print_fail "Unified daemon not ready after 60s"
+    print_fail "Unifyd daemon not ready after 60s"
     echo ""
     print_status "Daemon logs:"
     wait "$UNIFIED_PID" 2>/dev/null || true
