@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/network_config.dart';
 import 'daemon_manager.dart';
 import 'fuego_rpc_service.dart';
+import 'swap_config_service.dart';
 
 /// How the wallet reaches the Fuego chain.
 enum ConnectionMode {
@@ -299,9 +300,13 @@ class NodeConnection {
     final chainHost = local ? '127.0.0.1' : _remoteHost;
     final chainPort = local ? networkConfig.daemonRpcPort : _remotePort;
 
+    final swapConfigPath = await SwapConfigService().ensureSwapConfig(
+      useTestnet: useTestnet,
+    );
     final startErr = await daemonManager.startAll(
       useLocalNode: local,
       useTestnet: useTestnet,
+      swapConfigPath: swapConfigPath,
       daemonHost: local ? '127.0.0.1' : _remoteHost,
       daemonPort: local ? networkConfig.daemonRpcPort : _remotePort,
       startSwapd: true,
@@ -372,6 +377,9 @@ class NodeConnection {
     final startErr = await daemonManager.startAll(
       useLocalNode: false,
       useTestnet: useTestnet,
+      swapConfigPath: await SwapConfigService().ensureSwapConfig(
+        useTestnet: useTestnet,
+      ),
       daemonHost: _remoteHost,
       daemonPort: _remotePort,
       startSwapd: true,

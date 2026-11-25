@@ -29,7 +29,7 @@ modules:
     build-commands:
       - mkdir -p $FLATPAK_DEST/fuego-valise $FLATPAK_DEST/bin
       - cp -a build/linux/x64/release/bundle/. $FLATPAK_DEST/fuego-valise/
-      - ln -s ../fuego-valise/fuegowallet $FLATPAK_DEST/bin/fuego-valise
+      - ln -s ../fuego-valise/fuego-valise $FLATPAK_DEST/bin/fuego-valise
     sources:
       - type: dir
         path: ../

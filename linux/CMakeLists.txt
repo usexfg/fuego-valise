@@ -3,8 +3,10 @@ cmake_minimum_required(VERSION 3.10)
 project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
-# the on-disk name of your application.
-set(BINARY_NAME "fuegowallet")
+# the on-disk name of your application. The Flutter Linux build tool resolves
+# the bundle binary from this variable, so it must stay in sync with what the
+# release ships (single, installable launcher name).
+set(BINARY_NAME "fuego-valise")
 set(APP_DISPLAY_NAME "Fuego Valise")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
@@ -71,7 +73,7 @@ add_executable(${BINARY_NAME}
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
-set_target_properties(${BINARY_NAME} PROPERTIES OUTPUT_NAME "${APP_DISPLAY_NAME}")
+set_target_properties(${BINARY_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/intermediates_do_not_run")
 
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
@@ -85,11 +87,6 @@ add_dependencies(${BINARY_NAME} flutter_assemble)
 # correctly, since the resources must in the right relative locations. To avoid
 # people trying to run the unbundled copy, put it in a subdirectory instead of
 # the default top-level location.
-set_target_properties(${BINARY_NAME}
-  PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/intermediates_do_not_run"
-)
-
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.

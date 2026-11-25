@@ -274,8 +274,10 @@ jobs:
 
       - name: Add desktop entry and icon
         run: |
-          cp linux/xfg-wallet.desktop build/linux/x64/release/bundle/ 2>/dev/null || true
-          cp assets/logo/fuegologo.png build/linux/x64/release/bundle/fuego.png 2>/dev/null || true
+          cp linux/xfg-wallet.desktop build/linux/x64/release/bundle/xfg-wallet.desktop
+          cp assets/logo/fuegologo.png build/linux/x64/release/bundle/fuego.png
+          cp scripts/install-fuego-valise.sh build/linux/x64/release/bundle/install-fuego-valise.sh
+          chmod +x build/linux/x64/release/bundle/install-fuego-valise.sh
 
       - name: Package app
         run: |

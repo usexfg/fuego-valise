@@ -210,6 +210,24 @@ class SwapConfigService {
     return path;
   }
 
+  /// Config path to hand to a freshly auto-started xfg-swapd.
+  ///
+  /// Prefers an existing user-generated config (Settings → Cross-Chain Swap
+  /// Settings persists one with real chain keys); on first run writes a minimal
+  /// network-scoped config so the daemon can boot and report its chain catalog.
+  /// Missing keys just mark chains unconfigured — the daemon stays healthy and
+  /// the catalog still answers, which is what the Cross-Chain tab needs.
+  Future<String> ensureSwapConfig({required bool useTestnet}) async {
+    final path = await configPath();
+    if (File(path).existsSync()) {
+      return path;
+    }
+    return generateConfig(
+      chains: const {},
+      network: useTestnet ? 'testnet' : 'mainnet',
+    );
+  }
+
   /// Full config for a single launch. Owner-only, not the persisted file.
   /// Caller deletes it after xfg-swapd has read it.
   Future<String> writeRuntimeConfig({

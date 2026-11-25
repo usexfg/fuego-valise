@@ -29,11 +29,10 @@ runs:
             install -m 755 "backends/$b" "$APP/$b"
           done
           install -m 644 backends/libfuego_ffi.so "$APP/lib/libfuego_ffi.so"
-          # The installed executable is named by the OUTPUT_NAME property
-          # (APP_DISPLAY_NAME). BINARY_NAME is only the CMake target name, and reading
-          # it here made `test -x` fail against a real bundle.
-          bin=$(sed -n 's/^set(APP_DISPLAY_NAME "\(.*\)")$/\1/p' linux/CMakeLists.txt)
-          test -n "$bin" && test -x "$APP/$bin"
-          ln -sfn "$bin" "$APP/fuego-valise"
+          # The release binary is BINARY_NAME (fuego-valise — hyphenated,
+          # no display name with spaces). The old `OUTPUT_NAME "${APP_DISPLAY_NAME}"`
+          # produced "Fuego Valise" and the extra `fuego-valise -> Fuego Valise`
+          # symlink made file managers list the app twice. One binary, one name.
           test -x "$APP/fuego-valise"
         fi
+

@@ -9,14 +9,17 @@ import 'package:path/path.dart' as p;
 
 import 'daemon_event_bus.dart';
 import 'security_service.dart';
+import 'swap_config_service.dart';
 import 'walletd_auth.dart';
 import '../models/network_config.dart';
 
-/// Unifyd process manager for all backend daemons.
+/// Backend process manager for all local daemons.
 ///
-/// Manages the unifyd daemon: an in-process node (CryptoNoteCore + P2P) and
-/// the wallet container service in one binary. It is an alternative to
-/// fuego_walletd, not a wrapper around it, and it does not launch xfg-swapd.
+/// Manages the backend daemons: the Rust `fuego_walletd` JSON-RPC proxy (with
+/// embedded `fuegod` in local mode) as the default wallet backend, plus the
+/// C++ `xfg-swapd` swap daemon, and — opt-in only — the C++ PaymentGateService
+/// `unified` container-wallet binary as an alternative backend. It does not
+/// launch xfg-swapd; it supervises it when started via [startAll].
 /// Default ports: fuegod=18180, walletd=18189, swapd=18902.
 class DaemonManager {
   // ── Ports (configurable per network) ──────────────────────────────
@@ -506,6 +509,10 @@ class DaemonManager {
   ///   fuego_walletd serve --daemon-host [daemonHost] --daemon-port [daemonPort]
   ///   Does NOT start a local fuegod — the proxy talks to the remote seed node.
   ///
+  /// Wallet backend: the Rust `fuego_walletd` proxy (with vault
+  /// `open_wallet` flow via `--await-wallet`). The C++ `unified` container
+  /// backend is opt-in through [useUnifyd].
+  ///
   /// Swap daemon:
   /// - Go headless (`fuego-suite/swapxfg/xfg-swapd --headless`) when that binary is found
   /// - else C++ style `--swap-config … --service` when [swapConfigPath] is set
@@ -518,6 +525,7 @@ class DaemonManager {
     String daemonHost = '127.0.0.1',
     int daemonPort = 18180,
     bool startSwapd = true,
+    bool useUnifyd = false,
   }) async {
     errors.clear();
     daemonErrors.clear();
@@ -536,8 +544,12 @@ class DaemonManager {
     String? walletdErr;
     String? swapdErr;
 
-    // ── 0. Try unifyd daemon first (desktop bundles) ──
-    final unifydBin = _findUnifydBinary();
+    // ── 0. The C++ PaymentGateService `unified` binary is an opt-in legacy
+    //     container-wallet backend. It cannot serve the vault wallet the GUI
+    //     unlocks (no open_wallet / vault seed flow) and binds its own embedded
+    //     node, so the default stack always runs the Rust `fuego_walletd` proxy.
+    //     Enable with useUnifyd: true for manual container-wallet use.
+    final unifydBin = useUnifyd ? _findUnifydBinary() : null;
     if (unifydBin != null) {
       debugPrint('[daemon] Found unifyd daemon: $unifydBin');
       try {
@@ -1219,6 +1231,11 @@ class DaemonManager {
     } else if (configPath != null && File(configPath).existsSync()) {
       _lastSwapdConfigPath = configPath;
       args = ['--swap-config', configPath, '--service'];
+      // The C++ daemon runs as a background service and requires a control
+      // token (--rpc-token-file). The file lives owner-only in the app support
+      // dir; the same value is handed to SwapDaemonClient via SwapConfigService.
+      final tokenFile = await SwapConfigService.ensureControlTokenFile();
+      args.addAll(['--rpc-token-file', tokenFile]);
     } else {
       return 'xfg-swapd needs Go headless binary (fuego-suite/swapxfg/xfg-swapd) '
           'or a C++ --swap-config file';
@@ -1266,7 +1283,13 @@ class DaemonManager {
                       '--no-bch',
                     ]
                   : (cfg != null && File(cfg).existsSync()
-                        ? ['--swap-config', cfg, '--service']
+                        ? [
+                            '--swap-config',
+                            cfg,
+                            '--service',
+                            '--rpc-token-file',
+                            await SwapConfigService.ensureControlTokenFile(),
+                          ]
                         : <String>['--service']);
               _swapd = await Process.start(binary, args);
               _swapd!.stdout.drain<void>();
