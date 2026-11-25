@@ -66,5 +66,59 @@ void main() {
       expect(TradingSeries.price(0.632), '0.6320');
       expect(TradingSeries.price(double.nan), '—');
     });
+
+    test('volume is compact, and zero reads as unknown', () {
+      expect(TradingSeries.volume(0), '—');
+      expect(TradingSeries.volume(double.nan), '—');
+      expect(TradingSeries.volume(999), '999');
+      expect(TradingSeries.volume(1500), '1.5K');
+      expect(TradingSeries.volume(2.3e6), '2.30M');
+      expect(TradingSeries.volume(1.2e9), '1.20B');
+    });
+
+    test('zoom 1 shows the whole window', () {
+      final all = List.generate(40, (i) => _bar(i, 1, 1 + i * 0.01));
+      expect(TradingSeries.slice(all, 1, 0.5), all);
+    });
+
+    test('a zoomed slice stays contiguous and inside the window', () {
+      final all = List.generate(100, (i) => _bar(i, 1, 1 + i * 0.01));
+      final zoomed = TradingSeries.slice(all, 4, 0.5);
+      expect(zoomed.length, 25);
+      // Centered: the viewport opens a quarter in, not at the first bar.
+      expect(zoomed.first.time, 38 * 86400);
+      expect(zoomed.last.time, 62 * 86400);
+      for (var i = 1; i < zoomed.length; i++) {
+        expect(zoomed[i].time - zoomed[i - 1].time, 86400);
+      }
+    });
+
+    test('an edge-centered zoom clamps instead of running off the window', () {
+      final all = List.generate(80, (i) => _bar(i, 1, 1 + i * 0.01));
+      final start = TradingSeries.slice(all, 8, 0);
+      final end = TradingSeries.slice(all, 8, 1);
+      expect(start.first.time, all.first.time);
+      expect(end.last.time, all.last.time);
+      expect(start.length, 10);
+      expect(end.length, 10);
+      expect(end.first.time, 70 * 86400);
+    });
+
+    test('pinching keeps the data under the finger fixed', () {
+      final center = TradingSeries.centerForZoom(1, 0.5, 4, 0.2);
+      const v1 = 1 / 4;
+      final under = center + (0.2 - 0.5) * v1;
+      expect(under, closeTo(0.2, 1e-9));
+      expect(center, closeTo(0.2 + 0.3 * v1, 1e-9));
+    });
+
+    test('zooming back out lands on the whole window', () {
+      expect(TradingSeries.centerForZoom(4, 0.1, 1, 0.9), 0.5);
+    });
+
+    test('a pinch at the edge stays inside the window', () {
+      expect(TradingSeries.centerForZoom(1, 0.5, 4, 0), 1 / 8);
+      expect(TradingSeries.centerForZoom(1, 0.5, 4, 1), 7 / 8);
+    });
   });
 }

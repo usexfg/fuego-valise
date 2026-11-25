@@ -9,6 +9,26 @@ class PriceHistoryService {
 
   List<Candlestick>? _allCandles;
 
+  /// The launch-rate XFG seed: $0.15/XFG, the 10:1 launch price. Charts start
+  /// here when the atomic-swap history is empty.
+  static const double launchRate = 0.15;
+
+  /// Synthetic flat series at [launchRate] ending today. For surfaces that
+  /// must render something instead of "no history".
+  List<Candlestick> launchSeries({int count = 60}) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return List<Candlestick>.generate(
+      count,
+      (i) => Candlestick(
+        time: now - (count - 1 - i) * 86400,
+        open: launchRate,
+        high: launchRate,
+        low: launchRate,
+        close: launchRate,
+      ),
+    );
+  }
+
   Future<List<Candlestick>> loadAll() async {
     if (_allCandles != null) return _allCandles!;
     final jsonStr = await rootBundle.loadString(

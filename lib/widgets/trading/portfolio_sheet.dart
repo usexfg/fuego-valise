@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../bloc/portfolio/portfolio_cubit.dart';
 import '../../models/candlestick.dart';
+import '../../models/chain_info.dart';
 import '../../models/portfolio.dart';
 import 'trading_chart.dart';
 import 'trading_series.dart';
@@ -99,8 +100,11 @@ class _PortfolioSheetState extends State<PortfolioSheet> {
                     TradingChart(
                       candles: widget.candles,
                       loading: widget.historyLoading,
+                      color: ChainInfo.colors['XFG'],
                     ),
-                    const SizedBox(height: 8),
+                    // Grab strip: the plot owns its touches, so the sheet
+                    // scrolls from here down.
+                    const SizedBox(height: 36),
                     _sectionLabel(
                       'POSITIONS',
                       trailing: portfolio.chainsLoaded

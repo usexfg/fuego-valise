@@ -113,6 +113,39 @@ class TradingSeries {
     );
   }
 
+  /// Contiguous visible slice for a zoom level. [center] is the fraction of the
+  /// window sitting at the viewport center; zoom 1 always returns everything.
+  /// The slice stays a real slice of the data, so a zoomed chart is never a
+  /// stretched low-resolution render.
+  static List<Candlestick> slice(
+    List<Candlestick> window,
+    double zoom,
+    double center,
+  ) {
+    if (window.isEmpty || zoom <= 1.001) return window;
+    final visible = (window.length / zoom).round().clamp(2, window.length);
+    final maxStart = window.length - visible;
+    final v = visible / window.length;
+    final startFrac = (center - v / 2).clamp(0.0, 1.0 - v);
+    final start = (startFrac * window.length).round().clamp(0, maxStart);
+    return window.sublist(start, start + visible);
+  }
+
+  /// Viewport center for a pinch: keeps the data fraction under
+  /// [focalFraction] of the viewport fixed while the zoom moves from
+  /// [startZoom] to [targetZoom]. Clamped to the window.
+  static double centerForZoom(
+    double startZoom,
+    double startCenter,
+    double targetZoom,
+    double focalFraction,
+  ) {
+    final v0 = 1 / startZoom;
+    final v1 = 1 / targetZoom;
+    final absolute = startCenter + (focalFraction - 0.5) * v0;
+    return (absolute - (focalFraction - 0.5) * v1).clamp(v1 / 2, 1 - v1 / 2);
+  }
+
   /// Open of the first candle to close of the last. Independent of downsampling.
   static TradingMove moveOf(List<Candlestick> candles) {
     if (candles.isEmpty) return const TradingMove.unknown();
@@ -143,5 +176,14 @@ class TradingSeries {
     if (value.abs() >= 1) return value.toStringAsFixed(2);
     if (value.abs() >= 0.01) return value.toStringAsFixed(4);
     return value.toStringAsFixed(6);
+  }
+
+  /// Compact volume for the crosshair readout. Zero volume is a dash, not 0.
+  static String volume(double value) {
+    if (!value.isFinite || value <= 0) return '—';
+    if (value >= 1e9) return '${(value / 1e9).toStringAsFixed(2)}B';
+    if (value >= 1e6) return '${(value / 1e6).toStringAsFixed(2)}M';
+    if (value >= 1e3) return '${(value / 1e3).toStringAsFixed(1)}K';
+    return value.toStringAsFixed(0);
   }
 }

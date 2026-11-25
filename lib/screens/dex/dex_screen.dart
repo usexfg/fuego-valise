@@ -78,8 +78,13 @@ class _DexScreenState extends State<DexScreen>
                 candles: _candles ?? const [],
                 loading: _candles == null,
                 plotHeight: screenH < 700 ? 148 : 168,
+                // The plot follows the selected pair's brand color.
+                color:
+                    ChainInfo.colors[state.selectedPair.ticker] ??
+                    AppTheme.primaryColor,
               ),
             ),
+            const SizedBox(height: 10),
             _buildPairBar(state),
             if (state.error != null)
               Padding(
