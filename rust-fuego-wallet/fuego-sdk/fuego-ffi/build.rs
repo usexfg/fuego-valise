@@ -89,7 +89,9 @@ fn main() {
         );
     }
 
-    let mut slow_hash = fs::read_to_string(cn_dir.join("slow-hash.c")).unwrap();
+    let mut slow_hash = fs::read_to_string(cn_dir.join("slow-hash.c"))
+        .unwrap()
+        .replace("\r\n", "\n");
     for fix in SLOW_HASH_FIXES {
         match (slow_hash.matches(fix.buggy).count(), slow_hash.contains(fix.fixed)) {
             (1, _) => slow_hash = slow_hash.replacen(fix.buggy, fix.fixed, 1),
