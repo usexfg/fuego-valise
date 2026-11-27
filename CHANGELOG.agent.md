@@ -304,6 +304,7 @@ FFI and vault address creation no longer hardcode the mainnet prefix. `fuego_mak
 | 3 | walletd: `next_alias_owner` returns the lowest k not held and not already an alias owner on chain; `register_alias` and `next_alias_owner` refuse below block major 12 (read from `/getinfo` `block_major_version`) | claude | 2026-11-27 | DONE, CI to confirm |
 | 4 | Dart: alias screen asks walletd for the owner instead of creating a payment subaddress | claude | 2026-11-27 | DONE, CI to confirm |
 | 5 | Building the 0xEA registration (`addressHash = H(D ‖ C)` of the owner) | claude | 2026-11-27 | TODO: `register_alias` still returns the Phase 7 error after the v12 check |
+| 6 | Pin fuego-suite to master `3afe5ebf` (PR #83 merged). `src/crypto` and `hash-ops.h` unchanged since the old pin `165ec97a`; `CryptoNoteFormatUtils.cpp` diff has no `longhash` change | claude | 2026-11-27 | DONE, CI to confirm |
 
 ### Sign-off
 
