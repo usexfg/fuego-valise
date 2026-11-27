@@ -12,6 +12,7 @@ import '../../bloc/portfolio/portfolio_cubit.dart';
 import '../../models/portfolio.dart';
 import '../../services/evm_account_service.dart';
 import '../../utils/theme.dart';
+import '../../widgets/fuego_logo.dart';
 import '../../models/candlestick.dart';
 import '../../services/price_history_service.dart';
 import '../../widgets/maison_guilloche.dart';
@@ -26,11 +27,11 @@ import '../transactions/receive_screen.dart';
 import '../../utils/xfg_ticker.dart';
 
 // Shared prestige palette — Obsidian case + Champagne dial (Obsidian Reserve house)
-const Color _obsidian = Color(0xFF0D0B08);
+const Color _obsidian = Color(0xFF000000);
 const Color _champagne = Color(
   0xFFC5A059,
 ); // Champagne gold — muted, not peachy
-const Color _platinum = Color(0xFFF5F1E8); // Cream parchment
+const Color _platinum = Color(0xFFF5F5F5); // Cream parchment
 const List<Color> _fireStops = [
   Color(0xFF8C734B), // Muted gold
   Color(0xFFC5A059), // Champagne
@@ -894,7 +895,7 @@ class _BalanceCardState extends State<_BalanceCard> {
                         },
                       ),
                       _CrownPusher(
-                        icon: Icons.local_fire_department,
+                        emblem: const FuegoLogo(size: 28, fit: BoxFit.cover),
                         label: 'MINT ΗΞΔŦ',
                         accent: AppTheme.accentColor,
                         onTap: () {
@@ -1226,12 +1227,14 @@ class _CrownPusher extends StatefulWidget {
   const _CrownPusher({
     required this.onTap,
     this.icon = Icons.arrow_upward,
+    this.emblem,
     this.label = 'SEND',
     this.accent,
   });
 
   final VoidCallback onTap;
   final IconData icon;
+  final Widget? emblem;
   final String label;
   final Color? accent;
 
@@ -1274,7 +1277,9 @@ class _CrownPusherState extends State<_CrownPusher> {
                 child: CustomPaint(
                   painter: _KnurlPainter(accent: _accent),
                   child: Center(
-                    child: Icon(widget.icon, color: _accent, size: 20),
+                    child: widget.emblem == null
+                        ? Icon(widget.icon, color: _accent, size: 20)
+                        : ClipOval(child: widget.emblem),
                   ),
                 ),
               ),

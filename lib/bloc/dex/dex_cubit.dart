@@ -958,43 +958,6 @@ class DexCubit extends Cubit<DexState> {
     }
   }
 
-  static String _pairNameForChain(ChainTypeSdk chain) {
-    switch (chain) {
-      case ChainTypeSdk.solana:
-        return 'SOL';
-      case ChainTypeSdk.ethereum:
-        return 'ETH';
-      case ChainTypeSdk.monero:
-        return 'XMR';
-      case ChainTypeSdk.bitcoinCash:
-        return 'BCH';
-      case ChainTypeSdk.arbitrum:
-        return 'ARB';
-      case ChainTypeSdk.base:
-        return 'BASE';
-      case ChainTypeSdk.komodo:
-        return 'KMD';
-      case ChainTypeSdk.bnb:
-        return 'BNB';
-      case ChainTypeSdk.decred:
-        return 'DCR';
-      case ChainTypeSdk.bitcoin:
-        return 'BTC';
-      case ChainTypeSdk.litecoin:
-        return 'LTC';
-      case ChainTypeSdk.polygon:
-        return 'POLYGON';
-      case ChainTypeSdk.doge:
-        return 'DOGE';
-      case ChainTypeSdk.dash:
-        return 'DASH';
-      case ChainTypeSdk.zcash:
-        return 'ZEC';
-      default:
-        return 'SOL';
-    }
-  }
-
   SwapChain? _readyRuntimeChainForOffer(SwapOfferSdk offer) {
     final runtimeChain = state.selectedSwapChain;
     if (runtimeChain == null || !runtimeChain.executable) {
