@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'chain_registry.g.dart';
+import 'swap_models.dart';
 
 /// Chain display metadata shared by the DEX marketplace (Orderbook/Trade/
 /// Trades) and the Peer Swap section.
@@ -86,73 +87,126 @@ class ChainInfo {
     'DCR': 'Decred — hybrid PoW/PoS with built-in governance and Neutrino SPV.',
     'XMR': 'Monero — privacy coin using ring signatures and stealth addresses.',
     'XFG': 'Fuego  - Private Banking & Purchasing Power Chain',
+    'LINEA': 'Linea — Consensys zkEVM rollup settling to Ethereum.',
+    'ZKS': 'ZKsync Era — Matter Labs zkEVM rollup settling to Ethereum.',
+    'HYPER': 'HyperEVM — EVM execution layer of Hyperliquid, gas paid in HYPE.',
+    'INK': "Ink — Kraken's OP Stack Ethereum L2.",
+    'RSK': 'Rootstock — Bitcoin merge-mined EVM sidechain, gas paid in RBTC.',
+    'GNO': 'Gnosis — EVM chain whose native gas token is xDAI.',
+    'FLR': 'Flare — EVM L1 with protocol-native data oracles.',
+    'KAIA': 'Kaia — EVM L1 formed by merging Klaytn and Finschia.',
+    'SCR': 'Scroll — zkEVM rollup settling to Ethereum.',
+    'ABS': 'Abstract — ZK Stack Ethereum L2 from Igloo.',
+    'PLUME': 'Plume — EVM chain for real-world asset finance.',
+    'SONEIUM': "Soneium — Sony Block Solutions Labs' OP Stack Ethereum L2.",
+    'DOMA': 'Doma — EVM chain for tokenized DNS domains.',
+    'BEAM': 'Beam — Avalanche L1 for gaming, gas paid in BEAM.',
+    'MOVR': 'Moonriver — EVM parachain on Kusama.',
+    'PEAQ': 'peaq — EVM parachain on Polkadot for physical infrastructure.',
+    'SEI': 'Sei — EVM L1 with parallelized execution.',
   };
 
-  static const Map<String, Map<String, String>> info = {
+  /// Generic-adapter EVM pair: xfg-swapd's `evm_chains` entry needs this
+  /// chain's own HashedTimelock deployment; it never reuses ETH's registry.
+  static Map<String, String> _registryHtlcInfo(String type, String network) => {
+    'type': type,
+    'connect': '$network JSON-RPC',
+    'user':
+        'Public RPC used by default — set a funded key and the HTLC registry '
+        'deployed on $network in Swap Settings.',
+    'htlc': 'HashedTimelock.sol',
+  };
+
+  static final Map<String, Map<String, String>> info = {
     'BTC': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (bitcoind with a wallet) or Electrum SPV',
+      'user':
+          'Swap Settings: a local full node buys or sells XFG; SPV (three '
+          'Electrum servers) only sells XFG. Not swappable until the transport '
+          'passes its end-to-end gate.',
       'htlc': 'P2WSH SegWit',
     },
     'LTC': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (litecoind with a wallet) or Electrum SPV',
+      'user':
+          'Swap Settings: a local full node buys or sells XFG; SPV (three '
+          'Electrum servers) only sells XFG. Not swappable until the transport '
+          'passes its end-to-end gate.',
       'htlc': 'P2WSH SegWit',
     },
     'KMD': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (komodod)',
+      'user':
+          'Not swappable: SPV has no Equihash header validator and the '
+          'full-node path has not passed an end-to-end gate.',
       'htlc': 'P2SH',
     },
     'BCH': {
       'type': 'UTXO',
-      'connect': 'Electrum SPV (public servers)',
-      'user': 'No setup needed. Full node only for advanced RPC mode.',
+      'connect': 'Full node RPC (BCHN with a wallet) or Electrum SPV',
+      'user':
+          'Swap Settings: a local full node buys or sells XFG; SPV (three '
+          'Electrum servers) only sells XFG. Not swappable until the transport '
+          'passes its end-to-end gate.',
       'htlc': 'P2SH',
     },
     'ETH': {
       'type': 'EVM',
       'connect': 'Ethereum JSON-RPC (Infura/Alchemy)',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'ARB': {
       'type': 'EVM L2',
       'connect': 'Arbitrum JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'BASE': {
       'type': 'EVM L2',
       'connect': 'Base JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'BNB': {
       'type': 'EVM',
       'connect': 'BSC JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'POLY': {
       'type': 'EVM',
       'connect': 'Polygon JSON-RPC',
-      'user': 'No setup needed — public RPC used by default.',
+      'user':
+          'Needs a funded key and the HashedTimelock registry on this chain '
+          '(Swap Settings); public RPC used by default.',
       'htlc': 'HashedTimelock.sol',
     },
     'SOL': {
       'type': 'Non-EVM',
-      'connect': 'Solana JSON-RPC (public)',
-      'user': 'No setup needed — public RPC used by default.',
+      'connect': 'Solana JSON-RPC (local node)',
+      'user':
+          'Needs a funded keypair, a local RPC at 127.0.0.1 and the deployed '
+          'HTLC program ID (Swap Settings).',
       'htlc': 'On-chain HTLC program',
     },
     'DCR': {
       'type': 'UTXO',
-      'connect': 'Neutrino SPV (built-in) or dcrd RPC',
-      'user': 'No setup needed for SPV mode.',
+      'connect': 'Full node RPC (dcrd + dcrwallet)',
+      'user':
+          'Not swappable: SPV has no BLAKE-256 header validator and the '
+          'full-node path cannot yet prove claim depth.',
       'htlc': 'P2SH',
     },
     'XMR': {
@@ -228,6 +282,29 @@ class ChainInfo {
       'user': 'Public RPC used by default — set a funded key in Swap Settings.',
       'htlc': 'HashedTimelock.sol',
     },
+    'LINEA': _registryHtlcInfo('EVM L2', 'Linea'),
+    'ZKS': _registryHtlcInfo('EVM L2', 'ZKsync Era'),
+    'HYPER': _registryHtlcInfo('EVM', 'HyperEVM'),
+    'INK': _registryHtlcInfo('EVM L2', 'Ink'),
+    'RSK': _registryHtlcInfo('EVM', 'Rootstock'),
+    'GNO': _registryHtlcInfo('EVM', 'Gnosis'),
+    'FLR': _registryHtlcInfo('EVM', 'Flare'),
+    'KAIA': _registryHtlcInfo('EVM', 'Kaia'),
+    'SCR': _registryHtlcInfo('EVM L2', 'Scroll'),
+    'ABS': _registryHtlcInfo('EVM L2', 'Abstract'),
+    'PLUME': _registryHtlcInfo('EVM', 'Plume'),
+    'SONEIUM': _registryHtlcInfo('EVM L2', 'Soneium'),
+    'DOMA': _registryHtlcInfo('EVM', 'Doma'),
+    'BEAM': _registryHtlcInfo('EVM', 'Beam'),
+    'MOVR': _registryHtlcInfo('EVM', 'Moonriver'),
+    'PEAQ': {
+      ..._registryHtlcInfo('EVM', 'peaq'),
+      'user':
+          'Set a funded key and the HTLC registry deployed on peaq in Swap '
+          'Settings. xfg-swapd still refuses new PEAQ swaps: fuego-suite has '
+          'no verified PEAQ price feed.',
+    },
+    'SEI': _registryHtlcInfo('EVM', 'Sei'),
     'DASH': {'type': 'UTXO', 'wired': 'false'},
     'DOGE': {'type': 'UTXO', 'wired': 'false'},
     'ZANO': {'type': 'CryptoNote', 'wired': 'false'},
@@ -254,6 +331,23 @@ class ChainInfo {
     'PLS': 'HashedTimelock + PtlcLocked event (BRIDGE)',
     'MON': 'HashedTimelock + PtlcLocked event (BRIDGE)',
     'OP': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'LINEA': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'ZKS': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'HYPER': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'INK': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'RSK': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'GNO': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'FLR': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'KAIA': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'SCR': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'ABS': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'PLUME': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'SONEIUM': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'DOMA': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'BEAM': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'MOVR': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'PEAQ': 'HashedTimelock + PtlcLocked event (BRIDGE)',
+    'SEI': 'HashedTimelock + PtlcLocked event (BRIDGE)',
     'BCH': 'HashedTimelock + DLEQ bridge',
     'KMD': 'P2SH hashlock (SHA-256 H(t))',
     'DCR': 'P2SH hashlock (SHA-256 H(t))',
@@ -336,6 +430,21 @@ class ChainInfo {
     'PLS': 'https://scan.pulsechain.com/tx/{txid}',
     'MON': 'https://monadscan.com/tx/{txid}',
     'UNI': 'https://uniscan.xyz/tx/{txid}',
+    'LINEA': 'https://lineascan.build/tx/{txid}',
+    'ZKS': 'https://explorer.zksync.io/tx/{txid}',
+    'HYPER': 'https://hyperevmscan.io/tx/{txid}',
+    'INK': 'https://explorer.inkonchain.com/tx/{txid}',
+    'RSK': 'https://explorer.rootstock.io/tx/{txid}',
+    'GNO': 'https://gnosisscan.io/tx/{txid}',
+    'FLR': 'https://flare-explorer.flare.network/tx/{txid}',
+    'KAIA': 'https://kaiascan.io/tx/{txid}',
+    'SCR': 'https://scrollscan.com/tx/{txid}',
+    'ABS': 'https://abscan.org/tx/{txid}',
+    'PLUME': 'https://explorer.plume.org/tx/{txid}',
+    'SONEIUM': 'https://soneium.blockscout.com/tx/{txid}',
+    'BEAM': 'https://subnets.avax.network/beam/tx/{txid}',
+    'MOVR': 'https://moonriver.moonscan.io/tx/{txid}',
+    'SEI': 'https://seiscan.io/tx/{txid}',
     'SOL': 'https://solscan.io/tx/{txid}',
     'XMR': 'https://xmrchain.net/tx/{txid}',
     'ZANO': 'https://explorer.zano.org/transaction/{txid}',
@@ -472,40 +581,14 @@ class ChainInfo {
     'GLEEC': 'assets/coin-icons/gleec.png',
   };
 
-  /// Chains a direct peer swap can actually run on (the ones the local
-  /// xfg-swapd has chain clients for). Everything else is display-only.
-  static const List<String> swapableChains = [
-    'BTC',
-    'LTC',
-    'BCH',
-    'KMD',
-    'DCR',
-    'ETH',
-    'ARB',
-    'BASE',
-    'BNB',
-    'POLY',
-    'AVAX',
-    'GLEEC',
-    'RHC',
-    'CRO',
-    'BOB',
-    'UNI',
-    'XPL',
-    'PLS',
-    'MON',
-    'OP',
-    'SOL',
-    'XMR',
+  /// Every catalog pair the wallet mirrors. Whether one can start a swap is
+  /// xfg-swapd's call at runtime (`protocol && configured && ready`).
+  static final List<String> swapableChains = [
+    for (final pair in SwapPairSdk.values) pair.ticker,
   ];
 
-  /// DeXFG 33-chain EVM expansion: live in the wallet's ERC20 layer
-  /// (Erc20Service / EvmChainKey — balances, send, approve via Tokens tab)
-  /// but NOT wired into xfg-swapd, so no CLI swaps.
-  ///
-  /// DERIVED from chains.yaml ([kWalletTierKeys]) — uppercased to match
-  /// the ticker-keyed convention of this class. Icon files pending;
-  /// UI falls back to [colors] letter-marks until real logos land.
+  /// EVM networks in the ERC20 layer (balances, send, approve) that no
+  /// swap pair covers. DERIVED from chains.yaml ([kWalletTierKeys]).
   static final Set<String> walletOnlyChains = kWalletTierKeys
       .map((k) => k.toUpperCase())
       .toSet();
