@@ -20,6 +20,8 @@ pub struct DaemonInfo {
     pub top_block_hash: String,
     #[serde(default)]
     pub fee_address: String,
+    #[serde(default)]
+    pub block_major_version: u8,
     pub status: String,
     pub version: String,
 }
@@ -61,6 +63,20 @@ impl DaemonClient {
             .map_err(|e| format!("HTTP: {}", e))?;
         resp.json::<DaemonInfo>().await
             .map_err(|e| format!("JSON: {}", e))
+    }
+
+    /// Owner addresses of every registered alias.
+    pub async fn get_alias_owner_addresses(&self) -> Result<Vec<String>, String> {
+        let url = format!("{}/get_all_aliases", self.base_url);
+        let resp = self.client.get(&url).send().await
+            .map_err(|e| format!("HTTP: {}", e))?;
+        let val: serde_json::Value = resp.json().await
+            .map_err(|e| format!("JSON: {}", e))?;
+        let aliases = val.get("aliases").and_then(|a| a.as_array())
+            .ok_or("missing aliases")?;
+        Ok(aliases.iter()
+            .filter_map(|a| a.get("address").and_then(|x| x.as_str()).map(String::from))
+            .collect())
     }
 
     pub async fn get_height(&self) -> Result<u64, String> {

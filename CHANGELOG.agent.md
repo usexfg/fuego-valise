@@ -280,3 +280,20 @@ Merge `origin/feat/owner-bound-commitment-keys` (`51598e6`) into `origin/claude/
 ## [2026-11-10] FV-09: network-aware address prefix
 
 FFI and vault address creation no longer hardcode the mainnet prefix. `fuego_make_address_for_network` and `fuego_vault_get_address_for_network` take a testnet flag. Dart threads it through, and the vault service re-derives the cached address when the provider switches network. Mainnet still starts with `fire`, testnet with `TEST`.
+
+## [2026-11-27] F9: alias owners are funsa subaddresses (spec: suite docs/developer/funsa-subaddress-rollout-plan.md 4.4)
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 1 | `dart format` applied by hand to the FV-09 signatures in `lib/ffi/fuego_native.dart` (this branch did not touch the file; master has the same format failure) | claude | 2026-11-27 | DONE, CI to confirm |
+| 2 | SDK scanner: alias owners (0, `ALIAS_MINOR_BASE` + k) scanned in their own lookahead window, window slides on use and after restore; `subaddress()` refuses minors at or above the base | claude | 2026-11-27 | DONE, CI to confirm |
+| 3 | walletd: `next_alias_owner` returns the lowest k not held and not already an alias owner on chain; `register_alias` and `next_alias_owner` refuse below block major 12 (read from `/getinfo` `block_major_version`) | claude | 2026-11-27 | DONE, CI to confirm |
+| 4 | Dart: alias screen asks walletd for the owner instead of creating a payment subaddress | claude | 2026-11-27 | DONE, CI to confirm |
+| 5 | Building the 0xEA registration (`addressHash = H(D ‖ C)` of the owner) | claude | 2026-11-27 | TODO: `register_alias` still returns the Phase 7 error after the v12 check |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| `cargo test` | CI |
+| `dart format --set-exit-if-changed lib/ test/` | CI |
