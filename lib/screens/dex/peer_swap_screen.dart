@@ -316,7 +316,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
         spacing: 8,
         runSpacing: 8,
         children: state.swapChains.map((SwapChain chain) {
-          final ticker = chain.ticker;
+          final ticker = chain.pairTicker;
           final bool selected = chain.id == state.selectedSwapChainId;
           final Color color = ChainInfo.colors[ticker] ?? AppTheme.primaryColor;
           return GestureDetector(
@@ -412,7 +412,7 @@ class _PeerSwapScreenState extends State<PeerSwapScreen> {
           children: [
             _chainFilterChip(null, 'All chains'),
             for (final SwapChain chain in state.swapChains)
-              _chainFilterChip(chain.ticker, chain.ticker),
+              _chainFilterChip(chain.pairTicker, chain.pairTicker),
           ],
         ),
       ],

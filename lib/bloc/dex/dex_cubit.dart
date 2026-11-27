@@ -146,6 +146,19 @@ class DexState {
   }
 }
 
+/// Parses one daemon row; a row naming a pair id this wallet does not know is
+/// dropped (and logged) instead of failing the whole list.
+Iterable<T> _parseKnownPair<T>(
+  dynamic row,
+  T Function(Map<String, dynamic>) parse,
+) sync* {
+  try {
+    yield parse(row as Map<String, dynamic>);
+  } on FormatException catch (e) {
+    debugPrint('DexCubit: skipped row: ${e.message}');
+  }
+}
+
 class DexCubit extends Cubit<DexState> {
   final http.Client _http;
   String _baseUrl = '';
@@ -360,11 +373,10 @@ class DexCubit extends Cubit<DexState> {
   );
 
   void selectPair(SwapPairSdk pair) {
-    final chain = _chainForPair(pair);
     emit(
       state.copyWith(
         selectedPair: pair,
-        selectedChain: chain,
+        selectedChain: pair.chain,
         offers: [],
         recentTrades: [],
         isLoading: true,
@@ -391,55 +403,6 @@ class DexCubit extends Cubit<DexState> {
     }
   }
 
-  ChainTypeSdk _chainForPair(SwapPairSdk pair) {
-    switch (pair) {
-      case SwapPairSdk.sol:
-        return ChainTypeSdk.solana;
-      case SwapPairSdk.eth:
-        return ChainTypeSdk.ethereum;
-      case SwapPairSdk.xmr:
-        return ChainTypeSdk.monero;
-      case SwapPairSdk.bch:
-        return ChainTypeSdk.bitcoinCash;
-      case SwapPairSdk.arb:
-        return ChainTypeSdk.arbitrum;
-      case SwapPairSdk.base:
-        return ChainTypeSdk.base;
-      case SwapPairSdk.kmd:
-        return ChainTypeSdk.komodo;
-      case SwapPairSdk.bnb:
-        return ChainTypeSdk.bnb;
-      case SwapPairSdk.dcr:
-        return ChainTypeSdk.decred;
-      case SwapPairSdk.btc:
-        return ChainTypeSdk.bitcoin;
-      case SwapPairSdk.ltc:
-        return ChainTypeSdk.litecoin;
-      case SwapPairSdk.poly:
-        return ChainTypeSdk.polygon;
-      case SwapPairSdk.gleec:
-        return ChainTypeSdk.gleec;
-      case SwapPairSdk.robinhood:
-        return ChainTypeSdk.robinhood;
-      case SwapPairSdk.avax:
-        return ChainTypeSdk.avax;
-      case SwapPairSdk.cro:
-        return ChainTypeSdk.cro;
-      case SwapPairSdk.bob:
-        return ChainTypeSdk.bob;
-      case SwapPairSdk.unichain:
-        return ChainTypeSdk.unichain;
-      case SwapPairSdk.plasma:
-        return ChainTypeSdk.plasma;
-      case SwapPairSdk.pulsex:
-        return ChainTypeSdk.pulsex;
-      case SwapPairSdk.monad:
-        return ChainTypeSdk.monad;
-      case SwapPairSdk.optimism:
-        return ChainTypeSdk.optimism;
-    }
-  }
-
   Future<List<SwapOfferSdk>> _loadOffersFromFuegod() async {
     final results = await Future.wait(
       SwapPairSdk.values.map((pair) async {
@@ -453,7 +416,7 @@ class DexCubit extends Cubit<DexState> {
     );
     return results
         .expand((result) => result['offers'] as List<dynamic>? ?? const [])
-        .map((offer) => SwapOfferSdk.fromJson(offer as Map<String, dynamic>))
+        .expand((offer) => _parseKnownPair(offer, SwapOfferSdk.fromJson))
         .where((offer) => offer.offerId.isNotEmpty)
         .toList();
   }
@@ -493,7 +456,7 @@ class DexCubit extends Cubit<DexState> {
         'limit': 50,
       });
       final trades = (r['trades'] as List<dynamic>? ?? [])
-          .map((t) => SwapTradeSdk.fromJson(t as Map<String, dynamic>))
+          .expand((t) => _parseKnownPair(t, SwapTradeSdk.fromJson))
           .toList();
       emit(state.copyWith(recentTrades: trades));
     } catch (e) {
@@ -521,7 +484,7 @@ class DexCubit extends Cubit<DexState> {
       state.copyWith(
         selectedOffer: offer,
         selectedPair: offer.pair,
-        selectedChain: _chainForPair(offer.pair),
+        selectedChain: offer.pair.chain,
       ),
     );
   }
@@ -531,7 +494,7 @@ class DexCubit extends Cubit<DexState> {
     try {
       final r = await _post('/getactiveswaps', {});
       final swaps = (r['swaps'] as List<dynamic>? ?? [])
-          .map((s) => SwapStatusSdk.fromJson(s as Map<String, dynamic>))
+          .expand((s) => _parseKnownPair(s, SwapStatusSdk.fromJson))
           .toList();
       emit(state.copyWith(activeSwaps: swaps));
     } catch (e) {
@@ -854,6 +817,9 @@ class DexCubit extends Cubit<DexState> {
       final hashLock = (match['hashLock'] as String?) ?? '';
       final preSig = (match['preSig'] as String?) ?? '';
       final ctrAddress = (match['ctrAddress'] as String?) ?? '';
+      final ctrClaimPubKey = (match['ctrClaimPubKey'] as String?) ?? '';
+      final makerSignature = (match['makerSignature'] as String?) ?? '';
+      final createdAt = (match['createdAt'] as num?)?.toInt() ?? 0;
       if (lockId.isEmpty) {
         emit(state.copyWith(error: 'Maker fill result missing lockId'));
         return;
@@ -873,6 +839,15 @@ class DexCubit extends Cubit<DexState> {
         );
         return;
       }
+      if (makerSignature.isEmpty) {
+        emit(
+          state.copyWith(
+            error:
+                'Maker fill result is unsigned — refusing to lock against it',
+          ),
+        );
+        return;
+      }
       await _initiateAfkSwap(
         lockId: lockId,
         makerEndpoint: makerEndpoint,
@@ -883,7 +858,10 @@ class DexCubit extends Cubit<DexState> {
         hashLock: hashLock,
         preSig: preSig,
         ctrAddress: ctrAddress,
-        expectedPeerPubkey: state.selectedOffer?.makerPubKey ?? '',
+        offerId: offer.offerId,
+        createdAt: createdAt,
+        makerSignature: makerSignature,
+        ctrClaimPubKey: ctrClaimPubKey,
       );
       return;
     }
@@ -903,9 +881,12 @@ class DexCubit extends Cubit<DexState> {
     required SwapChain runtimeChain,
     String adaptorPoint = '',
     String hashLock = '',
-    String preSig = '',
-    String ctrAddress = '',
-    String expectedPeerPubkey = '',
+    required String preSig,
+    required String ctrAddress,
+    required String offerId,
+    required int createdAt,
+    required String makerSignature,
+    required String ctrClaimPubKey,
   }) async {
     if (_swapClient == null) {
       emit(state.copyWith(error: 'Swap daemon not connected'));
@@ -932,6 +913,10 @@ class DexCubit extends Cubit<DexState> {
         hashLock: hashLock,
         preSig: preSig,
         ctrAddress: ctrAddress,
+        offerId: offerId,
+        createdAt: createdAt,
+        makerSignature: makerSignature,
+        ctrClaimPubKey: ctrClaimPubKey,
         expectedPeerPubkey: offer.makerPubKey,
         requirePtlc: state.requirePtlc,
       );

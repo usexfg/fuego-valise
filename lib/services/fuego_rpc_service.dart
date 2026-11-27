@@ -213,6 +213,21 @@ class FuegoRPCService {
     return sha256.convert(bytes).toString().substring(0, 64);
   }
 
+  /// The wallet's next alias owner, a subaddress at or above 0x80000000 that
+  /// is never handed to a payer. walletd refuses before block major version 12.
+  Future<String> nextAliasOwner() async {
+    try {
+      final response = await _makeRPCCall('next_alias_owner', {});
+      final address = response['address'] as String?;
+      if (address == null || address.isEmpty) {
+        throw const FormatException('next_alias_owner: malformed response');
+      }
+      return address;
+    } catch (e) {
+      throw FuegoRPCException('Failed to get alias owner: $e');
+    }
+  }
+
   Future<String> registerAlias(String alias, {String? address}) async {
     try {
       final params = <String, dynamic>{'alias': alias};

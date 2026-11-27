@@ -20,6 +20,8 @@ const MAX_SWEEP_INPUTS: usize = 50;
 /// CryptoNoteConfig.h SWAP_FEE_RATE_BPS / SWAP_FEE_RATE_DIVISOR (AFK taker fee).
 const SWAP_FEE_RATE_BPS: u64 = 100;
 const SWAP_FEE_RATE_DIVISOR: u64 = 10000;
+/// Alias register, release and transfer are consensus-invalid before this block major version.
+pub const ALIAS_MIN_BLOCK_MAJOR: u8 = 12;
 /// Atomic units per coin (CryptoNoteConfig.h COIN).
 const COIN: u64 = 10_000_000;
 /// CryptoNoteConfig.h DEPOSIT_MIN_TERM / DEPOSIT_MAX_TERM (blocks).
@@ -127,6 +129,16 @@ pub fn wallet_id(keys: &fuego_sdk::scanner::WalletKeys) -> String {
     data.extend_from_slice(&keys.spend_public);
     data.extend_from_slice(&keys.view_public);
     hex::encode(&fuego_crypto::cn_fast_hash(&data)[..8])
+}
+
+fn require_alias_era(block_major_version: u8) -> std::result::Result<(), String> {
+    if block_major_version < ALIAS_MIN_BLOCK_MAJOR {
+        return Err(format!(
+            "aliases need block major version {} (chain is at {})",
+            ALIAS_MIN_BLOCK_MAJOR, block_major_version
+        ));
+    }
+    Ok(())
 }
 
 fn db_get<T: serde::de::DeserializeOwned>(db: &sled::Db, key: &[u8]) -> Option<T> {
@@ -2048,7 +2060,35 @@ impl WalletService {
         self.wallet.lock().unwrap().get_keypair(index)
     }
 
+    /// The wallet's next alias owner: the lowest k whose sub-address
+    /// (0, ALIAS_MINOR_BASE + k) holds no output here and owns no alias on chain.
+    /// Refused before block major version ALIAS_MIN_BLOCK_MAJOR.
+    pub async fn next_alias_owner(&self) -> std::result::Result<(u32, String), String> {
+        let info = self.daemon.get_info().await?;
+        require_alias_era(info.block_major_version)?;
+        let on_chain: std::collections::HashSet<String> =
+            self.daemon.get_alias_owner_addresses().await?.into_iter().collect();
+        let held = self.wallet.lock().unwrap().alias_owners_in_use();
+        let mut k = 0u32;
+        loop {
+            if !held.contains(&k) {
+                let address = self.alias_owner_string(k).ok_or("alias owner derivation failed")?;
+                if !on_chain.contains(&address) {
+                    return Ok((k, address));
+                }
+            }
+            k = k.checked_add(1).ok_or("alias owner range exhausted")?;
+        }
+    }
+
+    fn alias_owner_string(&self, k: u32) -> Option<String> {
+        let (spend, view) = self.wallet.lock().unwrap().alias_owner(k)?;
+        Some(fuego_crypto::make_address_with_prefix(&spend, &view, self.address_prefix()).0)
+    }
+
     pub async fn register_alias(&self, _alias: &str, _fee: u64) -> Result<[u8; 32]> {
+        let info = self.daemon.get_info().await.map_err(SdkError::Vault)?;
+        require_alias_era(info.block_major_version).map_err(SdkError::Vault)?;
         Err(SdkError::Vault(
             "alias registration is not part of the transaction builder path (Phase 7)".into(),
         ))
@@ -2246,6 +2286,38 @@ mod subaddress_service_tests {
         let (subs, legacy) = svc.list_subaddresses();
         assert_eq!(subs.iter().map(|s| s.0).collect::<Vec<_>>(), vec![1, 2, 3]);
         assert!(legacy.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn alias_registration_is_refused_before_block_major_12() {
+        assert!(require_alias_era(11).is_err());
+        assert!(require_alias_era(0).is_err());
+        assert!(require_alias_era(12).is_ok());
+        assert!(require_alias_era(13).is_ok());
+    }
+
+    #[test]
+    fn alias_owners_start_at_the_base_and_never_collide_with_payment_subaddresses() {
+        let dir = temp_dir("alias_owner");
+        let svc = WalletService::new([9u8; 32], "http://127.0.0.1:1", dir.clone(), false).unwrap();
+        let owner0 = svc.alias_owner_string(0).unwrap();
+        let owner1 = svc.alias_owner_string(1).unwrap();
+        let keys = svc.wallet.lock().unwrap().wallet_keys();
+        let expect = fuego_crypto::derive_subaddress_keys(
+            &keys.view_secret,
+            &keys.spend_public,
+            None,
+            0,
+            fuego_sdk::scanner::ALIAS_MINOR_BASE,
+        )
+        .unwrap();
+        assert_eq!(fuego_crypto::parse_address(&owner0).unwrap().0, expect.spend_public);
+        assert_ne!(owner0, owner1);
+        for _ in 0..3 {
+            let (_, payment) = svc.create_subaddress().unwrap();
+            assert_ne!(payment, owner0);
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 

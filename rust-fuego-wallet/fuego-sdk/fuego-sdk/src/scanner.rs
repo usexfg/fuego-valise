@@ -102,6 +102,14 @@ pub enum OutputOwner {
 /// to recently handed-out addresses are found even after a seed restore.
 pub const SUBADDRESS_LOOKAHEAD: u32 = 50;
 
+/// First minor index of the alias-owner range: owners are (0, ALIAS_MINOR_BASE + k).
+/// Payment sub-addresses are issued from minor 1 and never reach it.
+pub const ALIAS_MINOR_BASE: u32 = 0x8000_0000;
+
+pub fn is_alias_owner_minor(minor: u32) -> bool {
+    minor >= ALIAS_MINOR_BASE
+}
+
 /// Spend keys the scanner recognises after underiving an output key with the
 /// master view derivation, and the legacy accounts that need their own.
 struct ScanKeys {
@@ -110,6 +118,7 @@ struct ScanKeys {
     spend_secret: [u8; 32],
     by_spend_key: HashMap<[u8; 32], (OutputOwner, [u8; 32])>,
     subaddress_top: u32,
+    alias_owner_top: u32,
     legacy: Vec<LegacyAccount>,
 }
 
@@ -130,9 +139,11 @@ impl ScanKeys {
             spend_secret: keys.spend_secret,
             by_spend_key,
             subaddress_top: 0,
+            alias_owner_top: 0,
             legacy: Vec::new(),
         };
         table.extend_subaddresses(SUBADDRESS_LOOKAHEAD);
+        table.extend_alias_owners(SUBADDRESS_LOOKAHEAD);
         table
     }
 
@@ -154,6 +165,37 @@ impl ScanKeys {
             self.subaddress_top = minor;
         }
     }
+
+    /// Scan alias owners (0, ALIAS_MINOR_BASE + k) for every k < `count`.
+    fn extend_alias_owners(&mut self, count: u32) {
+        let count = count.min(u32::MAX - ALIAS_MINOR_BASE);
+        while self.alias_owner_top < count {
+            let minor = ALIAS_MINOR_BASE + self.alias_owner_top;
+            if let Some(k) = fuego_crypto::derive_subaddress_keys(
+                &self.view_secret,
+                &self.spend_public,
+                Some(&self.spend_secret),
+                0,
+                minor,
+            ) {
+                self.by_spend_key.insert(
+                    k.spend_public,
+                    (OutputOwner::Subaddress(minor), k.spend_secret.unwrap()),
+                );
+            }
+            self.alias_owner_top += 1;
+        }
+    }
+
+    /// Slide the window that `minor` belongs to so it reaches SUBADDRESS_LOOKAHEAD past it.
+    fn slide_window_past(&mut self, minor: u32) {
+        if is_alias_owner_minor(minor) {
+            let k = minor - ALIAS_MINOR_BASE;
+            self.extend_alias_owners(k.saturating_add(1).saturating_add(SUBADDRESS_LOOKAHEAD));
+        } else {
+            self.extend_subaddresses(minor.saturating_add(SUBADDRESS_LOOKAHEAD));
+        }
+    }
 }
 
 impl Drop for ScanKeys {
@@ -168,6 +210,14 @@ impl Drop for ScanKeys {
             acct.view_secret.zeroize();
             acct.spend_secret.zeroize();
         }
+    }
+}
+
+fn track_minor(minor: u32, highest_payment: &mut u32, highest_alias_minor: &mut u32) {
+    if is_alias_owner_minor(minor) {
+        *highest_alias_minor = (*highest_alias_minor).max(minor);
+    } else {
+        *highest_payment = (*highest_payment).max(minor);
     }
 }
 
@@ -230,6 +280,9 @@ impl UtxoScanner {
     /// Public keys (spend D, view A) of suite-scheme sub-address `minor` (>= 1),
     /// and make sure the scanner looks at least SUBADDRESS_LOOKAHEAD past it.
     pub fn subaddress(&self, minor: u32) -> Option<([u8; 32], [u8; 32])> {
+        if is_alias_owner_minor(minor) {
+            return None;
+        }
         let keys = self.wallet_keys();
         let sub = fuego_crypto::derive_subaddress_keys(
             &keys.view_secret,
@@ -243,6 +296,39 @@ impl UtxoScanner {
             .unwrap()
             .extend_subaddresses(minor.saturating_add(SUBADDRESS_LOOKAHEAD));
         Some((sub.spend_public, sub.view_public))
+    }
+
+    /// Public keys (spend D, view C) of alias owner `k`, the sub-address
+    /// (0, ALIAS_MINOR_BASE + k), and make sure the scanner looks past it.
+    pub fn alias_owner(&self, k: u32) -> Option<([u8; 32], [u8; 32])> {
+        if k >= u32::MAX - ALIAS_MINOR_BASE {
+            return None;
+        }
+        let minor = ALIAS_MINOR_BASE + k;
+        let keys = self.wallet_keys();
+        let sub = fuego_crypto::derive_subaddress_keys(
+            &keys.view_secret,
+            &keys.spend_public,
+            None,
+            0,
+            minor,
+        )?;
+        self.scan_keys.write().unwrap().slide_window_past(minor);
+        Some((sub.spend_public, sub.view_public))
+    }
+
+    /// Alias owner indices k for which the wallet holds outputs.
+    pub fn alias_owners_in_use(&self) -> HashSet<u32> {
+        self.state
+            .read()
+            .unwrap()
+            .owners
+            .values()
+            .filter_map(|o| match o {
+                OutputOwner::Subaddress(m) if is_alias_owner_minor(*m) => Some(m - ALIAS_MINOR_BASE),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Scan for pre-suite-scheme sub-addresses `indices` (vault keypairs n and
@@ -432,6 +518,7 @@ impl UtxoScanner {
             .map(|a| fuego_crypto::generate_key_derivation(&fuego_crypto::PublicKey(r), &a.view_secret))
             .collect();
         let mut highest_subaddress = 0u32;
+        let mut highest_alias_minor = 0u32;
 
         for (i, output) in prefix.outputs.iter().enumerate() {
             match &output.target {
@@ -464,7 +551,7 @@ impl UtxoScanner {
                     }
                     let Some((owner, secret)) = hit else { continue };
                     if let OutputOwner::Subaddress(minor) = owner {
-                        highest_subaddress = highest_subaddress.max(minor);
+                        track_minor(minor, &mut highest_subaddress, &mut highest_alias_minor);
                     }
                     let key_image = fuego_crypto::generate_key_image(
                         &fuego_crypto::PublicKey(*output_key),
@@ -508,7 +595,7 @@ impl UtxoScanner {
                                 spend_secret,
                             ) {
                                 if let OutputOwner::Subaddress(minor) = *owner {
-                                    highest_subaddress = highest_subaddress.max(minor);
+                                    track_minor(minor, &mut highest_subaddress, &mut highest_alias_minor);
                                 }
                                 resolved = Some((sec, ki));
                             }
@@ -567,10 +654,10 @@ impl UtxoScanner {
 
         drop(table);
         if highest_subaddress > 0 {
-            self.scan_keys
-                .write()
-                .unwrap()
-                .extend_subaddresses(highest_subaddress.saturating_add(SUBADDRESS_LOOKAHEAD));
+            self.scan_keys.write().unwrap().slide_window_past(highest_subaddress);
+        }
+        if highest_alias_minor > 0 {
+            self.scan_keys.write().unwrap().slide_window_past(highest_alias_minor);
         }
 
         if received > 0 || spent > 0 {
@@ -645,20 +732,18 @@ impl UtxoScanner {
         state.history = snapshot.history.clone();
         state.owners = snapshot.owners.iter().copied().collect();
         state.balance.confirmed = state.utxos.iter().map(|u| u.amount).sum();
-        let highest = state
-            .owners
-            .values()
-            .filter_map(|o| match o {
-                OutputOwner::Subaddress(n) => Some(*n),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
+        let (mut highest, mut highest_alias_minor) = (0u32, 0u32);
+        for owner in state.owners.values() {
+            if let OutputOwner::Subaddress(n) = owner {
+                track_minor(*n, &mut highest, &mut highest_alias_minor);
+            }
+        }
         drop(state);
-        self.scan_keys
-            .write()
-            .unwrap()
-            .extend_subaddresses(highest.saturating_add(SUBADDRESS_LOOKAHEAD));
+        let mut table = self.scan_keys.write().unwrap();
+        table.slide_window_past(highest);
+        if highest_alias_minor > 0 {
+            table.slide_window_past(highest_alias_minor);
+        }
     }
 
     /// Phase 1 of sending: select inputs for `amount + fee` using the bucket
@@ -990,6 +1075,44 @@ mod subaddress_tests {
         restored.restore(&s.snapshot());
         restored.scan_tx_prefix(&[4; 32], &pay(&far(120), &keys.view_public, 4, 11), 4).unwrap();
         assert_eq!(restored.balance_by_owner().get(&OutputOwner::Subaddress(120)), Some(&11));
+    }
+
+    #[test]
+    fn alias_owner_range_is_scanned_apart_from_payment_subaddresses() {
+        let s = scanner();
+        let keys = s.wallet_keys();
+        let owner = |k: u32| {
+            fuego_crypto::derive_subaddress_keys(
+                &keys.view_secret,
+                &keys.spend_public,
+                None,
+                0,
+                ALIAS_MINOR_BASE + k,
+            )
+            .unwrap()
+            .spend_public
+        };
+        assert!(s.subaddress(ALIAS_MINOR_BASE).is_none(), "payment issuance stops below the base");
+        assert_eq!(s.alias_owner(0).unwrap().0, owner(0));
+
+        s.scan_tx_prefix(&[1; 32], &pay(&owner(0), &keys.view_public, 1, 5), 1).unwrap();
+        s.scan_tx_prefix(&[2; 32], &pay(&owner(SUBADDRESS_LOOKAHEAD - 1), &keys.view_public, 2, 7), 2).unwrap();
+        s.scan_tx_prefix(&[3; 32], &pay(&owner(SUBADDRESS_LOOKAHEAD + 30), &keys.view_public, 3, 9), 3).unwrap();
+        let by = s.balance_by_owner();
+        assert_eq!(by.get(&OutputOwner::Subaddress(ALIAS_MINOR_BASE)), Some(&5));
+        assert_eq!(by.get(&OutputOwner::Subaddress(ALIAS_MINOR_BASE + SUBADDRESS_LOOKAHEAD - 1)), Some(&7));
+        assert_eq!(by.get(&OutputOwner::Subaddress(ALIAS_MINOR_BASE + SUBADDRESS_LOOKAHEAD + 30)), Some(&9));
+        assert_eq!(s.alias_owners_in_use(), HashSet::from([0, SUBADDRESS_LOOKAHEAD - 1, SUBADDRESS_LOOKAHEAD + 30]));
+
+        let restored = scanner();
+        restored.restore(&s.snapshot());
+        restored
+            .scan_tx_prefix(&[4; 32], &pay(&owner(SUBADDRESS_LOOKAHEAD + 70), &keys.view_public, 4, 11), 4)
+            .unwrap();
+        assert_eq!(
+            restored.balance_by_owner().get(&OutputOwner::Subaddress(ALIAS_MINOR_BASE + SUBADDRESS_LOOKAHEAD + 70)),
+            Some(&11)
+        );
     }
 
     #[test]

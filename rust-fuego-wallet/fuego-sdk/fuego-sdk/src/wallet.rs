@@ -165,6 +165,15 @@ impl Wallet {
         self.scanner.subaddress(minor)
     }
 
+    /// Public (spend, view) keys of alias owner `k`: sub-address (0, ALIAS_MINOR_BASE + k).
+    pub fn alias_owner(&self, k: u32) -> Option<([u8; 32], [u8; 32])> {
+        self.scanner.alias_owner(k)
+    }
+
+    pub fn alias_owners_in_use(&self) -> std::collections::HashSet<u32> {
+        self.scanner.alias_owners_in_use()
+    }
+
     /// Add pre-suite-scheme sub-address indices to scan; true if the set grew.
     pub fn set_legacy_subaddresses(&self, indices: &[u32]) -> bool {
         self.scanner.set_legacy_subaddresses(indices)
