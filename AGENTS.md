@@ -15,7 +15,7 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 - Standalone swap daemon for cross-chain atomic swaps
 - Has its own JSON-RPC HTTP server on port 18902, status server on 18900, P2P on 18901
 - Configurable via `--swap-config` JSON with chain RPC endpoints and signer keys
-- Supports all 12 counterparty chains with SPV or RPC verification
+- Reports every catalog pair with `protocol`/`configured`/`ready`/`readinessError`; the Cross-Chain tab lists chains from that report
 - Connects to fuegod as an RPC client for Fuego chain operations
 - Used by: Dart wallet Cross-Chain tab
 - Built from: `src/SwapDaemon/` in the fuego C++ repo
@@ -25,53 +25,54 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 - xfg-swapd handles actual cross-chain lock/claim/refund on BTC, ETH, SOL, etc.
 - They use **separate databases** (fuegod: `<configFolder>/swaps`, xfg-swapd: `~/.xfg-swapd`)
 
-## Swap pairs
+## Swap Chains
 
-Pair identity is the pinned fuego-suite `SwapPair` uint8 (`fuego-suite/src/SwapDaemon/SwapTypes.h`). Valise does not invent ids. Presentation and activation live in `chains.yaml` (`chains:` for the 33 EVMs, `networks:` for the rest). `tool/gen_networks.dart` joins them and writes `lib/models/network_catalog.g.dart`, the Rust `SwapPair` include, and `docs/networks.backlog.md`. DeXFG and peer swap show `activation: ready` only. Wire calls send the uint8, not the display ticker. Do not add a pair id in Dart or Rust by hand. Do not mark a row `ready` unless the pin's `SwapDaemon.cpp` will `registerChain` it.
+Source of truth: suite `src/SwapDaemon/SwapPairCatalog.h`, an append-only X-macro table of
+46 wire ids (25 ACTIVE, 17 ADAPTER, 4 STAGED). The suite derives its bounds, divisors and
+name parsing from it. The wallet mirrors it in three places, locked together by
+`test/swap_pair_drift_test.dart`, `test/swap_pair_expansion_test.dart` and
+`test/chains_registry_test.dart`:
+- `SwapPairSdk` (wire id → wallet ticker → `ChainTypeSdk` → `EvmChainKey`)
+- `chains.yaml` `tier: swap` (EVM chains `SwapConfigService` writes into `evm_chains`)
+- `ChainInfo` (ticker-keyed display metadata; `swapableChains` derives from `SwapPairSdk`)
 
-`ChainTypeSdk.id` is a local proof-adapter integer used by `/verify_payment`. It is not a `SwapPair` id.
+A pair can start a swap only when all four hold:
+1. Its catalog support is not STAGED.
+2. `SwapOfferRelay::isExecutablePair` admits it.
+3. Its chain client is ready: signer, matching chain id, and a deployed HTLC registry (EVM)
+   or program (SOL) **on that chain**.
+4. The live price quote allows it (`validateNewSwapRate`).
 
-### Chain Connection Modes
-- **SPV mode**: Read-only verification via Electrum protocol (BTC/LTC/BCH/KMD) or Neutrino (DCR). Cannot create lock transactions — claim/refund needs RPC mode.
-- **RPC mode**: Full node connection with `-txindex`. Required for sending transactions.
-- **EVM chains**: JSON-RPC only (no SPV). Share same HashedTimelock.sol contract. Public RPCs (Infura/Alchemy) used by default — no user setup needed.
-- **SOL**: JSON-RPC + on-chain HTLC program. Public RPC used by default — no user setup needed.
-- **XMR**: CryptoNote ring signatures — no SPV proof possible. Run your own `monerod` + `monero-wallet-rpc` (recommended) or use a remote node from [monero.fail](https://monero.fail).
+| Pairs (wire id) | Status |
+|---|---|
+| ETH 1, ARB 4, BASE 5, BNB 7, POLY 11, RHC 13, AVAX 14, CRO 15, BOB 16, UNI 18, XPL 19, PLS 23, MON 25, OP 26 | EVM, dedicated client (ACTIVE): executable once configured |
+| LINEA 29, ZKS 30, HYPER 31, INK 32, RSK 33, GNO 34, FLR 35, KAIA 36, SCR 37, ABS 38, PLUME 39, SONEIUM 40, DOMA 41, BEAM 42, MOVR 43, SEI 45 | EVM, generic adapter via `evm_chains` (ADAPTER): executable once configured |
+| SOL 0 | executable once configured (local RPC at 127.0.0.1 and a deployed program) |
+| GLEEC 12, PEAQ 44 | blocked by gate 4: no verified price feed id, so quotes fail closed |
+| XMR 2, BCH 3, KMD 6, DCR 8, BTC 9, LTC 10, DOGE 20, DASH 21, ZEC 22 | blocked by gates 2 and 3: SPV clients cannot submit locks and full-node modes lack independent claim discovery (`isReadyForNewSwap()` is false) |
+| SIA 17, ZANO 24, TON 27, DOT 28 | STAGED |
+| TEMPO | not in the catalog: no native coin, and `HashedTimelock.lock()` escrows only native value |
 
-### What Users Need To Run
-| Chain | User Action Required? |
-|-------|----------------------|
-| BTC, LTC, BCH, KMD | None — Electrum SPV handles verification via public servers |
-| ETH, ARB, BASE, BNB, POLYGON | None — public JSON-RPC used by default |
-| SOL | None — public Solana RPC used by default |
-| DCR | None for SPV mode (Neutrino built-in) |
-| XMR | Run your own monerod + monero-wallet-rpc (recommended), or use a remote node from monero.fail |
+### Swap-chain rules
+- The daemon's `pairName` is the catalog symbol (`ZKSYNC`, `OPTIMISM`, `KMD_SPV`), not the
+  wallet ticker. `SwapInfo.pairName` and `SwapChain.pairTicker` resolve by wire id; never key
+  `ChainInfo` by the daemon string (a decimals miss falls back to XFG's 7).
+- 14 pairs settle in ETH. `SwapChain.ticker` is that asset; `pairTicker` names the chain.
+- Each EVM pair needs its own HashedTimelock deployment. `SwapConfigService` refuses an EVM
+  chain without a registry address, and readiness probes the registry's on-chain code.
+- The fuegod orderbook queries `getswapoffers` once per `SwapPairSdk` value.
+- `SwapPairSdk.fromId` falls back to ETH for an unknown id (offer parsing); `tryFromId`
+  returns null.
 
 ### Known Issues
-
-- SPV mode is read-only; claim/refund requires RPC mode for UTXO chains.
-- **The chain set is mirrored by hand in many places, and has drifted before.** One `SwapPair`
-  enum is restated as ~10 C++ `switch` tables, a Go CLI list, dashboard JS/HTML, and ~10 lists
-  in Dart. Adding a chain is a ~40-item cross-language checklist. The live landmines, all of
-  which fail *silently* rather than at compile time:
-  - `src/CryptoNoteCore/SwapOfferRelay.h` `MAX_PAIR_INDEX` is hand-synced across the module
-    boundary. Raising `SwapPair` without raising it drops every offer for the new pair in
-    `validateOffer`.
-  - `for (pair = 0; pair <= SwapPair::DOT; ++pair)` loop sentinels (`src/Rpc/RpcServer.cpp`,
-    `src/SwapDaemon/SwapDaemon.cpp`) compile fine and silently skip a newly appended pair.
-  - `PriceOracle::ctrDivisor()` defaults to a *plausible-but-wrong* `1e8`, unlike
-    `getEffectiveRate()` which returns an obvious `0.0`. A missing case corrupts
-    `requiredCtrAmount` in integer math.
-  - `swapPairFromString()` guards `s.size() > 12` before any comparison, so a chain name
-    longer than 12 chars is unparseable.
-- `swapxfg/app/pairs.go` (`ActivePairs`) covers 7 of 29 pairs, and
-  `dashboard/static/js/swapxfg.js` `CHAIN_INFO` covers 10 of 29 — the Go CLI and the
-  dashboard can only see a fraction of what the daemon supports.
-- `swap_config.example.json` uses key names `ChainClientConfig.cpp` never reads (`btc_host`
-  vs `btc_rpc_host`, `eth_wif` vs `eth_priv_key`). Following it verbatim yields a silently
-  unconfigured daemon.
-- `src/SwapDaemon/CLV/` is a fully-written `EthChainClient` subclass with no `SwapPair` value,
-  config field, registration, or CMake entry — an orphan adapter.
+- `swap_config.example.json`'s flat EVM fields (`eth_host`, `eth_wif`, `rh_host`, …) are names
+  `ChainClientConfig.cpp` never reads (it reads `eth_rpc_host`, `eth_priv_key`, `rh_rpc_host`).
+  Its `evm_chains` block is the correct template.
+- `src/SwapDaemon/CLV/` is a fully-written `EthChainClient` subclass with no catalog id, config
+  field, registration, or CMake entry — an orphan adapter.
+- `SwapOfferRelay::getSeedRate` (fuegod `getswapprice`) returns 0 for every pair above 6, and its
+  cases are labelled for a different id order (case 0 says XMR; id 0 is SOL). Display only: the
+  swap path prices from live feeds.
 
 ## Dart Wallet Backend Architecture
 
@@ -103,7 +104,7 @@ Pair identity is the pinned fuego-suite `SwapPair` uint8 (`fuego-suite/src/SwapD
 
 Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 
-- `types.rs`: SwapPair (generated from the suite pin; every id, `from_id` is `Option`), SwapOffer, SwapPrice, SwapTrade, SwapStatus
+- `types.rs`: SwapPair enum (12 pairs; nothing outside `types.rs` uses it), SwapOffer, SwapPrice, SwapTrade, SwapStatus
 - `chain/mod.rs`: ChainType enum (13 chains including Fuego), ChainSpv trait
 - `chain/bitcoin.rs`: Bitcoin-family SPV adapter (BTC, LTC, BCH, KMD, DCR)
 - `chain/evm.rs`: EVM chain adapter (ETH, ARB, BASE, BNB, POLYGON)

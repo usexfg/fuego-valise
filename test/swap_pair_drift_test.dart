@@ -39,7 +39,7 @@ void main() {
     });
 
     test('ids are non-negative and match the C++ SwapPair values', () {
-      // Must track fuego-suite src/SwapDaemon/SwapTypes.h. Append-only:
+      // Must track fuego-suite src/SwapDaemon/SwapPairCatalog.h. Append-only:
       // inserting mid-enum renumbers the wire format.
       const expected = <int, String>{
         0: 'SOL',
@@ -64,6 +64,23 @@ void main() {
         23: 'PLS',
         25: 'MON',
         26: 'OP',
+        29: 'LINEA',
+        30: 'ZKS',
+        31: 'HYPER',
+        32: 'INK',
+        33: 'RSK',
+        34: 'GNO',
+        35: 'FLR',
+        36: 'KAIA',
+        37: 'SCR',
+        38: 'ABS',
+        39: 'PLUME',
+        40: 'SONEIUM',
+        41: 'DOMA',
+        42: 'BEAM',
+        43: 'MOVR',
+        44: 'PEAQ',
+        45: 'SEI',
       };
       final actual = <int, String>{for (final p in pairs) p.id: p.ticker};
       expect(
@@ -125,10 +142,67 @@ void main() {
     test('unknown id still yields the PAIR_<n> fallback', () {
       expect(infoFor(999).pairName, 'PAIR_999');
     });
+
+    test('the daemon catalog symbol never overrides the wallet ticker', () {
+      // xfg-swapd's `pairName` is the SwapPairCatalog symbol. Keyed into
+      // ChainInfo.decimals it missed and fell back to XFG's 7 decimals.
+      const daemonSymbols = {
+        6: 'KMD_SPV',
+        11: 'POLYGON',
+        13: 'ROBINHOOD',
+        26: 'OPTIMISM',
+        30: 'ZKSYNC',
+        33: 'ROOTSTOCK',
+        43: 'MOONRIVER',
+      };
+      for (final e in daemonSymbols.entries) {
+        final info = SwapInfo(
+          swapId: 's',
+          state: 'INITIATED',
+          pair: e.key,
+          pairSymbol: e.value,
+          xfgAmount: BigInt.zero,
+          ctrAmount: BigInt.parse('500000000000000000'),
+          peerEndpoint: '',
+          createdAt: 0,
+          updatedAt: 0,
+        );
+        final ticker = SwapPairSdk.tryFromId(e.key)!.ticker;
+        expect(info.pairName, ticker, reason: '${e.value} leaked through');
+        expect(ChainInfo.decimals[info.pairName], isNotNull);
+      }
+      final zksync = SwapInfo(
+        swapId: 's',
+        state: 'INITIATED',
+        pair: 30,
+        pairSymbol: 'ZKSYNC',
+        xfgAmount: BigInt.zero,
+        ctrAmount: BigInt.parse('500000000000000000'),
+        peerEndpoint: '',
+        createdAt: 0,
+        updatedAt: 0,
+      );
+      expect(zksync.ctrAmountDecimal, closeTo(0.5, 1e-12));
+    });
+
+    test('an id the wallet does not mirror keeps the daemon symbol', () {
+      final sia = SwapInfo(
+        swapId: 's',
+        state: 'INITIATED',
+        pair: 17,
+        pairSymbol: 'SIA',
+        xfgAmount: BigInt.zero,
+        ctrAmount: BigInt.zero,
+        peerEndpoint: '',
+        createdAt: 0,
+        updatedAt: 0,
+      );
+      expect(sia.pairName, 'SIA');
+    });
   });
 
   group('every swapable chain has ChainInfo metadata', () {
-    test('colour, icon and decimals resolve for all 22 pairs', () {
+    test('colour, icon and decimals resolve for every pair', () {
       for (final p in pairs) {
         final t = p.ticker;
         expect(ChainInfo.colors[t], isNotNull, reason: 'no colour for $t');
@@ -153,10 +227,12 @@ void main() {
       }
     });
 
-    test('explorerTx resolves for all but the three known gaps', () {
+    test('explorerTx resolves for all but the known gaps', () {
       // Deliberately explicit: adding a pair without an explorer fails here,
       // and closing one of these requires deleting it from the set.
-      const knownMissing = {'GLEEC', 'RHC', 'XPL'};
+      // DOMA: explorer.doma.xyz is official but its tx path is unverified.
+      // PEAQ: peaq's own docs disagree on which explorer is primary.
+      const knownMissing = {'GLEEC', 'RHC', 'XPL', 'DOMA', 'PEAQ'};
       for (final p in pairs) {
         final t = p.ticker;
         if (knownMissing.contains(t)) {
@@ -174,7 +250,7 @@ void main() {
         );
         expect(ChainInfo.explorerTxUrl(t, 'deadbeef'), contains('deadbeef'));
       }
-      expect(knownMissing, {'GLEEC', 'RHC', 'XPL'});
+      expect(knownMissing, {'GLEEC', 'RHC', 'XPL', 'DOMA', 'PEAQ'});
     });
 
     test('SwapInfo.explorerUrl is empty for a pair with no explorer', () {

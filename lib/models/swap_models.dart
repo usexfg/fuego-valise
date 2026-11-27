@@ -1,18 +1,74 @@
-/// Swap and DEX models.
-///
-/// Pair identity is the pinned fuego-suite `SwapPair` uint8. [SwapPairSdk]
-/// is generated (`network_catalog.g.dart`) and is only the ready set.
-/// It is not a second numbering scheme and it is not 1:1 with every Rust
-/// arm: Rust knows every pin id, the picker knows `activation: ready`.
-import 'network_catalog.g.dart';
+import 'erc20_token.dart';
+import 'swap_pair_catalog.g.dart';
 
-export 'network_catalog.g.dart'
-    show
-        SwapPairSdk,
-        NetworkRow,
-        kNetworkCatalog,
-        kReadyNetworks,
-        kReadyEvmKeys;
+/// Swap and DEX models aligned with fuego-sdk types.
+/// Maps 1:1 with Rust SDK types.rs SwapPair, SwapOffer, SwapStatus, etc.
+
+/// Wire ids from fuego-suite `src/SwapDaemon/SwapPairCatalog.h` (append-only).
+/// Absent ids are catalog pairs with no executable client: SIA(17), DOGE(20),
+/// DASH(21), ZEC(22), ZANO(24), TON(27), DOT(28).
+enum SwapPairSdk {
+  sol(0, 'SOL', 'XFG/SOL', ChainTypeSdk.solana),
+  eth(1, 'ETH', 'XFG/ETH', ChainTypeSdk.ethereum),
+  xmr(2, 'XMR', 'XFG/XMR', ChainTypeSdk.monero),
+  bch(3, 'BCH', 'XFG/BCH', ChainTypeSdk.bitcoinCash),
+  arb(4, 'ARB', 'XFG/ARB', ChainTypeSdk.arbitrum),
+  base(5, 'BASE', 'XFG/BASE', ChainTypeSdk.base),
+  kmd(6, 'KMD', 'XFG/KMD', ChainTypeSdk.komodo),
+  bnb(7, 'BNB', 'XFG/BNB', ChainTypeSdk.bnb),
+  dcr(8, 'DCR', 'XFG/DCR', ChainTypeSdk.decred),
+  btc(9, 'BTC', 'XFG/BTC', ChainTypeSdk.bitcoin),
+  ltc(10, 'LTC', 'XFG/LTC', ChainTypeSdk.litecoin),
+  poly(11, 'POLY', 'XFG/POLY', ChainTypeSdk.polygon),
+  gleec(12, 'GLEEC', 'XFG/GLEEC', ChainTypeSdk.gleec),
+  robinhood(13, 'RHC', 'XFG/RHC', ChainTypeSdk.robinhood),
+  avax(14, 'AVAX', 'XFG/AVAX', ChainTypeSdk.avax),
+  cro(15, 'CRO', 'XFG/CRO', ChainTypeSdk.cro),
+  bob(16, 'BOB', 'XFG/BOB', ChainTypeSdk.bob),
+  unichain(18, 'UNI', 'XFG/UNI', ChainTypeSdk.unichain),
+  plasma(19, 'XPL', 'XFG/XPL', ChainTypeSdk.plasma),
+  pulsex(23, 'PLS', 'XFG/PLS', ChainTypeSdk.pulsex),
+  monad(25, 'MON', 'XFG/MON', ChainTypeSdk.monad),
+  optimism(26, 'OP', 'XFG/OP', ChainTypeSdk.optimism),
+  linea(29, 'LINEA', 'XFG/LINEA', ChainTypeSdk.linea),
+  zksync(30, 'ZKS', 'XFG/ZKS', ChainTypeSdk.zksync),
+  hyperevm(31, 'HYPER', 'XFG/HYPER', ChainTypeSdk.hyperevm),
+  ink(32, 'INK', 'XFG/INK', ChainTypeSdk.ink),
+  rsk(33, 'RSK', 'XFG/RSK', ChainTypeSdk.rsk),
+  gnosis(34, 'GNO', 'XFG/GNO', ChainTypeSdk.gnosis),
+  flare(35, 'FLR', 'XFG/FLR', ChainTypeSdk.flare),
+  kaia(36, 'KAIA', 'XFG/KAIA', ChainTypeSdk.kaia),
+  scroll(37, 'SCR', 'XFG/SCR', ChainTypeSdk.scroll),
+  abstract(38, 'ABS', 'XFG/ABS', ChainTypeSdk.abstract),
+  plume(39, 'PLUME', 'XFG/PLUME', ChainTypeSdk.plume),
+  soneium(40, 'SONEIUM', 'XFG/SONEIUM', ChainTypeSdk.soneium),
+  doma(41, 'DOMA', 'XFG/DOMA', ChainTypeSdk.doma),
+  beam(42, 'BEAM', 'XFG/BEAM', ChainTypeSdk.beam),
+  moonriver(43, 'MOVR', 'XFG/MOVR', ChainTypeSdk.moonriver),
+  peaq(44, 'PEAQ', 'XFG/PEAQ', ChainTypeSdk.peaq),
+  sei(45, 'SEI', 'XFG/SEI', ChainTypeSdk.sei);
+
+  final int id;
+  final String ticker;
+  final String displayName;
+  final ChainTypeSdk chain;
+  const SwapPairSdk(this.id, this.ticker, this.displayName, this.chain);
+
+  /// Unknown ids are refused: a record for a pair this wallet cannot
+  /// represent must never be shown as an ETH swap.
+  static SwapPairSdk fromId(int id) =>
+      tryFromId(id) ?? (throw FormatException('unknown swap pair id $id'));
+
+  /// This pair's row in xfg-swapd's catalog (generated from fuego-suite).
+  SwapPairCatalogEntry get catalog => kSwapPairCatalog[id];
+
+  static SwapPairSdk? tryFromId(int id) {
+    for (final p in SwapPairSdk.values) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+}
 
 /// PTLC lock type (mirrors Rust SwapLockType / C++ SwapLockType).
 /// htlc=0 legacy hash, ptlc=1 pure point, bridge=2 PTLC on XFG + HTLC on CTR.
@@ -42,72 +98,64 @@ enum SwapLockTypeSdk {
   bool get isHtlc => this == htlc;
 }
 
-/// Local SPV / proof adapter. [id] is not a `SwapPair` wire id.
-/// `/verify_payment` still sends this integer. Do not reuse it as a pair id.
+/// Supported chains for SPV verification. Ids 0-12 are the Rust SDK
+/// `ChainType` discriminants walletd's `/verify_payment` accepts; later ids
+/// are wallet-side only. Append-only.
 enum ChainTypeSdk {
   fuego(0, 'XFG', 'Fuego'),
   solana(1, 'SOL', 'Solana'),
-  ethereum(2, 'ETH', 'Ethereum'),
+  ethereum(2, 'ETH', 'Ethereum', EvmChainKey.eth),
   monero(3, 'XMR', 'Monero'),
   bitcoinCash(4, 'BCH', 'Bitcoin Cash'),
-  arbitrum(5, 'ARB', 'Arbitrum'),
-  base(6, 'BASE', 'Base'),
+  arbitrum(5, 'ARB', 'Arbitrum', EvmChainKey.arb),
+  base(6, 'BASE', 'Base', EvmChainKey.base),
   komodo(7, 'KMD', 'Komodo'),
-  bnb(8, 'BNB', 'BNB Chain'),
+  bnb(8, 'BNB', 'BNB Chain', EvmChainKey.bsc),
   decred(9, 'DCR', 'Decred'),
   bitcoin(10, 'BTC', 'Bitcoin'),
   litecoin(11, 'LTC', 'Litecoin'),
-  polygon(12, 'POLY', 'Polygon'),
-  avax(13, 'AVAX', 'Avalanche'),
-  gleec(14, 'GLEEC', 'Gleec Chain'),
-  robinhood(15, 'RHC', 'Robinhood Chain'),
-  cro(16, 'CRO', 'Cronos'),
-  bob(17, 'BOB', 'BOB'),
-  unichain(18, 'UNI', 'Unichain'),
-  plasma(19, 'XPL', 'Plasma'),
-  pulsex(20, 'PLS', 'PulseChain'),
-  monad(21, 'MON', 'Monad'),
-  optimism(22, 'OP', 'Optimism'),
-  doge(23, 'DOGE', 'Dogecoin'),
-  dash(24, 'DASH', 'Dash'),
-  zcash(25, 'ZEC', 'Zcash');
+  polygon(12, 'POLY', 'Polygon', EvmChainKey.poly),
+  avax(13, 'AVAX', 'Avalanche', EvmChainKey.avax),
+  gleec(14, 'GLEEC', 'Gleec Chain', EvmChainKey.gleec),
+  robinhood(15, 'RHC', 'Robinhood Chain', EvmChainKey.rh),
+  cro(16, 'CRO', 'Cronos', EvmChainKey.cro),
+  bob(17, 'BOB', 'BOB', EvmChainKey.bob),
+  unichain(18, 'UNI', 'Unichain', EvmChainKey.uni),
+  plasma(19, 'XPL', 'Plasma', EvmChainKey.xpl),
+  pulsex(20, 'PLS', 'PulseChain', EvmChainKey.pls),
+  monad(21, 'MON', 'Monad', EvmChainKey.monad),
+  optimism(22, 'OP', 'Optimism', EvmChainKey.op),
+  linea(23, 'LINEA', 'Linea', EvmChainKey.linea),
+  zksync(24, 'ZKS', 'ZKsync Era', EvmChainKey.zksync),
+  hyperevm(25, 'HYPER', 'HyperEVM', EvmChainKey.hyperevm),
+  ink(26, 'INK', 'Ink', EvmChainKey.ink),
+  rsk(27, 'RSK', 'Rootstock', EvmChainKey.rsk),
+  gnosis(28, 'GNO', 'Gnosis', EvmChainKey.gnosis),
+  flare(29, 'FLR', 'Flare', EvmChainKey.flare),
+  kaia(30, 'KAIA', 'Kaia', EvmChainKey.kaia),
+  scroll(31, 'SCR', 'Scroll', EvmChainKey.scroll),
+  abstract(32, 'ABS', 'Abstract', EvmChainKey.abstract),
+  plume(33, 'PLUME', 'Plume', EvmChainKey.plume),
+  soneium(34, 'SONEIUM', 'Soneium', EvmChainKey.soneium),
+  doma(35, 'DOMA', 'Doma', EvmChainKey.doma),
+  beam(36, 'BEAM', 'Beam', EvmChainKey.beam),
+  moonriver(37, 'MOVR', 'Moonriver', EvmChainKey.moonriver),
+  peaq(38, 'PEAQ', 'peaq', EvmChainKey.peaq),
+  sei(39, 'SEI', 'Sei', EvmChainKey.sei);
 
   final int id;
   final String symbol;
   final String name;
-  const ChainTypeSdk(this.id, this.symbol, this.name);
+  final EvmChainKey? evm;
+  const ChainTypeSdk(this.id, this.symbol, this.name, [this.evm]);
 
-  bool get isEvm =>
-      this == ChainTypeSdk.ethereum ||
-      this == ChainTypeSdk.arbitrum ||
-      this == ChainTypeSdk.base ||
-      this == ChainTypeSdk.bnb ||
-      this == ChainTypeSdk.polygon ||
-      this == ChainTypeSdk.avax ||
-      this == ChainTypeSdk.gleec ||
-      this == ChainTypeSdk.robinhood ||
-      this == ChainTypeSdk.cro ||
-      this == ChainTypeSdk.bob ||
-      this == ChainTypeSdk.unichain ||
-      this == ChainTypeSdk.plasma ||
-      this == ChainTypeSdk.pulsex ||
-      this == ChainTypeSdk.monad ||
-      this == ChainTypeSdk.optimism;
+  bool get isEvm => evm != null;
   bool get isBtcFamily =>
       this == ChainTypeSdk.bitcoinCash ||
       this == ChainTypeSdk.komodo ||
       this == ChainTypeSdk.decred ||
       this == ChainTypeSdk.bitcoin ||
       this == ChainTypeSdk.litecoin;
-
-  /// UTXO chains whose taker proof is a signed message over P2PKH.
-  /// DOGE/DASH/ZEC are not SPV and not in Rust `ChainType`, but the proof
-  /// shape is the same signed-message form.
-  bool get isSignedMessageUtxo =>
-      isBtcFamily ||
-      this == ChainTypeSdk.doge ||
-      this == ChainTypeSdk.dash ||
-      this == ChainTypeSdk.zcash;
 
   static ChainTypeSdk fromId(int id) => ChainTypeSdk.values.firstWhere(
     (c) => c.id == id,
@@ -170,27 +218,12 @@ class SwapOfferSdk {
     expiresAt: expiresAt,
   );
 
-  /// Null when the pair id is not in the ready set. Never substitutes ETH.
-  static SwapOfferSdk? tryFromJson(Map<String, dynamic> j) {
-    final pair = SwapPairSdk.tryFromId(_intValue(j['pair']));
-    if (pair == null) return null;
-    return SwapOfferSdk._fromJson(j, pair);
-  }
-
   factory SwapOfferSdk.fromJson(Map<String, dynamic> j) {
-    final parsed = tryFromJson(j);
-    if (parsed == null) {
-      throw ArgumentError('unknown swap pair id ${_intValue(j['pair'])}');
-    }
-    return parsed;
-  }
-
-  factory SwapOfferSdk._fromJson(Map<String, dynamic> j, SwapPairSdk pair) {
     return SwapOfferSdk(
       offerId: j['offerId']?.toString() ?? j['offer_id']?.toString() ?? '',
       makerPubKey:
           j['makerPubKey']?.toString() ?? j['maker_pubkey']?.toString() ?? '',
-      pair: pair,
+      pair: SwapPairSdk.fromId(_intValue(j['pair'])),
       sellXfg:
           j['sellXfg'] as bool? ??
           j['sell_xfg'] as bool? ??
@@ -242,33 +275,17 @@ class SwapStatusSdk {
     required this.updatedAt,
   });
 
-  static SwapStatusSdk? tryFromJson(Map<String, dynamic> j) {
-    final pair = SwapPairSdk.tryFromId(j['pair'] as int? ?? -1);
-    if (pair == null) return null;
-    return SwapStatusSdk._fromJson(j, pair);
-  }
-
-  factory SwapStatusSdk.fromJson(Map<String, dynamic> j) {
-    final parsed = tryFromJson(j);
-    if (parsed == null) {
-      throw ArgumentError('unknown swap pair id ${j['pair']}');
-    }
-    return parsed;
-  }
-
-  factory SwapStatusSdk._fromJson(Map<String, dynamic> j, SwapPairSdk pair) =>
-      SwapStatusSdk(
-        swapId: j['swapId'] as String? ?? j['swap_id'] as String? ?? '',
-        state: SwapStateSdk.fromString(j['state'] as String? ?? 'open'),
-        pair: pair,
-        amount: j['amount'] as int? ?? 0,
-        makerPubkey:
-            j['makerPubkey'] as String? ?? j['maker_pubkey'] as String? ?? '',
-        takerPubkey:
-            j['takerPubkey'] as String? ?? j['taker_pubkey'] as String?,
-        createdAt: j['createdAt'] as int? ?? j['created_at'] as int? ?? 0,
-        updatedAt: j['updatedAt'] as int? ?? j['updated_at'] as int? ?? 0,
-      );
+  factory SwapStatusSdk.fromJson(Map<String, dynamic> j) => SwapStatusSdk(
+    swapId: j['swapId'] as String? ?? j['swap_id'] as String? ?? '',
+    state: SwapStateSdk.fromString(j['state'] as String? ?? 'open'),
+    pair: SwapPairSdk.fromId(j['pair'] as int? ?? 0),
+    amount: j['amount'] as int? ?? 0,
+    makerPubkey:
+        j['makerPubkey'] as String? ?? j['maker_pubkey'] as String? ?? '',
+    takerPubkey: j['takerPubkey'] as String? ?? j['taker_pubkey'] as String?,
+    createdAt: j['createdAt'] as int? ?? j['created_at'] as int? ?? 0,
+    updatedAt: j['updatedAt'] as int? ?? j['updated_at'] as int? ?? 0,
+  );
 }
 
 /// Historical trade record.
@@ -289,29 +306,14 @@ class SwapTradeSdk {
     required this.timestamp,
   });
 
-  static SwapTradeSdk? tryFromJson(Map<String, dynamic> j) {
-    final pair = SwapPairSdk.tryFromId(j['pair'] as int? ?? -1);
-    if (pair == null) return null;
-    return SwapTradeSdk._fromJson(j, pair);
-  }
-
-  factory SwapTradeSdk.fromJson(Map<String, dynamic> j) {
-    final parsed = tryFromJson(j);
-    if (parsed == null) {
-      throw ArgumentError('unknown swap pair id ${j['pair']}');
-    }
-    return parsed;
-  }
-
-  factory SwapTradeSdk._fromJson(Map<String, dynamic> j, SwapPairSdk pair) =>
-      SwapTradeSdk(
-        tradeId: j['tradeId'] as String? ?? j['trade_id'] as String? ?? '',
-        pair: pair,
-        sellXfg: j['sellXfg'] as bool? ?? j['sell_xfg'] as bool? ?? true,
-        amount: j['amount'] as int? ?? 0,
-        price: j['price'] as int? ?? 0,
-        timestamp: j['timestamp'] as int? ?? 0,
-      );
+  factory SwapTradeSdk.fromJson(Map<String, dynamic> j) => SwapTradeSdk(
+    tradeId: j['tradeId'] as String? ?? j['trade_id'] as String? ?? '',
+    pair: SwapPairSdk.fromId(j['pair'] as int? ?? 0),
+    sellXfg: j['sellXfg'] as bool? ?? j['sell_xfg'] as bool? ?? true,
+    amount: j['amount'] as int? ?? 0,
+    price: j['price'] as int? ?? 0,
+    timestamp: j['timestamp'] as int? ?? 0,
+  );
 }
 
 /// Price data for a trading pair.

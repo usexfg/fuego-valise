@@ -388,6 +388,11 @@ async fn handle_wallet_method(
                 .map_err(|e| format!("sweep failed: {}", e))?;
             Ok(serde_json::json!({ "txHash": tx }))
         }
+        "next_alias_owner" => {
+            let wallet = need(wallet)?.lock().await;
+            let (index, address) = wallet.next_alias_owner().await?;
+            Ok(serde_json::json!({ "index": index, "address": address }))
+        }
         "register_alias" => {
             let alias = params.get("alias")
                 .and_then(|a| a.as_str())
@@ -1516,7 +1521,7 @@ mod dispatch_tests {
     async fn without_an_open_wallet_only_wallet_methods_are_refused() {
         let params = serde_json::json!({});
         let rpc = |m: &'static str| handle_wallet_method(None, "http://127.0.0.1:1", m, &params);
-        for m in ["getBalance", "getAddress", "create_subaddress", "sweep_legacy_subaddresses"] {
+        for m in ["getBalance", "getAddress", "create_subaddress", "next_alias_owner", "sweep_legacy_subaddresses"] {
             assert_eq!(rpc(m).await.unwrap_err(), NO_WALLET_OPEN, "{m}");
         }
         // Wallet methods that share a name with a fuegod endpoint never fall through to it.

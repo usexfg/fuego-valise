@@ -1481,7 +1481,7 @@ class _DexScreenState extends State<DexScreen>
 
   // ── ERC20 balances inline (EVM chains) ──────────────────────────────
   Widget _buildErc20Balances(DexState state) {
-    final chainKey = _evmChainKey(state.selectedChain);
+    final chainKey = state.selectedChain.evm?.key;
     if (chainKey == null) return const SizedBox.shrink();
     final tokens = Erc20Registry.forChain(chainKey);
     if (tokens.isEmpty) return const SizedBox.shrink();
@@ -1550,43 +1550,6 @@ class _DexScreenState extends State<DexScreen>
     );
   }
 
-  String? _evmChainKey(ChainTypeSdk c) {
-    switch (c) {
-      case ChainTypeSdk.ethereum:
-        return 'eth';
-      case ChainTypeSdk.arbitrum:
-        return 'arb';
-      case ChainTypeSdk.base:
-        return 'base';
-      case ChainTypeSdk.bnb:
-        return 'bsc';
-      case ChainTypeSdk.polygon:
-        return 'poly';
-      case ChainTypeSdk.avax:
-        return 'avax';
-      case ChainTypeSdk.gleec:
-        return 'gleec';
-      case ChainTypeSdk.robinhood:
-        return 'rh';
-      case ChainTypeSdk.cro:
-        return 'cro';
-      case ChainTypeSdk.bob:
-        return 'bob';
-      case ChainTypeSdk.unichain:
-        return 'uni';
-      case ChainTypeSdk.plasma:
-        return 'xpl';
-      case ChainTypeSdk.pulsex:
-        return 'pls';
-      case ChainTypeSdk.monad:
-        return 'monad';
-      case ChainTypeSdk.optimism:
-        return 'op';
-      default:
-        return null;
-    }
-  }
-
   String? _deriveEvmAddress(String pk) {
     final clean = pk.startsWith('0x') ? pk.substring(2) : pk;
     if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(clean)) return null;
@@ -1602,8 +1565,36 @@ class _DexScreenState extends State<DexScreen>
 
   // ── Chain Info Dialog ────────────────────────────────────────────
 
+  /// xfg-swapd's own readiness verdict for the pair, when the daemon is
+  /// reachable; the static description only stands in when it is not.
+  static String _liveSetupStatus(
+    String ticker,
+    List<SwapChain> daemonChains,
+    String fallback,
+  ) {
+    SwapPairSdk? pair;
+    for (final candidate in SwapPairSdk.values) {
+      if (candidate.ticker == ticker) pair = candidate;
+    }
+    for (final chain in daemonChains) {
+      if (pair == null || chain.id != pair.id) continue;
+      if (chain.executable) return 'Ready in xfg-swapd';
+      if (chain.readyAs('bob')) {
+        return 'Ready to sell XFG in xfg-swapd (SPV); buying XFG needs a full node';
+      }
+      if (chain.readinessError.isNotEmpty) return chain.readinessError;
+      return chain.configured
+          ? 'Not ready in xfg-swapd'
+          : 'Not configured in xfg-swapd';
+    }
+    return fallback.isEmpty
+        ? 'xfg-swapd not reachable'
+        : '$fallback (xfg-swapd not reachable)';
+  }
+
   void _showChainInfo() {
     final selected = context.read<DexCubit>().state.selectedPair.ticker;
+    final daemonChains = context.read<DexCubit>().state.swapChains;
     final entries = ChainInfo.info.entries.toList()
       ..sort((a, b) {
         if (a.key == selected) return -1;
@@ -1779,7 +1770,14 @@ class _DexScreenState extends State<DexScreen>
                           const SizedBox(height: 8),
                           _infoRow('Connect', info['connect'] ?? ''),
                           _infoRow('HTLC', info['htlc'] ?? ''),
-                          _infoRow('Setup', info['user'] ?? ''),
+                          _infoRow(
+                            'Setup',
+                            _liveSetupStatus(
+                              e.key,
+                              daemonChains,
+                              info['user'] ?? '',
+                            ),
+                          ),
                         ],
                       ],
                     ),

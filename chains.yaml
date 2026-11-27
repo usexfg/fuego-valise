@@ -14,19 +14,14 @@
 #   gasToken      native gas ticker ('' when none, e.g. Tempo)
 #   color         brand color "#RRGGBB"
 #   icon          asset path (missing files are tolerated by the UI)
-#   tier          swap  = wired into xfg-swapd orderbook
+#   tier          swap  = an executable fuego-suite SwapPairCatalog pair
+#                         (ACTIVE or ADAPTER); xfg-swapd takes it via evm_chains
 #                 wallet = ERC20 wallet layer only
 #   confirmBlocks advisory confirmation depth before a tx is trusted
 #
-# `chains:` is the 33 EvmChainKey rows. Optional swap_pair_id / activation /
-# enum_name / note join those rows to the suite pin. They are not emitted
-# into chain_registry.g.dart.
-#
-# `networks:` is the non-EVM presentation overlay (no EVM chain id).
-# Pair identity is the pinned fuego-suite SwapPair uint8. This file does
-# not invent ids. Regenerate the join with:
-#   dart run tool/gen_networks.dart
-#   dart run tool/gen_networks.dart --check
+# Phase 1 scope: the 33 EvmChainKey chains ONLY.
+# Non-EVM swap chains (btc/ltc/bch/kmd/dcr/sol/xmr) and ERC20 token
+# constants stay hand-written elsewhere and are NOT listed here.
 
 chains:
   - key: eth
@@ -39,9 +34,6 @@ chains:
     color: "#627EEA"
     icon: assets/coin-icons/eth.png
     tier: swap
-    swap_pair_id: 1
-    activation: ready
-    enum_name: eth
     confirmBlocks: 12
 
   - key: arb
@@ -54,9 +46,6 @@ chains:
     color: "#28A0F0"
     icon: assets/coin-icons/arb.png
     tier: swap
-    swap_pair_id: 4
-    activation: ready
-    enum_name: arb
     confirmBlocks: 20   # L2 — ~1s soft confirm; 20 covers L1 finalization window
 
   - key: base
@@ -69,9 +58,6 @@ chains:
     color: "#0052FF"
     icon: assets/coin-icons/base.png
     tier: swap
-    swap_pair_id: 5
-    activation: ready
-    enum_name: base
     confirmBlocks: 1
 
   - key: bsc
@@ -84,9 +70,6 @@ chains:
     color: "#F0B90B"
     icon: assets/coin-icons/bnb.png
     tier: swap
-    swap_pair_id: 7
-    activation: ready
-    enum_name: bnb
     confirmBlocks: 3
 
   - key: poly
@@ -99,9 +82,6 @@ chains:
     color: "#8247E5"
     icon: assets/coin-icons/matic.png
     tier: swap
-    swap_pair_id: 11
-    activation: ready
-    enum_name: poly
     confirmBlocks: 1
 
   - key: op
@@ -114,9 +94,6 @@ chains:
     color: "#FF0420"
     icon: assets/coin-icons/op.jpg
     tier: swap
-    swap_pair_id: 26
-    activation: ready
-    enum_name: optimism
     confirmBlocks: 1
 
   - key: avax
@@ -129,9 +106,6 @@ chains:
     color: "#E84142"
     icon: assets/coin-icons/avax.png
     tier: swap
-    swap_pair_id: 14
-    activation: ready
-    enum_name: avax
     confirmBlocks: 1
 
   - key: cro
@@ -144,9 +118,6 @@ chains:
     color: "#002D74"
     icon: assets/coin-icons/cronos.png
     tier: swap
-    swap_pair_id: 15
-    activation: ready
-    enum_name: cro
     confirmBlocks: 1
 
   - key: monad
@@ -159,9 +130,6 @@ chains:
     color: "#836EF9"
     icon: assets/coin-icons/monad.png
     tier: swap
-    swap_pair_id: 25
-    activation: ready
-    enum_name: monad
     confirmBlocks: 1
 
   - key: xpl
@@ -174,9 +142,6 @@ chains:
     color: "#4FA9E0"
     icon: assets/coin-icons/xpl.png
     tier: swap
-    swap_pair_id: 19
-    activation: ready
-    enum_name: plasma
     confirmBlocks: 1
 
   - key: pls
@@ -189,9 +154,6 @@ chains:
     color: "#9C27B0"
     icon: assets/coin-icons/pls.png
     tier: swap
-    swap_pair_id: 23
-    activation: ready
-    enum_name: pulsex
     confirmBlocks: 1
 
   - key: uni
@@ -204,15 +166,9 @@ chains:
     color: "#FF007A"
     icon: assets/coin-icons/uni.png
     tier: swap
-    swap_pair_id: 18
-    activation: ready
-    enum_name: unichain
     confirmBlocks: 1
 
   - key: rh
-    swap_pair_id: 13
-    activation: ready
-    enum_name: robinhood
     ticker: RHC
     name: Robinhood Chain
     family: evm
@@ -222,24 +178,6 @@ chains:
     color: "#6B7280"
     icon: assets/coin-icons/rhc.png
     tier: swap
-    swap_pair_id: 13
-    activation: ready
-    enum_name: robinhood
-    confirmBlocks: 1
-
-  - key: gleec
-    ticker: GLEEC
-    name: Gleec Chain
-    family: evm
-    chainId: 11169
-    rpc: https://evm-rpc.gleec.com
-    gasToken: GLEEC
-    color: "#00A3C4"
-    icon: assets/coin-icons/gleec.png
-    tier: swap
-    swap_pair_id: 12
-    activation: ready
-    enum_name: gleec
     confirmBlocks: 1
 
   - key: bob
@@ -252,9 +190,18 @@ chains:
     color: "#FF6D00"
     icon: assets/coin-icons/bob.png
     tier: swap
-    swap_pair_id: 16
-    activation: ready
-    enum_name: bob
+    confirmBlocks: 1
+
+  - key: gleec
+    ticker: GLEEC
+    name: Gleec Chain
+    family: evm
+    chainId: 11169
+    rpc: https://evm-rpc.gleec.com
+    gasToken: GLEEC
+    color: "#00A3C4"
+    icon: assets/coin-icons/gleec.png
+    tier: swap
     confirmBlocks: 1
 
   - key: linea
@@ -266,8 +213,7 @@ chains:
     gasToken: ETH
     color: "#61DFFF"
     icon: assets/coin-icons/linea.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: zksync
@@ -279,9 +225,7 @@ chains:
     gasToken: ETH
     color: "#8C8DFC"
     icon: assets/coin-icons/zksync.png
-    tier: wallet
-    activation: wallet_only
-    note: "zkEVM CREATE2 may not match the ETH HTLC address. Do not clone Optimism until that is proven."
+    tier: swap
     confirmBlocks: 1
 
   - key: hyperevm
@@ -293,8 +237,7 @@ chains:
     gasToken: HYPE
     color: "#97FCE4"
     icon: assets/coin-icons/hyperevm.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: ink
@@ -306,8 +249,7 @@ chains:
     gasToken: ETH
     color: "#7132F5"
     icon: assets/coin-icons/ink.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: rsk
@@ -319,9 +261,7 @@ chains:
     gasToken: RBTC
     color: "#E9B64E"
     icon: assets/coin-icons/rootstock.png
-    tier: wallet
-    activation: wallet_only
-    note: "RBTC and a different address format. Not an Optimism clone until that is proven."
+    tier: swap
     confirmBlocks: 15
 
   - key: gnosis
@@ -333,8 +273,7 @@ chains:
     gasToken: XDAI
     color: "#1D6C4E"
     icon: assets/coin-icons/gnosis.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: flare
@@ -346,8 +285,7 @@ chains:
     gasToken: FLR
     color: "#E6413E"
     icon: assets/coin-icons/flare.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: kaia
@@ -359,8 +297,7 @@ chains:
     gasToken: KAIA
     color: "#FF1D01"
     icon: assets/coin-icons/kaia.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: scroll
@@ -372,8 +309,7 @@ chains:
     gasToken: ETH
     color: "#EBC28E"
     icon: assets/coin-icons/scroll.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: abstract
@@ -385,9 +321,7 @@ chains:
     gasToken: ETH
     color: "#202020"
     icon: assets/coin-icons/abstract.png
-    tier: wallet
-    activation: wallet_only
-    note: "zkEVM CREATE2 may not match the ETH HTLC address. Do not clone Optimism until that is proven."
+    tier: swap
     confirmBlocks: 1
 
   - key: plume
@@ -399,8 +333,7 @@ chains:
     gasToken: PLUME
     color: "#FF3D00"
     icon: assets/coin-icons/plume.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: soneium
@@ -412,8 +345,7 @@ chains:
     gasToken: ETH
     color: "#937DFF"
     icon: assets/coin-icons/soneium.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: doma
@@ -425,8 +357,7 @@ chains:
     gasToken: ETH
     color: "#4F46E5"
     icon: assets/coin-icons/doma.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: beam
@@ -438,8 +369,7 @@ chains:
     gasToken: BEAM
     color: "#0BDBB5"
     icon: assets/coin-icons/beam.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: moonriver
@@ -451,8 +381,7 @@ chains:
     gasToken: MOVR
     color: "#F5B700"
     icon: assets/coin-icons/moonriver.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: peaq
@@ -464,8 +393,7 @@ chains:
     gasToken: PEAQ
     color: "#7A2BF5"
     icon: assets/coin-icons/peaq.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
 
   - key: tempo
@@ -477,9 +405,7 @@ chains:
     gasToken: ''
     color: "#111111"
     icon: assets/coin-icons/tempo.png
-    tier: wallet
-    activation: wallet_only
-    note: "No native gas token. Nothing to lock."
+    tier: wallet   # no native coin; HashedTimelock.lock() only escrows native value
     confirmBlocks: 1
 
   - key: sei
@@ -491,211 +417,5 @@ chains:
     gasToken: SEI
     color: "#9E1F19"
     icon: assets/coin-icons/sei.png
-    tier: wallet
-    activation: wallet_only
+    tier: swap
     confirmBlocks: 1
-
-# Non-EVM presentation. swap_pair_id is the suite pin SwapPair value.
-# activation is the wallet filter. ready = tradable in DeXFG / peer swap.
-# needs_wallet_wiring = client registers in suite, Valise has no settings path.
-# staged_in_suite = id reserved, registerChain refused.
-networks:
-  - key: sol
-    ticker: SOL
-    name: Solana
-    family: sol
-    rpc: https://api.mainnet-beta.solana.com
-    gasToken: SOL
-    color: "#9945FF"
-    icon: assets/coin-icons/sol.png
-    tier: swap
-    confirmBlocks: 32
-    swap_pair_id: 0
-    activation: ready
-    enum_name: sol
-
-  - key: xmr
-    ticker: XMR
-    name: Monero
-    family: cryptonote
-    rpc: ''
-    gasToken: XMR
-    color: "#FF6600"
-    icon: assets/coin-icons/monero.png
-    tier: swap
-    confirmBlocks: 10
-    swap_pair_id: 2
-    activation: ready
-    enum_name: xmr
-    note: "No SPV. Needs monerod plus monero-wallet-rpc."
-
-  - key: bch
-    ticker: BCH
-    name: Bitcoin Cash
-    family: utxo
-    rpc: ''
-    gasToken: BCH
-    color: "#8DC351"
-    icon: assets/coin-icons/bch.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 3
-    activation: ready
-    enum_name: bch
-
-  - key: kmd
-    ticker: KMD
-    name: Komodo
-    family: utxo
-    rpc: ''
-    gasToken: KMD
-    color: "#2B6DE9"
-    icon: assets/coin-icons/kmd.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 6
-    activation: ready
-    enum_name: kmd
-
-  - key: dcr
-    ticker: DCR
-    name: Decred
-    family: utxo
-    rpc: ''
-    gasToken: DCR
-    color: "#2970FF"
-    icon: assets/coin-icons/dcr.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 8
-    activation: ready
-    enum_name: dcr
-
-  - key: btc
-    ticker: BTC
-    name: Bitcoin
-    family: utxo
-    rpc: ''
-    gasToken: BTC
-    color: "#F7931A"
-    icon: assets/coin-icons/btc.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 9
-    activation: ready
-    enum_name: btc
-
-  - key: ltc
-    ticker: LTC
-    name: Litecoin
-    family: utxo
-    rpc: ''
-    gasToken: LTC
-    color: "#BFBBBB"
-    icon: assets/coin-icons/ltc.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 10
-    activation: ready
-    enum_name: ltc
-
-  - key: sia
-    ticker: SIA
-    name: Sia
-    family: other
-    rpc: ''
-    gasToken: SC
-    color: "#888888"
-    icon: assets/coin-icons/sia.png
-    tier: wallet
-    confirmBlocks: 6
-    swap_pair_id: 17
-    activation: staged_in_suite
-    note: "Left out. Atomic divisor 1e24 does not fit the uint64 amount model."
-
-  - key: doge
-    ticker: DOGE
-    name: Dogecoin
-    family: utxo
-    rpc: ''
-    gasToken: DOGE
-    color: "#C2A633"
-    icon: assets/coin-icons/doge.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 20
-    activation: ready
-    enum_name: doge
-    note: "Full node only: dogecoind -txindex. No SPV. Claim/refund need RPC."
-
-  - key: dash
-    ticker: DASH
-    name: Dash
-    family: utxo
-    rpc: ''
-    gasToken: DASH
-    color: "#008CE7"
-    icon: assets/coin-icons/dash.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 21
-    activation: ready
-    enum_name: dash
-    note: "Full node only: dashd -txindex. No SPV. Claim/refund need RPC."
-
-  - key: zec
-    ticker: ZEC
-    name: Zcash
-    family: utxo
-    rpc: ''
-    gasToken: ZEC
-    color: "#F4B728"
-    icon: assets/coin-icons/zec.png
-    tier: swap
-    confirmBlocks: 6
-    swap_pair_id: 22
-    activation: ready
-    enum_name: zec
-    note: "Transparent t-address only. zcashd -txindex. No SPV and no shielded funds."
-
-  - key: zano
-    ticker: ZANO
-    name: Zano
-    family: cryptonote
-    rpc: ''
-    gasToken: ZANO
-    color: "#6A5AF9"
-    icon: assets/coin-icons/zano.png
-    tier: wallet
-    confirmBlocks: 10
-    swap_pair_id: 24
-    activation: staged_in_suite
-    note: "Sources exist. SwapDaemon refuses registerChain. Not an XMR drop-in."
-
-  - key: ton
-    ticker: TON
-    name: TON
-    family: other
-    rpc: ''
-    gasToken: TON
-    color: "#888888"
-    icon: assets/coin-icons/ton.png
-    tier: wallet
-    confirmBlocks: 1
-    swap_pair_id: 27
-    activation: staged_in_suite
-    note: "Left out. TonRpcClient apiKey / htlcAddress signature mismatch."
-
-  - key: dot
-    ticker: DOT
-    name: Polkadot
-    family: other
-    rpc: ''
-    gasToken: DOT
-    color: "#888888"
-    icon: assets/coin-icons/dot.png
-    tier: wallet
-    confirmBlocks: 1
-    swap_pair_id: 28
-    activation: staged_in_suite
-    note: "Substrate stub. Not UTXO, EVM, or CryptoNote. No template to clone."
