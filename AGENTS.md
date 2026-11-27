@@ -123,6 +123,7 @@ Located at: `rust-fuego-wallet/fuego-sdk/fuego-sdk/src/`
 - macOS app bundle: `fuego-valise.app`
 - Rust backend binary: `fuego_walletd`
 - Default remote daemon: `207.244.247.64:18180`
+- macOS runners (macos-latest) have limited concurrent capacity. Multiple simultaneous iOS jobs across PRs and master pushes cause long queues; GitHub cancels jobs that remain queued too long (often ~15-30 min with no runner assigned, no logs). The iOS job uses a shared concurrency group `fuego-wallet-ios-build` with cancel-in-progress: false so only one runs at a time. Re-run failed/cancelled iOS jobs when capacity is free; Android and Analyze jobs succeed independently.
 
 ## fuego-suite submodule
 
