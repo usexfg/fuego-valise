@@ -194,9 +194,13 @@ Future<void> main() async {
     // Default (IBMPlexSans) applies on failure.
   }
 
+  // Device Preview forces a phone frame in every debug run. On desktop that
+  // frame is shorter than the window and paints the yellow-black overflow
+  // band under the keypad. Keep it for mobile debug only.
+  final desktop = Platform.isLinux || Platform.isMacOS || Platform.isWindows;
   runApp(
     DevicePreview(
-      enabled: !kReleaseMode,
+      enabled: !kReleaseMode && !desktop,
       builder: (context) => FuegoApp(
         backendReady: _backendReady.future,
         vaultService: _vaultService,
@@ -275,12 +279,8 @@ class _FuegoAppState extends State<FuegoApp> with WidgetsBindingObserver {
   /// After a background lock, nothing wallet-related may show until the PIN is
   /// entered again. With no PIN set there is nothing to re-check.
   Future<void> _requireUnlock() async {
-    bool hasPin;
-    try {
-      hasPin = await widget.securityService.hasPIN();
-    } catch (_) {
-      hasPin = true; // fail closed, as the splash screen does
-    }
+    // hasPIN() reports an unreadable store as "no PIN" and does not throw.
+    final hasPin = await widget.securityService.hasPIN();
     if (!hasPin || !mounted) return;
     _navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute<void>(builder: (_) => const PinEntryScreen()),

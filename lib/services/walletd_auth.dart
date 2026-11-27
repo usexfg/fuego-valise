@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
@@ -36,6 +38,13 @@ class WalletdAuth {
       _token = await SecurityService().getOrCreateWalletdAuthToken();
     } catch (_) {
       _token = null;
+    }
+    if (_token == null || _token!.isEmpty) {
+      // The keyring is locked, so there is no saved token and none was ever
+      // a user password. Mint a session token so walletd can start; the
+      // spawn path writes it to a 0600 file and the HTTP client sends it.
+      final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+      _token = base64UrlEncode(bytes);
     }
   }
 

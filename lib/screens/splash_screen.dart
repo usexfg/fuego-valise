@@ -7,8 +7,10 @@ import '../providers/wallet_provider.dart';
 import '../services/security_service.dart';
 import '../utils/theme.dart';
 
+import '../widgets/fuego_logo.dart';
 import 'auth/pin_entry_screen.dart';
 import 'main/main_screen.dart';
+import 'startup_route.dart';
 import '../../utils/xfg_ticker.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -81,6 +83,8 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _initializeApp() async {
+    var hasPIN = false;
+    var isLocked = false;
     try {
       // Splash visible for at least 3 seconds
       await Future.delayed(const Duration(seconds: 3));
@@ -105,24 +109,21 @@ class _SplashScreenState extends State<SplashScreen>
 
       // Do NOT clear lockout unconditionally — that bypasses brute-force protection.
       // isLockedOut() already clears only if expired; stale lockout must persist until expiry.
-      bool hasWallet = false;
-      bool hasPIN = false;
-      bool isLocked = false;
-      bool checkFailed = false;
-      try {
-        hasWallet = await walletProvider.hasWalletData();
+      final storageReadable = await securityService.secureStorageReadable();
+      var hasWallet = false;
+      var walletKnown = false;
+      if (storageReadable) {
+        try {
+          hasWallet = await walletProvider.hasWalletData();
+          walletKnown = true;
+        } catch (e) {
+          debugPrint('Wallet check failed — requiring the PIN');
+        }
         hasPIN = await securityService.hasPIN();
         isLocked = await securityService.isLockedOut();
-      } catch (e) {
-        // Fail closed: a thrown check (e.g. transient Android Keystore /
-        // iOS Keychain error right after reboot, before first unlock) must
-        // never be read as "no PIN exists" — that would route straight to
-        // MainScreen and expose live balance/address/history with zero
-        // authentication. A genuinely new user with no wallet still has an
-        // escape hatch via "Forgot PIN" → Reset Wallet on PinEntryScreen.
-        checkFailed = true;
+      } else {
         debugPrint(
-          'Secure storage check failed — failing closed to PinEntryScreen',
+          'Secure storage is unreadable — opening the wallet with no PIN prompt',
         );
       }
 
@@ -131,37 +132,41 @@ class _SplashScreenState extends State<SplashScreen>
 
       setState(() => _isInitializing = false);
 
-      // Enforce PIN gate: if wallet exists and PIN set, require unlock before main.
-      if (isLocked) {
-        final remain = await securityService.lockoutRemaining();
-        setState(() {
-          _initMessage = remain != null
-              ? 'Too many attempts — try again in ${remain.inMinutes}m ${remain.inSeconds % 60}s'
-              : 'Wallet locked — try again later';
-        });
-        await Future.delayed(const Duration(milliseconds: 1500));
-        if (!mounted) return;
-        _navigateToScreen(const PinEntryScreen());
-        return;
-      }
-      if (checkFailed || (hasWallet && hasPIN)) {
+      final destination = startupDestination(
+        storageReadable: storageReadable,
+        walletKnown: walletKnown,
+        hasWallet: hasWallet,
+        hasPin: hasPIN,
+        lockedOut: isLocked,
+      );
+      if (destination == StartupDestination.pin) {
+        if (isLocked) {
+          Duration? remain;
+          try {
+            remain = await securityService.lockoutRemaining();
+          } catch (_) {
+            remain = null;
+          }
+          setState(() {
+            _initMessage = remain != null
+                ? 'Too many attempts — try again in ${remain.inMinutes}m ${remain.inSeconds % 60}s'
+                : 'Wallet locked — try again later';
+          });
+          await Future.delayed(const Duration(milliseconds: 1500));
+          if (!mounted) return;
+        }
         _navigateToScreen(const PinEntryScreen());
         return;
       }
       _navigateToScreen(const MainScreen());
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _initMessage =
-            'Unable to initialize securely. Please unlock or set up.';
-      });
-
-      await Future.delayed(const Duration(milliseconds: 1500));
-      if (mounted) {
-        // Fail closed here too — see rationale above.
+      // A failure after a PIN or lockout was confirmed must not skip the gate.
+      if (isLocked || hasPIN) {
         _navigateToScreen(const PinEntryScreen());
+        return;
       }
+      _navigateToScreen(const MainScreen());
     }
   }
 
@@ -426,11 +431,9 @@ class AnimatedFuegoLogo extends StatefulWidget {
 }
 
 class _AnimatedFuegoLogoState extends State<AnimatedFuegoLogo>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  late AnimationController _rotateController;
   late Animation<double> _pulseAnimation;
-  late Animation<double> _rotateAnimation;
 
   @override
   void initState() {
@@ -441,61 +444,27 @@ class _AnimatedFuegoLogoState extends State<AnimatedFuegoLogo>
       vsync: this,
     );
 
-    _rotateController = AnimationController(
-      duration: const Duration(milliseconds: 10000),
-      vsync: this,
-    );
-
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _rotateAnimation = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(_rotateController);
-
     _pulseController.repeat(reverse: true);
-    _rotateController.repeat();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _rotateController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([_pulseAnimation, _rotateAnimation]),
+      animation: _pulseAnimation,
       builder: (context, child) {
         return Transform.scale(
           scale: _pulseAnimation.value,
-          child: Transform.rotate(
-            angle: _rotateAnimation.value * 2 * 3.14159,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppTheme.primaryGradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.4),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.local_fire_department,
-                size: 60,
-                color: Colors.white,
-              ),
-            ),
-          ),
+          child: const FuegoLogo(size: 120),
         );
       },
     );
