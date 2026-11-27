@@ -168,15 +168,33 @@ class SecurityService {
     return int.tryParse(v ?? '0') ?? 0;
   }
 
-  Future<bool> isLockedOut() async {
-    final until = await _read(_lockUntilKey);
-    if (until == null) return false;
-    final ms = int.tryParse(until) ?? 0;
-    if (DateTime.now().millisecondsSinceEpoch >= ms) {
-      await _delete(_lockUntilKey);
+  /// Whether the keyring opened. False means no PIN record can be read or
+  /// written, so a PIN prompt cannot be checked.
+  Future<bool> secureStorageReadable() async {
+    try {
+      await _storage();
+      return !_initFailed;
+    } catch (_) {
       return false;
     }
-    return true;
+  }
+
+  Future<bool> isLockedOut() async {
+    try {
+      final until = await _read(_lockUntilKey);
+      if (until == null) return false;
+      final ms = int.tryParse(until) ?? 0;
+      if (DateTime.now().millisecondsSinceEpoch >= ms) {
+        await _delete(_lockUntilKey);
+        return false;
+      }
+      return true;
+    } catch (_) {
+      // The keyring never opened: there is no lockout record to enforce.
+      // A later read failure, after the store did open, is not "no lockout".
+      if (_initFailed) return false;
+      return true;
+    }
   }
 
   Future<Duration?> lockoutRemaining() async {
@@ -250,8 +268,12 @@ class SecurityService {
   }
 
   Future<bool> isBiometricEnabled() async {
-    final enabled = await _read(_biometricKey);
-    return enabled == 'true';
+    try {
+      final enabled = await _read(_biometricKey);
+      return enabled == 'true';
+    } catch (_) {
+      return false;
+    }
   }
 
   /// After PIN unlock, store vault unwrap material for biometric re-entry.

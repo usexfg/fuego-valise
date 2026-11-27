@@ -116,6 +116,7 @@ class _PinInputWidgetState extends State<PinInputWidget>
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         // PIN dots display
         AnimatedBuilder(

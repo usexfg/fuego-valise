@@ -130,6 +130,20 @@ value. Contract deployment is out of scope.
 | 151 | `AGENTS.md` swap section rewritten against suite `a2df2f3` | Claude Code | 2026-11-06 | Done |
 | 152 | PEAQ price feed id | — | — | TODO; `coingecko:peaq-2` untested, network to DeFiLlama/CoinGecko blocked in this session. Until then xfg-swapd refuses new PEAQ swaps |
 
+## [2026-11-22] First launch no longer asks for a PIN that was never set
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 122 | A locked or missing keyring made `isLockedOut()` throw, and splash treated that as “a PIN exists,” so a first launch opened Welcome Back. Route to the wallet unless a PIN or lockout is actually stored. When the keyring cannot store the walletd bearer token, mint a session token instead of refusing to start. Scale the PIN pad so a short window does not paint the yellow-black overflow band. Replace the Material fire icon with `assets/logo/fuegologo.png`; the HEAT screen keeps its fire mark. Desktop debug no longer wraps the app in Device Preview. | grok | 2026-11-22 | ✅ done |
+| 123 | A readable store whose wallet check fails, or whose lockout record cannot be read, still requires the PIN. A keyring that never opens does not, because that prompt cannot be checked. A lockout-message failure no longer skips the gate. | grok | 2026-11-22 | ✅ done |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| Source change | Splash routing, PIN layout, logo, desktop Device Preview |
+| Expected | First launch opens the wallet. PIN pad fits. Fire icon remains only on the HEAT screen |
+
 ## [2026-11-10] Mobile CI iOS simulator FFI missing
 
 | # | Task | Owner | Date | Status |
