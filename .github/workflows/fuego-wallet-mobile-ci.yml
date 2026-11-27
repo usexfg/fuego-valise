@@ -120,6 +120,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 90
     needs: analyze
+    concurrency:
+      group: fuego-wallet-ios-build
+      cancel-in-progress: false
 
     steps:
       - name: Select Xcode
