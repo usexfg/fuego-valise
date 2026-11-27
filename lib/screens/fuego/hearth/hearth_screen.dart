@@ -47,7 +47,15 @@ class _HearthScreenState extends State<HearthScreen>
 
   Future<void> _loadPriceData() async {
     final candles = await PriceHistoryService().loadAll();
-    if (mounted) setState(() => _candles = candles);
+    if (mounted) {
+      // Pair history missing: the chart starts at the launch rate instead of
+      // showing nothing.
+      setState(
+        () => _candles = candles.isNotEmpty
+            ? candles
+            : PriceHistoryService().launchSeries(),
+      );
+    }
   }
 
   String _amountUsd = '';

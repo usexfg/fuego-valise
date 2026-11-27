@@ -1,5 +1,20 @@
 # CHANGELOG.agent.md
 
+## [2026-11-27] CDs open at v12: CD actions replaced by a cover screen
+
+| # | Task | Owner | Date | Status |
+|---|------|-------|------|--------|
+| 124 | Merge origin/master into feat/network-catalog (master wins for the suite pin and PR #15 auth, PIN, splash, walletd token) | agent | 2026-11-27 | DONE |
+| 125 | CD page keeps the POOL summary card; create, withdraw, rollover, ladder and marketplace flows replaced by the `CdV12Cover` wiki screen (terms 6/18/36/72, creation fee, yield sources, Bonus Vault) | agent | 2026-11-27 | DONE |
+| 126 | Widget tests for the cover and for the overview having no CD actions | agent | 2026-11-27 | IN PROGRESS |
+
+### Sign-off
+
+| Check | Result |
+|-------|--------|
+| Build compiles | Pending CI |
+| Tests pass | Pending CI |
+| All tasks done | No |
 ## [2026-11-11] DeXFG cross-curve delivery (Valise): suite pin, catalog, keystore (X9, R7)
 
 **Started**: 2026-11-10

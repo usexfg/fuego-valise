@@ -26,11 +26,14 @@ class BitcoinReserveProof {
     required String offerId,
     required int p2pkhVersion,
     int? p2pkhVersion2,
+    String? messageMagic,
   }) {
     final key = _decodeWif(wif);
-    final pubCompressed = _privToPubCompressed(key.$1);
-    final address = _p2pkhAddress(pubCompressed, p2pkhVersion, p2pkhVersion2);
-    final sig = _signMessage(key.$1, key.$2, offerId);
+    final pub = key.$2
+        ? _privToPubCompressed(key.$1)
+        : _privToPubUncompressed(key.$1);
+    final address = _p2pkhAddress(pub, p2pkhVersion, p2pkhVersion2);
+    final sig = _signMessage(key.$1, key.$2, offerId, messageMagic);
     return '$address:${base64Encode(sig)}:$offerId';
   }
 
@@ -59,6 +62,15 @@ class BitcoinReserveProof {
     return q.getEncoded(true);
   }
 
+  static Uint8List _privToPubUncompressed(Uint8List priv) {
+    final d = _bigIntFromBytes(priv);
+    if (d <= BigInt.zero || d >= _domain.n)
+      throw ArgumentError('Invalid private key');
+    final q = _domain.G * d;
+    if (q == null) throw StateError('point at infinity');
+    return q.getEncoded(false);
+  }
+
   static String _p2pkhAddress(
     Uint8List pubCompressed,
     int version,
@@ -76,9 +88,12 @@ class BitcoinReserveProof {
   static Uint8List _signMessage(
     Uint8List priv,
     bool compressed,
-    String message,
-  ) {
-    final magic = utf8.encode('\x18Bitcoin Signed Message:\n');
+    String message, [
+    String? messageMagic,
+  ]) {
+    final magic = utf8.encode(
+      messageMagic ?? '\x18Bitcoin Signed Message:\n',
+    );
     final msgBytes = utf8.encode(message);
     final varint = _encodeVarInt(msgBytes.length);
     final preimage = <int>[...magic, ...varint, ...msgBytes];
