@@ -2,6 +2,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 pub struct DaemonProcess {
     child: Option<Child>,

@@ -5,7 +5,7 @@ description: >-
 
 inputs:
   app:
-    description: macOS .app bundle path, or Linux bundle directory
+    description: macOS .app bundle path, or Linux/Windows bundle directory
     required: true
 
 runs:
@@ -24,6 +24,11 @@ runs:
           done
           test -f "$APP/Contents/Frameworks/libfuego_ffi.dylib"
           ./scripts/bundle-macos-dylibs.sh "$APP"
+        elif [ "$RUNNER_OS" = "Windows" ]; then
+          for b in fuego_walletd fuegod xfg-swapd unified; do
+            cp "backends/$b.exe" "$APP/$b.exe"
+          done
+          cp backends/libfuego_ffi.dll "$APP/libfuego_ffi.dll"
         else
           for b in fuego_walletd fuegod xfg-swapd unified; do
             install -m 755 "backends/$b" "$APP/$b"
