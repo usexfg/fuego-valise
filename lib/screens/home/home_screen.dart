@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show FontFeature;
 
@@ -7,8 +8,17 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/core.dart';
 import '../../bloc/wallet/wallet_cubit.dart';
 import '../../bloc/mining/mining_cubit.dart';
+import '../../bloc/portfolio/portfolio_cubit.dart';
+import '../../models/portfolio.dart';
+import '../../services/evm_account_service.dart';
 import '../../utils/theme.dart';
-import '../../widgets/fuego_logo.dart';
+import '../../models/candlestick.dart';
+import '../../services/price_history_service.dart';
+import '../../widgets/maison_guilloche.dart';
+import '../../widgets/portfolio/heat_plate.dart';
+import '../../widgets/trading/home_mode_bar.dart';
+import '../../widgets/trading/portfolio_sheet.dart';
+import '../settings/evm_wallets_screen.dart';
 import '../transactions/transaction_details_screen.dart';
 import '../transactions/send_screen.dart';
 import '../transactions/mint_heat_screen.dart';
@@ -16,11 +26,11 @@ import '../transactions/receive_screen.dart';
 import '../../utils/xfg_ticker.dart';
 
 // Shared prestige palette — Obsidian case + Champagne dial (Obsidian Reserve house)
-const Color _obsidian = Color(0xFF000000);
+const Color _obsidian = Color(0xFF0D0B08);
 const Color _champagne = Color(
   0xFFC5A059,
 ); // Champagne gold — muted, not peachy
-const Color _platinum = Color(0xFFF5F5F5); // Cream parchment
+const Color _platinum = Color(0xFFF5F1E8); // Cream parchment
 const List<Color> _fireStops = [
   Color(0xFF8C734B), // Muted gold
   Color(0xFFC5A059), // Champagne
@@ -37,62 +47,252 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  /// One mask for the whole portfolio: hiding the dial must hide the ΗΞΔŦ
+  /// reserve and every chain balance with it.
+  bool _showBalance = true;
+
+  PortfolioCubit? _portfolio;
+  final ValueNotifier<List<Candlestick>?> _historyNotifier = ValueNotifier(
+    null,
+  );
+
+  /// True once the post-frame price retry actually ran.
+  bool _priceSettled = false;
+
   @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<WalletCubit, WalletState>(
-      builder: (context, state) {
-        return SafeArea(
-          top: true,
-          bottom: false,
-          child: RefreshIndicator(
-            onRefresh: () => context.read<WalletCubit>().refreshWallet(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-              children: [
-                const SizedBox(height: 8),
-                _balanceCard(state),
-                const SizedBox(height: 14),
-                if (state.address != null) _addressPlate(state),
-                if (state.address != null) const SizedBox(height: 14),
-                _complicationsRow(state),
-                _miningControls(state),
-                const SizedBox(height: 16),
-                const Text(
-                  'Recent Transactions',
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (state.transactions.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No transactions yet',
-                      style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                else
-                  ...state.transactions.take(10).map((tx) => _txCard(tx)),
-                if (state.error != null)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      state.error!,
-                      style: const TextStyle(
-                        color: AppTheme.errorColor,
-                        fontSize: 12,
+  void initState() {
+    super.initState();
+    _portfolio = PortfolioCubit(
+      daemon: context.read<FuegoDaemonClient>(),
+      accounts: context.read<EvmAccountService>(),
+    );
+    // Price is one cheap call. Chain balances wait until the sheet opens.
+    unawaited(_portfolio!.loadPrice());
+    unawaited(_loadHistory());
+  }
+
+  Future<void> _loadHistory() async {
+    final candles = await PriceHistoryService().loadAll();
+    if (mounted) _historyNotifier.value = candles;
+  }
+
+  @override
+  void dispose() {
+    _portfolio?.close();
+    super.dispose();
+  }
+
+  void _toggleMask() {
+    final revealing = !_showBalance;
+    setState(() => _showBalance = revealing);
+    if (revealing) {
+      // Minute-repeater double tick on reveal.
+      HapticFeedback.selectionClick();
+      Future<void>.delayed(const Duration(milliseconds: 90), () {
+        if (mounted) HapticFeedback.selectionClick();
+      });
+    }
+  }
+
+  Future<void> _refresh() async {
+    await context.read<WalletCubit>().refreshWallet();
+    await _portfolio?.loadPrice(force: true);
+    // Only re-sweep chains the user has actually opened.
+    if (_portfolio?.state.chainsLoaded ?? false) {
+      await _portfolio?.loadChains(force: true);
+    }
+  }
+
+  void _openPortfolio() {
+    unawaited(_portfolio?.loadChains());
+    final cubit = _portfolio!;
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close portfolio',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (dialogContext, _, __) {
+        final nav = Navigator.of(dialogContext);
+        void closeThen(Widget page) {
+          nav.pop();
+          nav.push(MaterialPageRoute<void>(builder: (_) => page));
+        }
+
+        return BlocProvider<PortfolioCubit>.value(
+          value: cubit,
+          child: BlocBuilder<WalletCubit, WalletState>(
+            builder: (context, liveWallet) {
+              return BlocBuilder<PortfolioCubit, PortfolioState>(
+                builder: (context, livePortfolio) {
+                  final valuation = PortfolioValuation.of(
+                    xfgAmount: liveWallet.balanceXfg,
+                    heatAmount: liveWallet.totalHeatXfg,
+                    price: livePortfolio.price,
+                    heatKnown: liveWallet.heatBalanceAvailable,
+                  );
+                  final width = MediaQuery.sizeOf(dialogContext).width;
+                  final sheetWidth = width < 380
+                      ? width
+                      : math.min(440.0, width - 28);
+                  return Align(
+                    alignment: Alignment.centerRight,
+                    child: ValueListenableBuilder<List<Candlestick>?>(
+                      valueListenable: _historyNotifier,
+                      builder: (dialogContext, history, _) => SizedBox(
+                        width: sheetWidth,
+                        height: double.infinity,
+                        child: PortfolioSheet(
+                          portfolio: livePortfolio,
+                          valuation: valuation,
+                          xfgAmount: liveWallet.balanceXfg,
+                          heatTotal: liveWallet.totalHeatXfg,
+                          heatUnlocked: liveWallet.unlockedHeatXfg,
+                          heatLocked: liveWallet.lockedHeatXfg,
+                          heatKnown: liveWallet.heatBalanceAvailable,
+                          masked: !_showBalance,
+                          candles: history ?? const [],
+                          historyLoading: history == null,
+                          onClose: () => nav.pop(),
+                          onToggleMask: _toggleMask,
+                          onRefresh: () {
+                            // Refresh the wallet too, so XFG/HEAT change
+                            // while the sheet is open.
+                            unawaited(
+                              context.read<WalletCubit>().refreshWallet().then(
+                                (_) => cubit.loadPrice(force: true),
+                              ),
+                            );
+                            unawaited(cubit.loadChains(force: true));
+                          },
+                          onManage: () => closeThen(const EvmWalletsScreen()),
+                          onSend: () => closeThen(const SendScreen()),
+                          onReceive: () => closeThen(const ReceiveScreen()),
+                          onMint: () => closeThen(const MintHeatScreen()),
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                  );
+                },
+              );
+            },
           ),
         );
       },
+      transitionBuilder: (context, animation, _, child) {
+        final offset =
+            Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            );
+        return SlideTransition(position: offset, child: child);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocProvider<PortfolioCubit>.value(
+      value: _portfolio!,
+      child: BlocBuilder<WalletCubit, WalletState>(
+        builder: (context, state) {
+          return BlocBuilder<PortfolioCubit, PortfolioState>(
+            builder: (context, portfolio) {
+              // The daemon may still be booting when the app opens. Retry the
+              // live price once the wallet reports a real connection, so a
+              // slow local backend never leaves the portfolio stuck unpriced.
+              if (state.isConnected && !_priceSettled) {
+                if (portfolio.price == null) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted || (_portfolio?.isClosed ?? true)) return;
+                    // Mark settled once the retry actually runs: a retry that
+                    // lands while the initial request is still loading is
+                    // discarded, and a later transition can retry again.
+                    _priceSettled = true;
+                    unawaited(_portfolio!.loadPrice(force: true));
+                  });
+                }
+              } else if (!state.isConnected) {
+                _priceSettled = false;
+              }
+
+              return SafeArea(
+                top: true,
+                bottom: false,
+                child: RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                    children: [
+                      const SizedBox(height: 4),
+                      HomeModeBar(onPortfolio: _openPortfolio),
+                      // Fuego only: the dial, then the reserve. Chains live in
+                      // the portfolio sheet, not on this page.
+                      _balanceCard(state),
+                      const SizedBox(height: 10),
+                      // 2 — ΗΞΔŦ, the reserve stratum.
+                      HeatPlate(
+                        total: state.totalHeatXfg,
+                        unlocked: state.unlockedHeatXfg,
+                        locked: state.lockedHeatXfg,
+                        masked: !_showBalance,
+                        available: state.heatBalanceAvailable,
+                        pegUsd: portfolio.price?.heatPegUsd,
+                        onMint: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const MintHeatScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      if (state.address != null) _addressPlate(state),
+                      if (state.address != null) const SizedBox(height: 14),
+                      _complicationsRow(state),
+                      _miningControls(state),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Recent Transactions',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (state.transactions.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No transactions yet',
+                            style: TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 13,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      else
+                        ...state.transactions.take(10).map((tx) => _txCard(tx)),
+                      if (state.error != null)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            state.error!,
+                            style: const TextStyle(
+                              color: AppTheme.errorColor,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -166,7 +366,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _balanceCard(WalletState state) => _BalanceCard(state: state);
+  Widget _balanceCard(WalletState state) => _BalanceCard(
+    state: state,
+    showBalance: _showBalance,
+    onToggleMask: _toggleMask,
+  );
 
   Widget _addressPlate(WalletState state) {
     final addr = state.address ?? '';
@@ -500,52 +704,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Engine-turned guilloché texture: fine concentric ring sets from two
-/// off-canvas centres, evoking a hand-lacquered watch dial at ~3% ink.
-class _GuillochePainter extends CustomPainter {
-  const _GuillochePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final white = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.6
-      ..color = Colors.white.withOpacity(0.035);
-    final fireRect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final gold = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.7
-      ..shader = const LinearGradient(
-        colors: [
-          Color(0xFF8C734B),
-          Color(0xFFC5A059),
-          Color(0xFFD4B896),
-          Color(0xFF8C734B),
-        ],
-      ).createShader(fireRect)
-      ..color = const Color(0xFFC5A059).withOpacity(0.06);
-
-    void rings(Offset center, int count, double step, Paint paint) {
-      for (var i = 1; i <= count; i++) {
-        canvas.drawCircle(center, i * step, paint);
-      }
-    }
-
-    rings(Offset(size.width * 0.88, -size.height * 0.30), 26, 15, white);
-    rings(const Offset(-30, 0), 14, 17, white);
-    rings(Offset(size.width * 0.88, -size.height * 0.30), 9, 42, gold);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 /// Swiss-watch balance card: rolling odometer figures, specular sweep on
 /// settle, chain complications subdials and a knurled crown pusher.
+///
+/// Balance masking is owned by the home screen so the portfolio header, the
+/// ΗΞΔŦ stratum and the chain drawer all hide with the dial.
 class _BalanceCard extends StatefulWidget {
-  const _BalanceCard({required this.state});
+  const _BalanceCard({
+    required this.state,
+    required this.showBalance,
+    required this.onToggleMask,
+  });
 
   final WalletState state;
+  final bool showBalance;
+  final VoidCallback onToggleMask;
 
   @override
   State<_BalanceCard> createState() => _BalanceCardState();
@@ -554,21 +727,13 @@ class _BalanceCard extends StatefulWidget {
 class _BalanceCardState extends State<_BalanceCard> {
   static const _mask = '••••••••';
 
-  bool _showBalance = true;
   int _sweep = 0;
 
   /// Thin-space thousands grouping for prestige figures.
-  String _grouped(String fixed) {
-    final parts = fixed.split('.');
-    final intPart = parts[0].replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]}\u2009',
-    );
-    return parts.length > 1 ? '$intPart.${parts[1]}' : intPart;
-  }
+  String _grouped(String fixed) => groupThousands(fixed);
 
   String _figure(double v) =>
-      _showBalance ? _grouped(v.toStringAsFixed(decimalPlaces)) : _mask;
+      widget.showBalance ? _grouped(v.toStringAsFixed(decimalPlaces)) : _mask;
 
   @override
   Widget build(BuildContext context) {
@@ -591,7 +756,7 @@ class _BalanceCardState extends State<_BalanceCard> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: CustomPaint(painter: const _GuillochePainter()),
+              child: CustomPaint(painter: const MaisonGuillochePainter()),
             ),
             // Inner fire-gradient bezel (thin flame leaf)
             Padding(
@@ -635,20 +800,9 @@ class _BalanceCardState extends State<_BalanceCard> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () async {
-                          final revealing = !_showBalance;
-                          setState(() => _showBalance = revealing);
-                          if (revealing) {
-                            // Minute-repeater double tick on reveal.
-                            HapticFeedback.selectionClick();
-                            await Future.delayed(
-                              const Duration(milliseconds: 90),
-                            );
-                            if (mounted) HapticFeedback.selectionClick();
-                          }
-                        },
+                        onTap: widget.onToggleMask,
                         child: Icon(
-                          _showBalance
+                          widget.showBalance
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
                           color: _champagne.withOpacity(0.55),
@@ -719,22 +873,7 @@ class _BalanceCardState extends State<_BalanceCard> {
                     _figure(state.unlockedBalanceXfg),
                     isXfgAmount: true,
                   ),
-                  if (state.totalHeatXfg > 0) ...[
-                    const SizedBox(height: 8),
-                    _statementRow(
-                      'ΗΞΔŦ UNLOCKED',
-                      _figure(state.unlockedHeatXfg),
-                      valueColor: AppTheme.accentColor,
-                    ),
-                  ],
                   const SizedBox(height: 16),
-                  Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: _fireLine.withOpacity(0.35),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                   Container(
                     height: 1,
                     decoration: BoxDecoration(
@@ -1083,7 +1222,7 @@ class _OdometerTextState extends State<_OdometerText>
 
 /// Circular crown pusher: obsidian disc, champagne hairline ring over a
 /// knurled rim of radial ridges, 'SEND' micro-caps beneath.
-class _CrownPusher extends StatelessWidget {
+class _CrownPusher extends StatefulWidget {
   const _CrownPusher({
     required this.onTap,
     this.icon = Icons.arrow_upward,
@@ -1099,40 +1238,64 @@ class _CrownPusher extends StatelessWidget {
   final Color? accent;
 
   @override
+  State<_CrownPusher> createState() => _CrownPusherState();
+}
+
+class _CrownPusherState extends State<_CrownPusher> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  /// Hover brightens the house gold / accent via a soft white wash — the
+  /// desktop hover feedback for the wallet action button.
+  Color get _accent {
+    final base = widget.accent ?? _champagne;
+    if (!_hovered) return base;
+    return Color.alphaBlend(Colors.white.withOpacity(0.16), base);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final a = accent ?? _champagne;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 58,
-            height: 58,
-            child: CustomPaint(
-              painter: _KnurlPainter(accent: a),
-              child: Center(
-                child: emblem == null
-                    ? Icon(icon, color: a, size: 20)
-                    : ClipOval(child: emblem),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedScale(
+          scale: _pressed ? 0.97 : 1.0,
+          duration: const Duration(milliseconds: 160),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 58,
+                height: 58,
+                child: CustomPaint(
+                  painter: _KnurlPainter(accent: _accent),
+                  child: Center(
+                    child: Icon(widget.icon, color: _accent, size: 20),
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: a.withOpacity(0.65),
-                fontSize: 8,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 2,
+              const SizedBox(height: 6),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: _accent.withOpacity(0.65),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1183,7 +1346,8 @@ class _KnurlPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _KnurlPainter oldDelegate) =>
+      oldDelegate.accent != accent;
 }
 
 /// Thin fire-gradient ring for complication subdials.

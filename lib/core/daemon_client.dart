@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/portfolio.dart';
 import 'constants.dart';
 import 'network_info.dart';
 import '../services/walletd_auth.dart';
@@ -375,6 +376,15 @@ class FuegoDaemonClient {
   /// yield) from the daemon's `/heat_metrics` endpoint.
   Future<Map<String, dynamic>> getHeatMetricsRaw() async {
     return await _get('/heat_metrics');
+  }
+
+  /// Combined XFG/ΗΞΔŦ price snapshot from the daemon's `/get_fuego_price`
+  /// endpoint — Hearth spot ratio, stablecoin peg and the derived XFG spot.
+  ///
+  /// Used by the portfolio to value XFG + ΗΞΔŦ. Throws when the daemon predates
+  /// the endpoint so callers can show "unpriced" rather than a stale figure.
+  Future<FuegoPrice> getFuegoPrice() async {
+    return FuegoPrice.fromJson(await _get('/get_fuego_price'));
   }
 
   /// Scan blockchain for outputs belonging to our keys.

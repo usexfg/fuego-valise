@@ -21,6 +21,10 @@ class WalletState extends Equatable {
   final int unlockedBalance;
   final int unlockedHeatBalance;
   final int lockedHeatBalance;
+
+  /// False when walletd does not report HEAT at all (older build). The zeros in
+  /// [unlockedHeatBalance] then mean *unread*, not *empty*.
+  final bool heatBalanceAvailable;
   final String? address;
   final String? alias;
   final double syncProgress;
@@ -48,6 +52,7 @@ class WalletState extends Equatable {
     this.unlockedBalance = 0,
     this.unlockedHeatBalance = 0,
     this.lockedHeatBalance = 0,
+    this.heatBalanceAvailable = false,
     this.address,
     this.alias,
     this.syncProgress = 0,
@@ -72,6 +77,7 @@ class WalletState extends Equatable {
     int? unlockedBalance,
     int? unlockedHeatBalance,
     int? lockedHeatBalance,
+    bool? heatBalanceAvailable,
     String? address,
     String? alias,
     double? syncProgress,
@@ -93,6 +99,7 @@ class WalletState extends Equatable {
     unlockedBalance: unlockedBalance ?? this.unlockedBalance,
     unlockedHeatBalance: unlockedHeatBalance ?? this.unlockedHeatBalance,
     lockedHeatBalance: lockedHeatBalance ?? this.lockedHeatBalance,
+    heatBalanceAvailable: heatBalanceAvailable ?? this.heatBalanceAvailable,
     address: address ?? this.address,
     alias: alias ?? this.alias,
     syncProgress: syncProgress ?? this.syncProgress,
@@ -125,6 +132,7 @@ class WalletState extends Equatable {
     unlockedBalance,
     unlockedHeatBalance,
     lockedHeatBalance,
+    heatBalanceAvailable,
     address,
     alias,
     syncProgress,
@@ -362,11 +370,14 @@ class WalletCubit extends Cubit<WalletState> {
         // Fetch ΗΞΔŦ balance
         int unlockedHeat = 0;
         int lockedHeat = 0;
+        var heatAvailable = false;
         if (_rpcService != null) {
           try {
             final heat = await _rpcService!.getHeatBalance();
             unlockedHeat = heat.unlockedHeat;
             lockedHeat = heat.lockedHeat;
+            // The call succeeded; there is no per-balance availability flag.
+            heatAvailable = true;
           } catch (_) {}
         }
 
@@ -394,6 +405,7 @@ class WalletCubit extends Cubit<WalletState> {
             unlockedBalance: unlocked,
             unlockedHeatBalance: unlockedHeat,
             lockedHeatBalance: lockedHeat,
+            heatBalanceAvailable: heatAvailable,
             peerCount: peers,
             transactions: txs,
             syncProgress: progress,

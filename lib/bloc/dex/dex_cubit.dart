@@ -146,19 +146,6 @@ class DexState {
   }
 }
 
-/// Parses one daemon row; a row naming a pair id this wallet does not know is
-/// dropped (and logged) instead of failing the whole list.
-Iterable<T> _parseKnownPair<T>(
-  dynamic row,
-  T Function(Map<String, dynamic>) parse,
-) sync* {
-  try {
-    yield parse(row as Map<String, dynamic>);
-  } on FormatException catch (e) {
-    debugPrint('DexCubit: skipped row: ${e.message}');
-  }
-}
-
 class DexCubit extends Cubit<DexState> {
   final http.Client _http;
   String _baseUrl = '';
@@ -403,6 +390,61 @@ class DexCubit extends Cubit<DexState> {
     }
   }
 
+  ChainTypeSdk _chainForPair(SwapPairSdk pair) {
+    switch (pair) {
+      case SwapPairSdk.sol:
+        return ChainTypeSdk.solana;
+      case SwapPairSdk.eth:
+        return ChainTypeSdk.ethereum;
+      case SwapPairSdk.xmr:
+        return ChainTypeSdk.monero;
+      case SwapPairSdk.bch:
+        return ChainTypeSdk.bitcoinCash;
+      case SwapPairSdk.arb:
+        return ChainTypeSdk.arbitrum;
+      case SwapPairSdk.base:
+        return ChainTypeSdk.base;
+      case SwapPairSdk.kmd:
+        return ChainTypeSdk.komodo;
+      case SwapPairSdk.bnb:
+        return ChainTypeSdk.bnb;
+      case SwapPairSdk.dcr:
+        return ChainTypeSdk.decred;
+      case SwapPairSdk.btc:
+        return ChainTypeSdk.bitcoin;
+      case SwapPairSdk.ltc:
+        return ChainTypeSdk.litecoin;
+      case SwapPairSdk.poly:
+        return ChainTypeSdk.polygon;
+      case SwapPairSdk.gleec:
+        return ChainTypeSdk.gleec;
+      case SwapPairSdk.robinhood:
+        return ChainTypeSdk.robinhood;
+      case SwapPairSdk.avax:
+        return ChainTypeSdk.avax;
+      case SwapPairSdk.cro:
+        return ChainTypeSdk.cro;
+      case SwapPairSdk.bob:
+        return ChainTypeSdk.bob;
+      case SwapPairSdk.unichain:
+        return ChainTypeSdk.unichain;
+      case SwapPairSdk.plasma:
+        return ChainTypeSdk.plasma;
+      case SwapPairSdk.pulsex:
+        return ChainTypeSdk.pulsex;
+      case SwapPairSdk.monad:
+        return ChainTypeSdk.monad;
+      case SwapPairSdk.optimism:
+        return ChainTypeSdk.optimism;
+      case SwapPairSdk.doge:
+        return ChainTypeSdk.doge;
+      case SwapPairSdk.dash:
+        return ChainTypeSdk.dash;
+      case SwapPairSdk.zec:
+        return ChainTypeSdk.zcash;
+    }
+  }
+
   Future<List<SwapOfferSdk>> _loadOffersFromFuegod() async {
     final results = await Future.wait(
       SwapPairSdk.values.map((pair) async {
@@ -416,7 +458,8 @@ class DexCubit extends Cubit<DexState> {
     );
     return results
         .expand((result) => result['offers'] as List<dynamic>? ?? const [])
-        .expand((offer) => _parseKnownPair(offer, SwapOfferSdk.fromJson))
+        .map((offer) => SwapOfferSdk.tryFromJson(offer as Map<String, dynamic>))
+        .whereType<SwapOfferSdk>()
         .where((offer) => offer.offerId.isNotEmpty)
         .toList();
   }
@@ -456,7 +499,8 @@ class DexCubit extends Cubit<DexState> {
         'limit': 50,
       });
       final trades = (r['trades'] as List<dynamic>? ?? [])
-          .expand((t) => _parseKnownPair(t, SwapTradeSdk.fromJson))
+          .map((t) => SwapTradeSdk.tryFromJson(t as Map<String, dynamic>))
+          .whereType<SwapTradeSdk>()
           .toList();
       emit(state.copyWith(recentTrades: trades));
     } catch (e) {
@@ -494,7 +538,8 @@ class DexCubit extends Cubit<DexState> {
     try {
       final r = await _post('/getactiveswaps', {});
       final swaps = (r['swaps'] as List<dynamic>? ?? [])
-          .expand((s) => _parseKnownPair(s, SwapStatusSdk.fromJson))
+          .map((s) => SwapStatusSdk.tryFromJson(s as Map<String, dynamic>))
+          .whereType<SwapStatusSdk>()
           .toList();
       emit(state.copyWith(activeSwaps: swaps));
     } catch (e) {
@@ -711,13 +756,15 @@ class DexCubit extends Cubit<DexState> {
           offerId: offer.offerId,
           privateKeyHex: takerChainKey,
         );
-      } else if (chain.isBtcFamily) {
-        // Bitcoin signmessage proof from the taker's WIF key.
+      } else if (chain.isSignedMessageUtxo) {
+        // Bitcoin-style signmessage proof from the taker's WIF key. The
+        // message magic and P2PKH prefix are chain-specific.
         proof = BitcoinReserveProof.build(
           wif: takerChainKey,
           offerId: offer.offerId,
           p2pkhVersion: _btcP2pkhVersion(chain).$1,
           p2pkhVersion2: _btcP2pkhVersion(chain).$2,
+          messageMagic: _signedMessageMagic(chain),
         );
       } else if (chain == ChainTypeSdk.monero) {
         // XMR reserve proofs are produced by monero-wallet-rpc. Bridge via
@@ -913,10 +960,6 @@ class DexCubit extends Cubit<DexState> {
         hashLock: hashLock,
         preSig: preSig,
         ctrAddress: ctrAddress,
-        offerId: offerId,
-        createdAt: createdAt,
-        makerSignature: makerSignature,
-        ctrClaimPubKey: ctrClaimPubKey,
         expectedPeerPubkey: offer.makerPubKey,
         requirePtlc: state.requirePtlc,
       );
@@ -930,6 +973,53 @@ class DexCubit extends Cubit<DexState> {
     } catch (e) {
       emit(state.copyWith(error: 'AFK swap initiation failed: $e'));
     }
+  }
+
+  static String _pairNameForChain(ChainTypeSdk chain) {
+    switch (chain) {
+      case ChainTypeSdk.solana:
+        return 'SOL';
+      case ChainTypeSdk.ethereum:
+        return 'ETH';
+      case ChainTypeSdk.monero:
+        return 'XMR';
+      case ChainTypeSdk.bitcoinCash:
+        return 'BCH';
+      case ChainTypeSdk.arbitrum:
+        return 'ARB';
+      case ChainTypeSdk.base:
+        return 'BASE';
+      case ChainTypeSdk.komodo:
+        return 'KMD';
+      case ChainTypeSdk.bnb:
+        return 'BNB';
+      case ChainTypeSdk.decred:
+        return 'DCR';
+      case ChainTypeSdk.bitcoin:
+        return 'BTC';
+      case ChainTypeSdk.litecoin:
+        return 'LTC';
+      case ChainTypeSdk.polygon:
+        return 'POLYGON';
+      case ChainTypeSdk.doge:
+        return 'DOGE';
+      case ChainTypeSdk.dash:
+        return 'DASH';
+      case ChainTypeSdk.zcash:
+        return 'ZEC';
+      default:
+        return 'SOL';
+    }
+    if (runtimeChain.id != offer.pair.id) {
+      emit(
+        state.copyWith(
+          error:
+              'Selected runtime chain does not match the orderbook offer pair',
+        ),
+      );
+      return null;
+    }
+    return runtimeChain;
   }
 
   SwapChain? _readyRuntimeChainForOffer(SwapOfferSdk offer) {
@@ -950,6 +1040,21 @@ class DexCubit extends Cubit<DexState> {
     return runtimeChain;
   }
 
+  /// Signmessage magic per UTXO chain. The leading byte is the message
+  /// length, matching the Bitcoin signmessage preimage.
+  static String _signedMessageMagic(ChainTypeSdk chain) {
+    switch (chain) {
+      case ChainTypeSdk.doge:
+        return '\x19Dogecoin Signed Message:\n';
+      case ChainTypeSdk.dash:
+        return '\x19DarkCoin Signed Message:\n';
+      case ChainTypeSdk.zcash:
+        return '\x16Zcash Signed Message:\n';
+      default:
+        return '\x18Bitcoin Signed Message:\n';
+    }
+  }
+
   /// (prefix byte, optional second prefix byte) for P2PKH addresses.
   static (int, int?) _btcP2pkhVersion(ChainTypeSdk chain) {
     switch (chain) {
@@ -963,6 +1068,12 @@ class DexCubit extends Cubit<DexState> {
         return (0x3c, null);
       case ChainTypeSdk.decred:
         return (0x3f, 0x07); // two-byte prefix 0x073f
+      case ChainTypeSdk.doge:
+        return (0x1e, null);
+      case ChainTypeSdk.dash:
+        return (0x4c, null);
+      case ChainTypeSdk.zcash:
+        return (0xb8, 0x1c); // two-byte prefix 0x1cb8
       default:
         return (0x00, null);
     }

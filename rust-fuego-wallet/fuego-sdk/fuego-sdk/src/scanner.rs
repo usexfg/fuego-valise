@@ -595,7 +595,7 @@ impl UtxoScanner {
                                 spend_secret,
                             ) {
                                 if let OutputOwner::Subaddress(minor) = *owner {
-                                    track_minor(minor, &mut highest_subaddress, &mut highest_alias_minor);
+                                    highest_subaddress = highest_subaddress.max(minor);
                                 }
                                 resolved = Some((sec, ki));
                             }

@@ -112,6 +112,9 @@ class CdOverviewScreen extends StatelessWidget {
       onRefresh: () => context.read<CdCubit>().loadAll(),
       child: CustomScrollView(
         slivers: [
+          // ── Pool Summary ──
+          SliverToBoxAdapter(child: _PoolSummary(state)),
+
           // ── Marketplace Section ──
           SliverToBoxAdapter(
             child: _MarketplaceSection(listings: state.marketListings),
@@ -215,6 +218,85 @@ class CdOverviewScreen extends StatelessWidget {
       builder: (_) => BlocProvider.value(
         value: context.read<CdCubit>(),
         child: const _LadderBuilderDialog(),
+      ),
+    );
+  }
+}
+
+/// POOL summary at the top of the screen: how much the CDs hold, how many
+/// are live, and the current APY — the numbers above the tier ladders.
+class _PoolSummary extends StatelessWidget {
+  final CdState state;
+
+  const _PoolSummary(this.state);
+
+  @override
+  Widget build(BuildContext context) {
+    final apy = state.apy;
+    final total = state.myCds
+        .where((cd) => !cd.forSale)
+        .fold<double>(
+          0,
+          (sum, cd) =>
+              sum + (double.tryParse(cd.amount.replaceAll(',', '')) ?? 0),
+        );
+    final active = state.myCds.where((cd) => !cd.forSale && !cd.matured).length;
+    final apyLabel = apy == null || (apy.currentApy <= 0 && apy.averageApy <= 0)
+        ? null
+        : apy.currentApy > 0
+        ? '${apy.currentApy.toStringAsFixed(1)}% APY'
+        : 'Avg ${apy.averageApy.toStringAsFixed(1)}% APY';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'POOL',
+            style: TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${total.toStringAsFixed(2)} HEAT',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: AppTheme.numberFontFamily,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$active active TDs',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          if (apyLabel != null)
+            Text(
+              apyLabel,
+              style: TextStyle(
+                color: AppTheme.successColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
       ),
     );
   }

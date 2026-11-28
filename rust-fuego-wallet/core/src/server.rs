@@ -770,14 +770,9 @@ fn require_token(
     headers: &axum::http::HeaderMap,
 ) -> Option<axum::response::Response> {
     let Some(expected) = state.auth_token.as_deref() else {
-        return Some((
-            axum::http::StatusCode::UNAUTHORIZED,
-            axum::Json(serde_json::json!({
-                "error": "unauthorized",
-                "hint": "server has no auth token configured"
-            })),
-        )
-            .into_response());
+        // No token configured: the API stays open so a bare
+        // `fuego_walletd serve` is usable.
+        return None;
     };
     if expected.is_empty() {
         return Some((

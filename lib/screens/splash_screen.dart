@@ -121,9 +121,16 @@ class _SplashScreenState extends State<SplashScreen>
         }
         hasPIN = await securityService.hasPIN();
         isLocked = await securityService.isLockedOut();
-      } else {
+      } catch (e) {
+        // Fail closed: a thrown check (e.g. transient Android Keystore /
+        // iOS Keychain error right after reboot, before first unlock) must
+        // never be read as "no PIN exists" — that would route straight to
+        // MainScreen and expose live balance/address/history with zero
+        // authentication. A genuinely new user with no wallet still has an
+        // escape hatch via "Forgot PIN" → Reset Wallet on PinEntryScreen.
+        checkFailed = true;
         debugPrint(
-          'Secure storage is unreadable — opening the wallet with no PIN prompt',
+          'Secure storage check failed — failing closed to PinEntryScreen',
         );
       }
 
@@ -161,8 +168,15 @@ class _SplashScreenState extends State<SplashScreen>
       _navigateToScreen(const MainScreen());
     } catch (e) {
       if (!mounted) return;
-      // A failure after a PIN or lockout was confirmed must not skip the gate.
-      if (isLocked || hasPIN) {
+
+      setState(() {
+        _initMessage =
+            'Unable to initialize securely. Please unlock or set up.';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) {
+        // Fail closed here too — see rationale above.
         _navigateToScreen(const PinEntryScreen());
         return;
       }
@@ -447,6 +461,15 @@ class _AnimatedFuegoLogoState extends State<AnimatedFuegoLogo>
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _rotateAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(_rotateController);
 
     _pulseController.repeat(reverse: true);
   }

@@ -1,165 +1,15 @@
 # CHANGELOG.agent.md
 
-## [2026-11-11] DeXFG cross-curve delivery (Valise): suite pin, catalog, keystore (X9, R7)
-
-**Started**: 2026-11-10
-**Agent**: Claude Code
-**Status**: DONE; pinned to usexfg/fuego-suite master `165ec97`
-**Scope**: `fuego-suite` (submodule pin), `lib/models/swap_pair_catalog.g.dart` (generated), `lib/services/swap_keystore.dart` (new), `lib/services/swap_config_service.dart`, `test/swap_keystore_test.dart` (new)
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| X9 pin | Suite pin moved from `a2df2f3` to `db3f5b5e`: point locks for BTC, LTC, BCH, EVM and SOL, the sigma_fun cross-curve proof, the daemon keystore. The daemon build now needs cargo, which the desktop backend build already installs for the wallet crates | Claude Code | 2026-11-11 | DONE |
-| X9 re-pin | Suite pin moved from `db3f5b5e` to usexfg/fuego-suite master `165ec97`, which holds pull requests 78 (point locks, sigma_fun proof, keystore), 79 and 80 (F29 fix). The swap pair catalog is unchanged by it | Claude Code | 2026-11-25 | DONE: `gen_swap_pair_catalog --check` OK, `flutter test` 124/124 |
-| X9 catalog | `swap_pair_catalog.g.dart` regenerated: BTC, LTC and BCH are active; XMR, KMD, DCR, DOGE, DASH and ZEC now read gated, as the daemon has refused them since the catalog gained that level (the committed file predated it) | Claude Code | 2026-11-11 | DONE; `gen_swap_pair_catalog.dart --check` passes |
-| R7 | Chain keys, node RPC passwords and the XFG swap key no longer reach `swap_config.json`. `SwapKeystore.seal` replaces each with a `keystore:<name>` reference; the values go into xfg-swapd's own encrypted keystore, written through `xfg-swapd --keystore-put` over stdin and swapped in only when complete. The keystore passphrase is generated once, kept in the OS keychain and handed to the daemon in its environment. A secret the daemon could not substitute (spaces, quotes, backslashes, non-ASCII) is refused when the configuration is built | Claude Code | 2026-11-11 | DONE; 5 new tests, all 123 pass. Not covered by a test: the keystore write and daemon start against a real xfg-swapd binary |
-
-## [2026-11-07] DeXFG review (Valise): SPV quorum wording
-
-**Started**: 2026-11-07
-**Agent**: Claude Code
-**Status**: DONE; matches xfg-swapd's quorum (ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9`)
-**Scope**: `lib/screens/settings/swap_settings_screen.dart`
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| review | xfg-swapd now requires agreement from at least the quorum and more than half of the configured servers; the Swap Settings quorum label says so | Claude Code | 2026-11-07 | DONE |
-
-## [2026-11-07] DeXFG remediation (Valise): role-aware swap readiness
-
-**Started**: 2026-11-07
-**Agent**: Claude Code
-**Status**: DONE; takes effect with an xfg-swapd that reports `readyRoles` (ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9`)
-**Scope**: `lib/services/swap_daemon_client.dart`, `lib/screens/dex/dex_screen.dart`, `test/swap_daemon_client_test.dart`
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| 2.5 | `SwapChain.readyRoles` from `list_chains`; the pre-initiate check admits a role the daemon is ready for (an SPV chain admits Bob, refuses Alice), and chain info says "Ready to sell XFG (SPV); buying XFG needs a full node" | Claude Code | 2026-11-07 | DONE; `flutter test` 118/118 |
-
-## [2026-11-07] DeXFG remediation (Valise): forward the maker-signed AFK fill result (F32)
-
-**Started**: 2026-11-07
-**Agent**: Claude Code
-**Status**: DONE; AFK stays disabled in xfg-swapd and fuegod
-**Scope**: `lib/services/swap_daemon_client.dart`, `lib/bloc/dex/dex_cubit.dart`, `test/swap_daemon_client_test.dart`
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| F32 | The AFK taker forwards `offer_id`, `ctr_address`, `ctr_claim_pubkey`, `created_at` and `maker_signature` from `/getswaprequests` to `initiate_swap` unchanged, so xfg-swapd can check the offer maker's signature; an unsigned result is refused before any lock | Claude Code | 2026-11-07 | DONE |
-
-### Sign-off
-
-| Gate | Status | Signed | Date |
-|------|--------|--------|------|
-| `flutter test` | 117/117 | Claude Code | 2026-11-07 |
-| `flutter analyze` | 0 errors, 0 warnings | Claude Code | 2026-11-07 |
-
-## [2026-11-07] DeXFG remediation (Valise): full-node UTXO config, SPV that xfg-swapd trusts, KMD/DCR removed
-
-**Started**: 2026-11-07
-**Agent**: Claude Code
-**Status**: DONE; takes effect against an xfg-swapd built from ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9` (the pinned usexfg/fuego-suite `a2df2f3` predates the daemon side)
-**Scope**: `lib/services/swap_config_service.dart`, `lib/screens/settings/swap_settings_screen.dart`, `lib/models/chain_info.dart`, `test/swap_config_service_test.dart`
-
-Implements fuego `docs/dexfg/SWAP_REMEDIATION_PLAN.md` 1.x (full node from Valise), 2.3 and 2.4 for Valise.
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| 1.x | BTC, LTC, BCH: "Full node" mode writes `<chain>_rpc_host/_rpc_port/_rpc_user/_rpc_pass/_network`; the RPC must be on this machine (plain HTTP with a password) and authenticated | Claude Code | 2026-11-07 | DONE |
-| 2.4 | "SPV" mode (sells XFG only) requires three Electrum servers on different hosts, a quorum of 2..n and a checkpoint height and hash; defaults are three servers from the Electrum, Electrum-LTC and Electron Cash lists and the checkpoints xfg-swapd's example uses | Claude Code | 2026-11-07 | DONE |
-| 2.3 | KMD and DCR are no longer offered in Swap Settings; `buildConfig` refuses them and every chain without a transport instead of writing an SPV section | Claude Code | 2026-11-07 | DONE |
-| fix | `validateWif` accepted uncompressed WIFs (`5…`, `6…`) that xfg-swapd refuses; it now accepts 52-character compressed WIFs only (K/L, T) | Claude Code | 2026-11-07 | DONE |
-| fix | "Generate Fresh WIFs" JSON-decoded the generator's output, which carries `//` comments, so it always failed; `parseGeneratedConfig` strips comments outside strings | Claude Code | 2026-11-07 | DONE |
-| fix | Unused placeholder `addressFromWif` (returned "(derive from … WIF)") removed. Chain info text: BTC/LTC/BCH configurable here; KMD/DCR reasons; Solana needs a local RPC and the program ID, not a "HashedTimelock registry" | Claude Code | 2026-11-07 | DONE |
-
-Not changed: R7 (keys into xfg-swapd's encrypted keystore) still waits for the suite pin to carry the keystore. Stored KMD/DCR keys in the OS keychain are left in place.
-
-### Sign-off
-
-| Gate | Status | Signed | Date |
-|------|--------|--------|------|
-| `flutter test` | 117/117 | Claude Code | 2026-11-07 |
-| `flutter analyze` | 0 errors, 0 warnings (793 infos, 794 before) | Claude Code | 2026-11-07 |
-
-## [2026-11-07] DeXFG remediation (Valise): suite repin, generated pair catalog, live readiness
-
-**Started**: 2026-11-07
-**Agent**: Claude Code
-**Status**: DONE except R7 (Valise half) — see below
-**Scope**: `fuego-suite` gitlink, `tool/gen_swap_pair_catalog.dart` (new), `lib/models/swap_pair_catalog.g.dart` (generated), `lib/models/swap_models.dart`, `lib/bloc/dex/dex_cubit.dart`, `lib/screens/dex/dex_screen.dart`, `lib/models/chain_info.dart`, `test/swap_pair_catalog_test.dart` (new), `.github/workflows/fuego-wallet-ci.yml`
-
-Implements fuego `docs/dexfg/SWAP_REMEDIATION_PLAN.md` 0.6, R2 and R8 for Valise.
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| 0.6 | `fuego-suite` repinned from `c787f7f` (served by no remote; `git submodule update` failed) to `a2df2f3`, usexfg/fuego-suite master, which carries catalog ids 29-45 | Claude Code | 2026-11-07 | DONE |
-| R2 | `tool/gen_swap_pair_catalog.dart` generates `kSwapPairCatalog` from the pinned `SwapPairCatalog.h`; `SwapPairSdk.catalog` binds each pair to its row; `SwapPairSdk.fromId` throws on unknown ids instead of returning ETH, and the DEX list parsers drop such rows one by one; CI checks out the submodule and runs `--check` | Claude Code | 2026-11-07 | DONE; `swap_pair_catalog_test` 5/5 |
-| R8 | Chain info "Setup" row shows xfg-swapd's own verdict (`Ready`, its `readinessError`, or not configured); static text only when the daemon is unreachable. Static text corrected: BTC/LTC/BCH/KMD/DCR are not swappable yet (full node not configurable in Valise; transport gate open); EVM needs a funded key and the registry | Claude Code | 2026-11-07 | DONE |
-| R7 | Write keys into xfg-swapd's encrypted keystore instead of plaintext `swap_config.json` | — | — | NOT DONE: Valise builds xfg-swapd from the pinned suite, and keystore support exists only on ColinRitman/fuego `claude/fuego-docs-atomic-swaps-0ta1n9`, not on usexfg/fuego-suite. Valise already holds the keys in the OS keychain (FlutterSecureStorage); the plaintext copy remains for the daemon until the suite pin carries the keystore |
-
-Also: `test/swap_pair_expansion_test.dart` reformatted; as committed in `b0395a0` it failed `dart format --set-exit-if-changed`.
-
-Found, not changed:
-- Valise has no wallet pair for DOGE (20), DASH (21), ZEC (22); the test names them.
-- Valise writes UTXO chains only in SPV mode; Phase 1's full-node path (btc_rpc_host, btc_network, ...) is not configurable from Valise.
-- At pin `a2df2f3` the catalog has no GATED level; the regenerated table will carry it after the suite change lands upstream and the pin moves.
-
-### Sign-off
-
-| Gate | Status | Signed | Date |
-|------|--------|--------|------|
-| `flutter analyze` | 0 errors, 0 warnings | Claude Code | 2026-11-07 |
-| `flutter test` | PASS, 108/108 | Claude Code | 2026-11-07 |
-| `dart run tool/gen_chains.dart --check`, `gen_swap_pair_catalog.dart --check` | PASS | Claude Code | 2026-11-07 |
-
-## [2026-11-06] DeXFG: promote the 17 catalog generic-adapter EVM chains to swap tier
-
-fuego-suite's `SwapPairCatalog.h` already carries LINEA … SEI as executable ADAPTER pairs
-(ids 29-45), registered through `evm_chains`. The wallet listed them as ERC20-only. Tempo
-stays wallet tier: it has no native coin and `HashedTimelock.lock()` escrows only native
-value. Contract deployment is out of scope.
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| 145 | `chains.yaml`: 17 chains `tier: wallet` → `swap`; regenerate `chain_registry.g.dart` | Claude Code | 2026-11-06 | Done; `kWalletTierKeys` is now `{tempo}` |
-| 146 | `SwapPairSdk` ids 29-45 and `ChainTypeSdk` ids 23-39; each pair carries its chain, each chain its `EvmChainKey` | Claude Code | 2026-11-06 | Done; removes `DexCubit._chainForPair` and `DexScreen._evmChainKey` switch tables |
-| 147 | `SwapInfo.pairName` resolves by wire id before the daemon's `pairName` | Claude Code | 2026-11-06 | Done; the daemon sends catalog symbols (`ZKSYNC`, `OPTIMISM`, `KMD_SPV`), so `ctrAmountDecimal` fell back to XFG's 7 decimals for 8 existing pairs and would have for 8 new ones |
-| 148 | `SwapChain.pairTicker` for peer-swap chips and filter | Claude Code | 2026-11-06 | Done; 14 pairs settle in ETH, so `ticker` labelled 14 chips "ETH" and the filter matched only Ethereum |
-| 149 | `ChainInfo`: desc, info, PTLC and explorer entries; `swapableChains` derived from `SwapPairSdk` | Claude Code | 2026-11-06 | Done; 15 explorers verified. DOMA (tx path unverified) and PEAQ (docs disagree on primary explorer) left out and listed as known gaps |
-| 150 | Tests: id table to 45, daemon-symbol regression, chains.yaml ↔ `SwapPairSdk` lock, `pairTicker` | Claude Code | 2026-11-06 | Done; corrected `swap_daemon_client_test` fixture that sent `pair: 45` with `pairName: 'TON'` (TON is 27) |
-| 151 | `AGENTS.md` swap section rewritten against suite `a2df2f3` | Claude Code | 2026-11-06 | Done |
-| 152 | PEAQ price feed id | — | — | TODO; `coingecko:peaq-2` untested, network to DeFiLlama/CoinGecko blocked in this session. Until then xfg-swapd refuses new PEAQ swaps |
-
-## [2026-11-22] First launch no longer asks for a PIN that was never set
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| 122 | A locked or missing keyring made `isLockedOut()` throw, and splash treated that as “a PIN exists,” so a first launch opened Welcome Back. Route to the wallet unless a PIN or lockout is actually stored. When the keyring cannot store the walletd bearer token, mint a session token instead of refusing to start. Scale the PIN pad so a short window does not paint the yellow-black overflow band. Replace the Material fire icon with `assets/logo/fuegologo.png`; the HEAT screen keeps its fire mark. Desktop debug no longer wraps the app in Device Preview. | grok | 2026-11-22 | ✅ done |
-| 123 | A readable store whose wallet check fails, or whose lockout record cannot be read, still requires the PIN. A keyring that never opens does not, because that prompt cannot be checked. A lockout-message failure no longer skips the gate. | grok | 2026-11-22 | ✅ done |
-
-### Sign-off
-
-| Check | Result |
-|-------|--------|
-| Source change | Splash routing, PIN layout, logo, desktop Device Preview |
-| Expected | First launch opens the wallet. PIN pad fits. Fire icon remains only on the HEAT screen |
-
 ## [2026-11-10] Mobile CI iOS simulator FFI missing
 
 | # | Task | Owner | Date | Status |
 |---|------|-------|------|--------|
 | 121 | iOS mobile CI failed at Build for simulator: Xcode could not find `rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a` (force_load in OTHER_LDFLAGS). The Xcode build phase script only builds arches present in $ARCHS; on the arm64 macos-latest runner the simulator build still referenced the x86_64 slice. Pre-build all three iOS targets in the workflow before flutter build. Updated artifact upload to the simulator .app path. | grok | 2026-11-10 | ✅ fixed in `.github/workflows/fuego-wallet-mobile-ci.yml` |
 
-### Sign-off
+## [2026-11-07] DeXFG review (Valise): SPV quorum wording
 
 | Check | Result |
 |-------|--------|
-| `flutter test` (Flutter 3.44.4) | ✅ 103 passed, 0 failed |
-| `flutter analyze` | ✅ 0 errors, 0 warnings; no findings on changed lines |
-| `dart format --set-exit-if-changed lib/` | ✅ 0 changed |
-| `dart run tool/gen_chains.dart --check` | ✅ up to date |
-| Submodule pin | ⚠️ `c787f7f` is not fetchable from `usexfg/fuego-suite`; verified against suite master `a2df2f3` |
-
 | Source change | CI workflow only; no source edits |
 | Expected | Next mobile CI run should produce the static libs and complete the iOS simulator build |
 
@@ -294,21 +144,3 @@ Merge `origin/feat/owner-bound-commitment-keys` (`51598e6`) into `origin/claude/
 ## [2026-11-10] FV-09: network-aware address prefix
 
 FFI and vault address creation no longer hardcode the mainnet prefix. `fuego_make_address_for_network` and `fuego_vault_get_address_for_network` take a testnet flag. Dart threads it through, and the vault service re-derives the cached address when the provider switches network. Mainnet still starts with `fire`, testnet with `TEST`.
-
-## [2026-11-27] F9: alias owners are funsa subaddresses (spec: suite docs/developer/funsa-subaddress-rollout-plan.md 4.4)
-
-| # | Task | Owner | Date | Status |
-|---|------|-------|------|--------|
-| 1 | `dart format` applied by hand to the FV-09 signatures in `lib/ffi/fuego_native.dart` (this branch did not touch the file; master has the same format failure) | claude | 2026-11-27 | DONE, CI to confirm |
-| 2 | SDK scanner: alias owners (0, `ALIAS_MINOR_BASE` + k) scanned in their own lookahead window, window slides on use and after restore; `subaddress()` refuses minors at or above the base | claude | 2026-11-27 | DONE, CI to confirm |
-| 3 | walletd: `next_alias_owner` returns the lowest k not held and not already an alias owner on chain; `register_alias` and `next_alias_owner` refuse below block major 12 (read from `/getinfo` `block_major_version`) | claude | 2026-11-27 | DONE, CI to confirm |
-| 4 | Dart: alias screen asks walletd for the owner instead of creating a payment subaddress | claude | 2026-11-27 | DONE, CI to confirm |
-| 5 | Building the 0xEA registration (`addressHash = H(D ‖ C)` of the owner) | claude | 2026-11-27 | TODO: `register_alias` still returns the Phase 7 error after the v12 check |
-| 6 | Pin fuego-suite to master `3afe5ebf` (PR #83 merged). `src/crypto` and `hash-ops.h` unchanged since the old pin `165ec97a`; `CryptoNoteFormatUtils.cpp` diff has no `longhash` change | claude | 2026-11-27 | DONE, CI to confirm |
-
-### Sign-off
-
-| Check | Result |
-|-------|--------|
-| `cargo test` | CI |
-| `dart format --set-exit-if-changed lib/ test/` | CI |

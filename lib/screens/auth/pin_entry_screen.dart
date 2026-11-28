@@ -51,17 +51,12 @@ class _PinEntryScreenState extends State<PinEntryScreen>
   }
 
   Future<void> _checkBiometricCapability() async {
-    try {
-      final available = await _securityService.isBiometricAvailable();
-      final enabled = await _securityService.isBiometricEnabled();
-      if (!mounted) return;
-      setState(() {
-        _canUseBiometric = available && enabled;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _canUseBiometric = false);
-    }
+    final available = await _securityService.isBiometricAvailable();
+    final enabled = await _securityService.isBiometricEnabled();
+
+    setState(() {
+      _canUseBiometric = available && enabled;
+    });
   }
 
   Future<void> _tryBiometricAuth() async {
@@ -337,90 +332,58 @@ class _PinEntryScreenState extends State<PinEntryScreen>
                                   color: AppTheme.textPrimary,
                                 ),
                               ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Enter your PIN to unlock your wallet',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: AppTheme.textSecondary,
-                                ),
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Unlocking wallet...',
+                              style: TextStyle(color: AppTheme.textSecondary),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        PinInputWidget(
+                          onComplete: _onPinComplete,
+                          errorMessage: _errorMessage,
+                          showForgotPin: true,
+                          onForgotPin: _onForgotPin,
+                          canUseBiometric: _canUseBiometric,
+                          onBiometric: _authenticateWithBiometric,
+                        ),
+
+                        // Failed attempts counter
+                        if (_failedAttempts > 0) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warningColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Failed attempts: $_failedAttempts/$maxFailedAttempts',
+                              style: const TextStyle(
+                                color: AppTheme.warningColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
                               ),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _isLoading
-                              ? const Column(
-                                  children: [
-                                    CircularProgressIndicator(
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        AppTheme.primaryColor,
-                                      ),
-                                    ),
-                                    SizedBox(height: 16),
-                                    Text(
-                                      'Unlocking wallet...',
-                                      style: TextStyle(
-                                        color: AppTheme.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      PinInputWidget(
-                                        onComplete: _onPinComplete,
-                                        errorMessage: _errorMessage,
-                                        showForgotPin: true,
-                                        onForgotPin: _onForgotPin,
-                                        canUseBiometric: _canUseBiometric,
-                                        onBiometric: _authenticateWithBiometric,
-                                      ),
-                                      if (_failedAttempts > 0) ...[
-                                        const SizedBox(height: 16),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.warningColor
-                                                .withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            'Failed attempts: $_failedAttempts/$maxFailedAttempts',
-                                            style: const TextStyle(
-                                              color: AppTheme.warningColor,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                          child: Text(
-                            'Your wallet is encrypted and stored securely on this device',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textMuted,
                             ),
                           ),
                         ),
                       ],
-                    ),
+                    ],
+                  ),
+                ),
+
+                // Footer
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Your wallet is encrypted and stored securely on this device',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                 );
               },

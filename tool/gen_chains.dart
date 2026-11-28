@@ -80,6 +80,15 @@ List<Map<String, String>> parseChainsYaml(String src) {
       continue;
     }
 
+    // A following top-level key (networks:) is not another chain entry.
+    // Without this, those rows are swallowed into kChains and the EVM
+    // registry drifts from EvmChainKey.
+    if (!line.startsWith(' ') &&
+        !line.startsWith('\t') &&
+        trimmed.endsWith(':')) {
+      break;
+    }
+
     if (trimmed.startsWith('- ')) {
       current = <String, String>{};
       chains.add(current);

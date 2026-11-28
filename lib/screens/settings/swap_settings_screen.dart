@@ -19,9 +19,31 @@ final Map<String, String> _defaultRpcUrls = {
 };
 
 final Map<String, Map<String, String>> _chainInfo = {
-  'btc': {'name': 'Bitcoin', 'icon': 'B', 'desc': 'P2WSH HTLC'},
-  'ltc': {'name': 'Litecoin', 'icon': 'L', 'desc': 'P2WSH HTLC'},
-  'bch': {'name': 'Bitcoin Cash', 'icon': 'B', 'desc': 'P2SH HTLC'},
+  'btc': {
+    'name': 'Bitcoin',
+    'icon': 'B',
+    'desc': 'P2WSH SegWit HTLC',
+    'type': 'spv',
+  },
+  'ltc': {
+    'name': 'Litecoin',
+    'icon': 'L',
+    'desc': 'P2WSH SegWit HTLC',
+    'type': 'spv',
+  },
+  'kmd': {'name': 'Komodo', 'icon': 'K', 'desc': 'P2SH HTLC', 'type': 'spv'},
+  'bch': {
+    'name': 'Bitcoin Cash',
+    'icon': 'B',
+    'desc': 'P2SH HTLC',
+    'type': 'spv',
+  },
+  'dcr': {
+    'name': 'Decred',
+    'icon': 'D',
+    'desc': 'SPV + RPC HTLC',
+    'type': 'spv',
+  },
   for (final chain in _evmSwapChains)
     chain.key: {
       'name': chain.name,
@@ -86,8 +108,10 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
   void initState() {
     super.initState();
     if (!_isTestnet) {
-      for (final chain in SwapConfigService.utxoSwapChains) {
-        _initUtxoChain(chain);
+      for (final chain in ['btc', 'ltc', 'kmd', 'bch', 'dcr']) {
+        _wifControllers[chain] = TextEditingController();
+        _serverControllers[chain] = TextEditingController();
+        _serverLists[chain] = List<String>.from(_defaultServers[chain] ?? []);
       }
     }
     for (final chain in _visibleRpcSwapChainKeys) {
@@ -172,35 +196,18 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
   }
 
   Future<void> _loadSavedConfig() async {
-    for (final chain in SwapConfigService.utxoSwapChains) {
+    for (final chain in ['btc', 'ltc', 'kmd', 'bch', 'dcr']) {
       if (!_wifControllers.containsKey(chain)) continue;
-      await _restoreText(_wifControllers, chain, 'swap_wif_$chain');
+      final wif = await _secureStorage.read(key: 'swap_wif_$chain');
+      if (wif != null && wif.isNotEmpty) {
+        _wifControllers[chain]!.text = wif;
+      }
       final serversStr = await _secureStorage.read(key: 'swap_servers_$chain');
       if (serversStr != null && serversStr.isNotEmpty)
         _serverLists[chain] = serversStr
             .split(',')
             .where((s) => s.isNotEmpty)
             .toList();
-      final mode = await _secureStorage.read(key: 'swap_utxo_mode_$chain');
-      if (mode != null) _utxoFullNode[chain] = mode != 'spv';
-      await _restoreText(_nodeUrlControllers, chain, 'swap_node_url_$chain');
-      await _restoreText(_nodeUserControllers, chain, 'swap_node_user_$chain');
-      await _restoreText(
-        _nodePasswordControllers,
-        chain,
-        'swap_node_password_$chain',
-      );
-      await _restoreText(_quorumControllers, chain, 'swap_spv_quorum_$chain');
-      await _restoreText(
-        _checkpointHeightControllers,
-        chain,
-        'swap_spv_checkpoint_height_$chain',
-      );
-      await _restoreText(
-        _checkpointHashControllers,
-        chain,
-        'swap_spv_checkpoint_hash_$chain',
-      );
     }
     for (final chain in _visibleRpcSwapChainKeys) {
       final wif = await _secureStorage.read(key: 'swap_wif_$chain');
@@ -250,54 +257,27 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<SwapChainConfig?> _saveUtxoChain(String chain) async {
-    final wif = _wifControllers[chain]!.text.trim();
-    if (wif.isEmpty) return null;
-    final fullNode = _utxoFullNode[chain]!;
-    final nodeUrl = _nodeUrlControllers[chain]!.text.trim();
-    final nodeUser = _nodeUserControllers[chain]!.text.trim();
-    final nodePassword = _nodePasswordControllers[chain]!.text;
-    final quorum = _quorumControllers[chain]!.text.trim();
-    final checkpointHeight = _checkpointHeightControllers[chain]!.text.trim();
-    final checkpointHash = _checkpointHashControllers[chain]!.text.trim();
-    final stored = <String, String>{
-      'swap_wif_$chain': wif,
-      'swap_servers_$chain': _serverLists[chain]!.join(','),
-      'swap_utxo_mode_$chain': fullNode ? 'full_node' : 'spv',
-      'swap_node_url_$chain': nodeUrl,
-      'swap_node_user_$chain': nodeUser,
-      'swap_node_password_$chain': nodePassword,
-      'swap_spv_quorum_$chain': quorum,
-      'swap_spv_checkpoint_height_$chain': checkpointHeight,
-      'swap_spv_checkpoint_hash_$chain': checkpointHash,
-    };
-    for (final entry in stored.entries) {
-      await _secureStorage.write(key: entry.key, value: entry.value);
-    }
-    if (fullNode) {
-      return SwapChainConfig(
-        wif: wif,
-        rpcUrl: nodeUrl,
-        rpcUser: nodeUser,
-        rpcPassword: nodePassword,
-      );
-    }
-    return SwapChainConfig(
-      wif: wif,
-      servers: _serverLists[chain]!,
-      minServers: int.tryParse(quorum),
-      checkpointHeight: int.tryParse(checkpointHeight),
-      checkpointHash: checkpointHash,
-    );
-  }
-
   Future<String?> _saveConfig() async {
     final chains = <String, SwapChainConfig>{};
 
     if (!_isTestnet) {
-      for (final chain in SwapConfigService.utxoSwapChains) {
-        final utxoChain = await _saveUtxoChain(chain);
-        if (utxoChain != null) chains[chain] = utxoChain;
+      for (final chain in ['btc', 'ltc', 'kmd', 'bch', 'dcr']) {
+        final wif = _wifControllers[chain]!.text.trim();
+        if (wif.isEmpty) continue;
+        final error = SwapConfigService.validateWif(wif, chain);
+        if (error != null) {
+          _showError('${chain.toUpperCase()} WIF error: $error');
+          return null;
+        }
+        await _secureStorage.write(key: 'swap_wif_$chain', value: wif);
+        await _secureStorage.write(
+          key: 'swap_servers_$chain',
+          value: _serverLists[chain]!.join(','),
+        );
+        chains[chain] = SwapChainConfig(
+          wif: wif,
+          servers: _serverLists[chain]!,
+        );
       }
     }
 
@@ -552,10 +532,8 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         _buildXfgKeyTile(),
         if (!_isTestnet) ...[
           const SizedBox(height: 24),
-          _buildSectionHeader('Bitcoin-family chains (BTC, LTC, BCH)'),
-          _buildUtxoInfoBox(),
-          const SizedBox(height: 8),
-          for (final chain in SwapConfigService.utxoSwapChains)
+          _buildSectionHeader('SPV Chains (BTC, LTC, KMD, BCH, DCR)'),
+          for (final chain in ['btc', 'ltc', 'kmd', 'bch', 'dcr'])
             _buildChainCard(chain),
         ],
         const SizedBox(height: 24),
@@ -674,23 +652,6 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
           ),
         ),
       ],
-    ),
-  );
-
-  Widget _buildUtxoInfoBox() => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: AppTheme.infoColor.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppTheme.infoColor.withOpacity(0.3)),
-    ),
-    child: Text(
-      'Buying XFG with BTC, LTC or BCH locks coins, which needs a local full '
-      'node with its wallet loaded. SPV only verifies and claims a lock when '
-      'selling XFG, and needs three Electrum servers run by different '
-      'operators plus a checkpoint block. KMD and DCR swaps are not offered: '
-      'neither has an SPV header validator or a gated full-node path.',
-      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
     ),
   );
 
@@ -846,9 +807,7 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
             ],
           ),
           subtitle: Text(
-            _utxoFullNode[chain]!
-                ? '${info['desc']} \u00b7 full node'
-                : '${info['desc']} \u00b7 SPV, ${_serverLists[chain]!.length} server(s)',
+            '${info['desc']} \u00b7 ${_serverLists[chain]!.length} server(s)',
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           children: [
@@ -925,21 +884,92 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 12),
-                SegmentedButton<bool>(
-                  segments: const [
-                    ButtonSegment(value: true, label: Text('Full node')),
-                    ButtonSegment(value: false, label: Text('SPV (sell XFG)')),
-                  ],
-                  selected: {_utxoFullNode[chain]!},
-                  onSelectionChanged: (selection) =>
-                      setState(() => _utxoFullNode[chain] = selection.first),
+                const SizedBox(height: 8),
+                Text(
+                  'Electrum Servers',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                if (_utxoFullNode[chain]!)
-                  ..._buildNodeFields(chain)
-                else
-                  ..._buildSpvFields(chain),
+                const SizedBox(height: 8),
+                ..._serverLists[chain]!.asMap().entries.map(
+                  (entry) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.value,
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontFamily: 'IBMPlexMono',
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          color: AppTheme.errorColor,
+                          onPressed: () => setState(
+                            () => _serverLists[chain]!.removeAt(entry.key),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _serverControllers[chain],
+                        decoration: InputDecoration(
+                          hintText: 'host:port',
+                          hintStyle: TextStyle(
+                            color: AppTheme.textSecondary.withOpacity(0.5),
+                            fontFamily: 'IBMPlexMono',
+                            fontSize: 13,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: AppTheme.textSecondary.withOpacity(0.3),
+                            ),
+                          ),
+                          focusedBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontFamily: 'IBMPlexMono',
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.add, size: 20),
+                      color: AppTheme.successColor,
+                      onPressed: () {
+                        final server = _serverControllers[chain]!.text.trim();
+                        if (server.isNotEmpty &&
+                            !_serverLists[chain]!.contains(server))
+                          setState(() {
+                            _serverLists[chain]!.add(server);
+                            _serverControllers[chain]!.clear();
+                          });
+                      },
+                    ),
+                  ],
+                ),
               ],
             ),
           ],
@@ -1603,8 +1633,20 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     );
   }
 
-  String _wifHint(String chain) =>
-      chain == 'ltc' ? 'T... (compressed key)' : 'K... / L... (compressed key)';
+  String _wifHint(String chain) {
+    switch (chain) {
+      case 'btc':
+        return '5... / K... / L... (compressed)';
+      case 'ltc':
+        return '6... / T... (compressed)';
+      case 'kmd':
+        return '7... / U... (compressed)';
+      case 'bch':
+        return '5... / K... / L... (compressed)';
+      default:
+        return 'WIF private key';
+    }
+  }
 
   void _importFromClipboard(String chain) async {
     final data = await Clipboard.getData('text/plain');
@@ -1650,19 +1692,33 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
         ['--generate-spv-config'],
       );
       if (result.exitCode == 0 && mounted) {
-        final config = SwapConfigService.parseGeneratedConfig(
-          result.stdout.toString(),
-        );
-        setState(() {
-          for (final chain in SwapConfigService.utxoSwapChains) {
-            _applyGeneratedChain(chain, config);
+        final output = result.stdout.toString();
+        final jsonStart = output.indexOf('{');
+        final jsonEnd = output.lastIndexOf('}');
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+          final jsonStr = output.substring(jsonStart, jsonEnd + 1);
+          final config = const JsonDecoder().convert(jsonStr) as Map;
+          for (final chain in ['btc', 'ltc', 'kmd', 'bch']) {
+            final wifKey = '${chain}_wif';
+            if (config.containsKey(wifKey))
+              setState(() {
+                _wifControllers[chain]!.text = config[wifKey] as String;
+              });
+            final serverKeys = <String>[];
+            for (var i = 0; i < 16; i++) {
+              final key = '${chain}_spv_server_$i';
+              if (config.containsKey(key))
+                serverKeys.add(config[key] as String);
+            }
+            if (serverKeys.isNotEmpty)
+              setState(() => _serverLists[chain] = serverKeys);
           }
-          final xfgKey = config['xfg_secret_key'];
-          if (xfgKey is String &&
-              RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(xfgKey)) {
-            _xfgSecretController.text = xfgKey;
-          }
-        });
+          if (config.containsKey('xfg_secret_key'))
+            setState(
+              () => _xfgSecretController.text =
+                  config['xfg_secret_key'] as String,
+            );
+        }
         _showSuccess('Fresh WIFs generated \u2014 review and save');
       } else {
         _showError('Failed: ${result.stderr}');

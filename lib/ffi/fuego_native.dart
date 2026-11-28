@@ -96,11 +96,7 @@ class FuegoNative {
 
   /// Generate Fuego address from spend + view public keys.
   /// `testnet` selects the testnet prefix; default is mainnet.
-  String makeAddress(
-    List<int> spendPub,
-    List<int> viewPub, {
-    bool testnet = false,
-  }) {
+  String makeAddress(List<int> spendPub, List<int> viewPub, {bool testnet = false}) {
     _requireLengths({'spendPub': (spendPub, 32), 'viewPub': (viewPub, 32)});
     final spendPtr = _allocBytes(spendPub);
     final viewPtr = _allocBytes(viewPub);
@@ -139,17 +135,12 @@ class FuegoNative {
 
   /// Get address from vault at index.
   /// `testnet` selects the testnet prefix; default is mainnet.
-  String vaultGetAddress(
-    Uint8List vaultBytes,
-    int index, {
-    bool testnet = false,
-  }) {
+  String vaultGetAddress(Uint8List vaultBytes, int index, {bool testnet = false}) {
     _requireKeyIndex(index);
     final vaultPtr = _allocUint8List(vaultBytes);
-    final fn = _lib
-        .lookupFunction<_VaultGetAddrNetNative, _VaultGetAddrNetDart>(
-          'fuego_vault_get_address_for_network',
-        );
+    final fn = _lib.lookupFunction<_VaultGetAddrNetNative, _VaultGetAddrNetDart>(
+      'fuego_vault_get_address_for_network',
+    );
     final result = fn(vaultPtr, vaultBytes.length, index, testnet ? 1 : 0);
     final addr = result.toDartString();
     _freeString(result);

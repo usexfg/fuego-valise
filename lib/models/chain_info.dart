@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 import 'chain_registry.g.dart';
-import 'swap_models.dart';
+import 'network_catalog.g.dart';
 
 /// Chain display metadata shared by the DEX marketplace (Orderbook/Trade/
 /// Trades) and the Peer Swap section.
@@ -86,6 +86,9 @@ class ChainInfo {
     'SOL': 'Solana — high-performance non-EVM chain with sub-second slots.',
     'DCR': 'Decred — hybrid PoW/PoS with built-in governance and Neutrino SPV.',
     'XMR': 'Monero — privacy coin using ring signatures and stealth addresses.',
+    'DASH': 'Dash — fast UTXO chain with optional InstantSend.',
+    'DOGE': 'Dogecoin — pre-SegWit UTXO chain with deep retail liquidity.',
+    'ZEC': 'Zcash — UTXO chain; swaps use transparent t-addresses only.',
     'XFG': 'Fuego  - Private Banking & Purchasing Power Chain',
     'LINEA': 'Linea — Consensys zkEVM rollup settling to Ethereum.',
     'ZKS': 'ZKsync Era — Matter Labs zkEVM rollup settling to Ethereum.',
@@ -282,33 +285,26 @@ class ChainInfo {
       'user': 'Public RPC used by default — set a funded key in Swap Settings.',
       'htlc': 'HashedTimelock.sol',
     },
-    'LINEA': _registryHtlcInfo('EVM L2', 'Linea'),
-    'ZKS': _registryHtlcInfo('EVM L2', 'ZKsync Era'),
-    'HYPER': _registryHtlcInfo('EVM', 'HyperEVM'),
-    'INK': _registryHtlcInfo('EVM L2', 'Ink'),
-    'RSK': _registryHtlcInfo('EVM', 'Rootstock'),
-    'GNO': _registryHtlcInfo('EVM', 'Gnosis'),
-    'FLR': _registryHtlcInfo('EVM', 'Flare'),
-    'KAIA': _registryHtlcInfo('EVM', 'Kaia'),
-    'SCR': _registryHtlcInfo('EVM L2', 'Scroll'),
-    'ABS': _registryHtlcInfo('EVM L2', 'Abstract'),
-    'PLUME': _registryHtlcInfo('EVM', 'Plume'),
-    'SONEIUM': _registryHtlcInfo('EVM L2', 'Soneium'),
-    'DOMA': _registryHtlcInfo('EVM', 'Doma'),
-    'BEAM': _registryHtlcInfo('EVM', 'Beam'),
-    'MOVR': _registryHtlcInfo('EVM', 'Moonriver'),
-    'PEAQ': {
-      ..._registryHtlcInfo('EVM', 'peaq'),
-      'user':
-          'Set a funded key and the HTLC registry deployed on peaq in Swap '
-          'Settings. xfg-swapd still refuses new PEAQ swaps: fuego-suite has '
-          'no verified PEAQ price feed.',
+    'DASH': {
+      'type': 'UTXO',
+      'connect': 'Full node JSON-RPC (dashd -txindex)',
+      'user': 'Run dashd and set RPC + WIF in Swap Settings.',
+      'htlc': 'P2SH',
     },
-    'SEI': _registryHtlcInfo('EVM', 'Sei'),
-    'DASH': {'type': 'UTXO', 'wired': 'false'},
-    'DOGE': {'type': 'UTXO', 'wired': 'false'},
+    'DOGE': {
+      'type': 'UTXO',
+      'connect': 'Full node JSON-RPC (dogecoind -txindex)',
+      'user': 'Run dogecoind and set RPC + WIF in Swap Settings.',
+      'htlc': 'P2SH',
+    },
     'ZANO': {'type': 'CryptoNote', 'wired': 'false'},
-    'ZEC': {'type': 'UTXO', 'wired': 'false'},
+    'ZEC': {
+      'type': 'UTXO',
+      'connect': 'Full node JSON-RPC (zcashd -txindex)',
+      'user':
+          'Run zcashd and set RPC + WIF in Swap Settings. Transparent t-address only.',
+      'htlc': 'P2SH',
+    },
   };
 
   /// PTLC descriptor per chain (point commitment / adaptor).
@@ -430,21 +426,6 @@ class ChainInfo {
     'PLS': 'https://scan.pulsechain.com/tx/{txid}',
     'MON': 'https://monadscan.com/tx/{txid}',
     'UNI': 'https://uniscan.xyz/tx/{txid}',
-    'LINEA': 'https://lineascan.build/tx/{txid}',
-    'ZKS': 'https://explorer.zksync.io/tx/{txid}',
-    'HYPER': 'https://hyperevmscan.io/tx/{txid}',
-    'INK': 'https://explorer.inkonchain.com/tx/{txid}',
-    'RSK': 'https://explorer.rootstock.io/tx/{txid}',
-    'GNO': 'https://gnosisscan.io/tx/{txid}',
-    'FLR': 'https://flare-explorer.flare.network/tx/{txid}',
-    'KAIA': 'https://kaiascan.io/tx/{txid}',
-    'SCR': 'https://scrollscan.com/tx/{txid}',
-    'ABS': 'https://abscan.org/tx/{txid}',
-    'PLUME': 'https://explorer.plume.org/tx/{txid}',
-    'SONEIUM': 'https://soneium.blockscout.com/tx/{txid}',
-    'BEAM': 'https://subnets.avax.network/beam/tx/{txid}',
-    'MOVR': 'https://moonriver.moonscan.io/tx/{txid}',
-    'SEI': 'https://seiscan.io/tx/{txid}',
     'SOL': 'https://solscan.io/tx/{txid}',
     'XMR': 'https://xmrchain.net/tx/{txid}',
     'ZANO': 'https://explorer.zano.org/transaction/{txid}',
@@ -581,14 +562,18 @@ class ChainInfo {
     'GLEEC': 'assets/coin-icons/gleec.png',
   };
 
-  /// Every catalog pair the wallet mirrors. Whether one can start a swap is
-  /// xfg-swapd's call at runtime (`protocol && configured && ready`).
-  static final List<String> swapableChains = [
-    for (final pair in SwapPairSdk.values) pair.ticker,
+  /// Ready pairs from the generated catalog. Not a second hand list.
+  static List<String> get swapableChains => [
+    for (final row in kReadyNetworks) row.ticker,
   ];
 
-  /// EVM networks in the ERC20 layer (balances, send, approve) that no
-  /// swap pair covers. DERIVED from chains.yaml ([kWalletTierKeys]).
+  /// DeXFG 33-chain EVM expansion: live in the wallet's ERC20 layer
+  /// (Erc20Service / EvmChainKey — balances, send, approve via Tokens tab)
+  /// but NOT wired into xfg-swapd, so no CLI swaps.
+  ///
+  /// DERIVED from chains.yaml ([kWalletTierKeys]) — uppercased to match
+  /// the ticker-keyed convention of this class. Icon files pending;
+  /// UI falls back to [colors] letter-marks until real logos land.
   static final Set<String> walletOnlyChains = kWalletTierKeys
       .map((k) => k.toUpperCase())
       .toSet();

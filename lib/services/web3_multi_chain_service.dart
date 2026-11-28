@@ -9,6 +9,18 @@ import '../models/chain_registry.g.dart';
 import '../models/erc20_token.dart';
 import 'erc20_service.dart';
 
+/// Result of one native-balance probe.
+///
+/// `ok: false` means the chain could not be read at all — [amount] is then
+/// meaningless and must be rendered as unknown, never as zero.
+class ChainBalanceProbe {
+  const ChainBalanceProbe({required this.amount, required this.ok, this.note});
+
+  final double amount;
+  final bool ok;
+  final String? note;
+}
+
 class Web3MultiChainService {
   Web3Client? _ethClient;
   solana.RpcClient? _solRpcClient;
@@ -206,6 +218,48 @@ class Web3MultiChainService {
     } catch (e) {
       dev.log('Error fetching SOL balance: $e');
       return 0.0;
+    }
+  }
+
+  /// Probe one chain's native gas-token balance without collapsing failures
+  /// into `0.0`.
+  ///
+  /// [getEvmBalance] deliberately swallows RPC errors so the swap UI keeps
+  /// working, which is fine there and wrong here: a portfolio must be able to
+  /// say "unknown" for an unreachable chain instead of reporting an empty
+  /// wallet. Callers get [ChainBalanceProbe.ok] plus a short [ChainBalanceProbe.note].
+  Future<ChainBalanceProbe> probeNativeBalance(
+    String address,
+    String chainKey, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final k = chainKey.toLowerCase();
+    // Tempo has no native gas token — eth_getBalance returns a constant fake
+    // (0x9612…26c9). Report zero and point at TIP-20 balances instead.
+    if (k == 'tempo') {
+      return const ChainBalanceProbe(
+        amount: 0,
+        ok: true,
+        note: 'No native gas token — TIP-20 only',
+      );
+    }
+    if (!EvmChainKey.values.any((e) => e.key == k)) {
+      return ChainBalanceProbe(amount: 0, ok: false, note: 'No $k adapter');
+    }
+    try {
+      final balance = await _evmClientFor(
+        k,
+      ).getBalance(EthereumAddress.fromHex(address)).timeout(timeout);
+      return ChainBalanceProbe(
+        amount: balance.getValueInUnit(EtherUnit.ether),
+        ok: true,
+      );
+    } on Object {
+      return const ChainBalanceProbe(
+        amount: 0,
+        ok: false,
+        note: 'RPC unreachable',
+      );
     }
   }
 

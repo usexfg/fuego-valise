@@ -69,10 +69,6 @@ class SwapChain {
   final bool ready;
   final String readinessError;
 
-  /// Roles xfg-swapd is ready to start a swap in ('alice' buys XFG and locks
-  /// the counterparty coin, 'bob' sells XFG). SPV serves 'bob' only.
-  final List<String> readyRoles;
-
   const SwapChain({
     required this.id,
     required this.key,
@@ -86,7 +82,6 @@ class SwapChain {
     required this.configured,
     required this.ready,
     required this.readinessError,
-    this.readyRoles = const [],
   });
 
   factory SwapChain.fromJson(Map<String, dynamic> json) => SwapChain(
@@ -102,21 +97,10 @@ class SwapChain {
     configured: _boolValue(json['configured']),
     ready: _boolValue(json['ready']),
     readinessError: json['readinessError']?.toString() ?? '',
-    readyRoles: (json['readyRoles'] as List<dynamic>? ?? const [])
-        .map((role) => role.toString())
-        .toList(growable: false),
   );
 
   bool get executable => protocol && configured && ready;
-
-  bool readyAs(String role) =>
-      protocol && configured && (ready || readyRoles.contains(role));
-
-  /// Settlement asset; fourteen chains share `ETH`, so it cannot identify one.
   String get ticker => assetTicker.isNotEmpty ? assetTicker : symbol;
-
-  /// The per-chain ticker [ChainInfo] and [SwapInfo.pairName] are keyed by.
-  String get pairTicker => SwapPairSdk.tryFromId(id)?.ticker ?? symbol;
 }
 
 class SwapDaemonClient {
@@ -305,11 +289,11 @@ class SwapDaemonClient {
       .where((chain) => chain.executable)
       .toList(growable: false);
 
-  Future<SwapChain> _requireReadyChain(String pair, String role) async {
+  Future<SwapChain> _requireReadyChain(String pair) async {
     final chains = await listChains();
     for (final chain in chains) {
       if (chain.key == pair) {
-        if (!chain.readyAs(role)) {
+        if (!chain.configured || !chain.ready) {
           final detail = chain.readinessError.isEmpty
               ? 'adapter is not configured and ready'
               : chain.readinessError;
@@ -351,25 +335,17 @@ class SwapDaemonClient {
     required String hashLock,
     required String preSig,
     required String ctrAddress,
-    required String offerId,
-    required int createdAt,
-    required String makerSignature,
-    String ctrClaimPubKey = '',
     bool requirePtlc = false,
   }) {
     if (swapId.isEmpty ||
         ourSwapSecretKey.isEmpty ||
         adaptorPoint.isEmpty ||
         hashLock.isEmpty ||
-        preSig.isEmpty ||
-        offerId.isEmpty ||
-        makerSignature.isEmpty) {
+        preSig.isEmpty) {
       throw const FormatException(
-        'AFK swap is missing maker-signed lock material',
+        'AFK swap is missing maker-bound lock material',
       );
     }
-    // xfg-swapd checks the maker's signature over exactly these values, so
-    // they pass through unchanged, empty ones included.
     return _initiateSwap(
       pair: pair,
       xfgAmount: xfgAmount,
@@ -383,14 +359,8 @@ class SwapDaemonClient {
       adaptorPoint: adaptorPoint,
       hashLock: hashLock,
       preSig: preSig,
+      ctrAddress: ctrAddress,
       requirePtlc: requirePtlc,
-      signedFillResult: {
-        'offer_id': offerId,
-        'ctr_address': ctrAddress,
-        'ctr_claim_pubkey': ctrClaimPubKey,
-        'created_at': createdAt,
-        'maker_signature': makerSignature,
-      },
     );
   }
 
@@ -414,7 +384,7 @@ class SwapDaemonClient {
     Map<String, dynamic> signedFillResult = const {},
   }) async {
     await _requireControlTokenForMutation();
-    await _requireReadyChain(pair, role);
+    await _requireReadyChain(pair);
     _validateAtomicAmount(xfgAmount, _maxUint64, 'XFG amount');
     _validateAtomicAmount(ctrAmount, _maxUint256, 'Counterparty amount');
     _validatePeerEndpoint(peer);
@@ -448,7 +418,6 @@ class SwapDaemonClient {
       params['ptlc_point'] = ptlcPoint;
     }
     if (lockType != null) params['lock_type'] = lockType;
-    params.addAll(signedFillResult);
     final result =
         await _rpc('initiate_swap', params, true) as Map<String, dynamic>;
     return result['swap_id'] as String;
@@ -844,13 +813,13 @@ class SwapInfo {
   /// Ticker for the wire `pair` id, keyed the same way as every [ChainInfo]
   /// map so colour/icon/decimals/explorer lookups all resolve.
   ///
-  /// The id wins over the daemon's `pairName`: that field is the catalog
-  /// symbol (`ZKSYNC`, `OPTIMISM`, `KMD_SPV`), not the ticker [ChainInfo] is
-  /// keyed by, and a decimals miss falls back to XFG's 7, misreporting an
-  /// 18-decimal amount by 10^11.
-  String get pairName =>
-      SwapPairSdk.tryFromId(pair)?.ticker ??
-      (pairSymbol.isNotEmpty ? pairSymbol : 'PAIR_$pair');
+  /// Derived from [SwapPairSdk] rather than a local id table: a hardcoded
+  /// 0-11 map silently returned `PAIR_12`..`PAIR_26` for ten wired pairs
+  /// (GLEEC, RHC, AVAX, CRO, BOB, UNI, XPL, PLS, MON, OP) and returned
+  /// `POLYGON` for id 11, which no [ChainInfo] map is keyed by.
+  String get pairName => pairSymbol.isNotEmpty
+      ? pairSymbol
+      : (SwapPairSdk.tryFromId(pair)?.ticker ?? 'PAIR_$pair');
 
   String get lockTypeLabel => lockTypeName;
   bool get isPtlc => lockType == 1;
