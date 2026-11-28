@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,14 +6,6 @@ import '../../models/chain_registry.g.dart';
 import '../../models/network_config.dart';
 import '../../services/swap_config_service.dart';
 import '../../utils/theme.dart';
-
-const Map<String, List<String>> _defaultServers = {
-  'btc': ['electrum.blockstream.info:50002'],
-  'ltc': ['ltc.merkle.io:50002'],
-  'kmd': ['electrum.komodo.earth:11002'],
-  'bch': ['electroncash.org:50002'],
-  'dcr': ['localhost:19100'],
-};
 
 final List<ChainEntry> _evmSwapChains = kChains
     .where((chain) => chain.family == 'evm' && chain.tier == 'swap')
@@ -89,6 +80,13 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
   final Map<String, TextEditingController> _wifControllers = {};
   final Map<String, TextEditingController> _serverControllers = {};
   final Map<String, List<String>> _serverLists = {};
+  final Map<String, bool> _utxoFullNode = {};
+  final Map<String, TextEditingController> _nodeUrlControllers = {};
+  final Map<String, TextEditingController> _nodeUserControllers = {};
+  final Map<String, TextEditingController> _nodePasswordControllers = {};
+  final Map<String, TextEditingController> _quorumControllers = {};
+  final Map<String, TextEditingController> _checkpointHeightControllers = {};
+  final Map<String, TextEditingController> _checkpointHashControllers = {};
   final Map<String, TextEditingController> _rpcControllers = {};
   final Map<String, TextEditingController> _chainIdControllers = {};
   final Map<String, TextEditingController> _htlcRegistryControllers = {};
@@ -140,8 +138,42 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     _loadSavedConfig();
   }
 
+  void _initUtxoChain(String chain) {
+    final defaults = SwapConfigService.utxoSpvDefaults[chain]!;
+    _wifControllers[chain] = TextEditingController();
+    _serverControllers[chain] = TextEditingController();
+    _serverLists[chain] = List<String>.from(defaults.servers);
+    _utxoFullNode[chain] = true;
+    _nodeUrlControllers[chain] = TextEditingController(
+      text: 'http://127.0.0.1:${defaults.defaultRpcPort}',
+    );
+    _nodeUserControllers[chain] = TextEditingController();
+    _nodePasswordControllers[chain] = TextEditingController();
+    _quorumControllers[chain] = TextEditingController(
+      text: SwapConfigService.defaultSpvQuorum.toString(),
+    );
+    _checkpointHeightControllers[chain] = TextEditingController(
+      text: defaults.checkpointHeight.toString(),
+    );
+    _checkpointHashControllers[chain] = TextEditingController(
+      text: defaults.checkpointHash,
+    );
+  }
+
   @override
   void dispose() {
+    for (final controllers in [
+      _nodeUrlControllers,
+      _nodeUserControllers,
+      _nodePasswordControllers,
+      _quorumControllers,
+      _checkpointHeightControllers,
+      _checkpointHashControllers,
+    ]) {
+      for (final c in controllers.values) {
+        c.dispose();
+      }
+    }
     for (final c in _wifControllers.values) c.dispose();
     for (final c in _serverControllers.values) c.dispose();
     for (final c in _rpcControllers.values) c.dispose();
@@ -152,6 +184,15 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     _xmrViewKeyController.dispose();
     _xfgSecretController.dispose();
     super.dispose();
+  }
+
+  Future<void> _restoreText(
+    Map<String, TextEditingController> controllers,
+    String chain,
+    String storageKey,
+  ) async {
+    final value = await _secureStorage.read(key: storageKey);
+    if (value != null && value.isNotEmpty) controllers[chain]!.text = value;
   }
 
   Future<void> _loadSavedConfig() async {
@@ -937,6 +978,152 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     );
   }
 
+  Widget _labeledField(
+    String label,
+    TextEditingController controller, {
+    String? hint,
+    bool obscure = false,
+    TextInputType? keyboard,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: keyboard,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(
+            color: AppTheme.textSecondary.withOpacity(0.3),
+          ),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppTheme.primaryColor),
+        ),
+      ),
+      style: const TextStyle(
+        color: AppTheme.textPrimary,
+        fontFamily: 'IBMPlexMono',
+        fontSize: 13,
+      ),
+    ),
+  );
+
+  List<Widget> _buildNodeFields(String chain) => [
+    _labeledField(
+      'Node RPC URL (this machine only)',
+      _nodeUrlControllers[chain]!,
+      hint: 'http://127.0.0.1:port',
+    ),
+    _labeledField('RPC user', _nodeUserControllers[chain]!),
+    _labeledField(
+      'RPC password',
+      _nodePasswordControllers[chain]!,
+      obscure: true,
+    ),
+  ];
+
+  List<Widget> _buildSpvFields(String chain) => [
+    _labeledField(
+      'Quorum (servers that must agree: at least 2 and more than half of the servers)',
+      _quorumControllers[chain]!,
+      keyboard: TextInputType.number,
+    ),
+    _labeledField(
+      'Checkpoint height',
+      _checkpointHeightControllers[chain]!,
+      keyboard: TextInputType.number,
+    ),
+    _labeledField('Checkpoint block hash', _checkpointHashControllers[chain]!),
+    ..._buildServerList(chain),
+  ];
+
+  List<Widget> _buildServerList(String chain) => [
+    Text(
+      'Electrum Servers',
+      style: TextStyle(
+        color: AppTheme.textSecondary,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    const SizedBox(height: 8),
+    ..._serverLists[chain]!.asMap().entries.map(
+      (entry) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                entry.value,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontFamily: 'IBMPlexMono',
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              color: AppTheme.errorColor,
+              onPressed: () =>
+                  setState(() => _serverLists[chain]!.removeAt(entry.key)),
+            ),
+          ],
+        ),
+      ),
+    ),
+    Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _serverControllers[chain],
+            decoration: InputDecoration(
+              hintText: 'host:port',
+              hintStyle: TextStyle(
+                color: AppTheme.textSecondary.withOpacity(0.5),
+                fontFamily: 'IBMPlexMono',
+                fontSize: 13,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: AppTheme.textSecondary.withOpacity(0.3),
+                ),
+              ),
+              focusedBorder: const OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.primaryColor),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+            ),
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontFamily: 'IBMPlexMono',
+              fontSize: 13,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.add, size: 20),
+          color: AppTheme.successColor,
+          onPressed: () {
+            final server = _serverControllers[chain]!.text.trim();
+            if (server.isNotEmpty && !_serverLists[chain]!.contains(server))
+              setState(() {
+                _serverLists[chain]!.add(server);
+                _serverControllers[chain]!.clear();
+              });
+          },
+        ),
+      ],
+    ),
+  ];
+
   Widget _buildEvmChainCard(String chain) {
     final info = _chainInfo[chain]!;
     final hasWif = _wifControllers[chain]!.text.isNotEmpty;
@@ -1475,6 +1662,27 @@ class _SwapSettingsScreenState extends State<SwapSettingsScreen> {
     }
     setState(() => _wifControllers[chain]!.text = text);
     _showSuccess('${chain.toUpperCase()} WIF imported and validated');
+  }
+
+  void _applyGeneratedChain(String chain, Map<String, dynamic> config) {
+    final wif = config['${chain}_wif'];
+    if (wif is! String) return;
+    _wifControllers[chain]!.text = wif;
+    _utxoFullNode[chain] = false;
+    final servers = <String>[
+      for (var i = 0; i < 16; i++)
+        if (config['${chain}_spv_server_$i'] is String)
+          config['${chain}_spv_server_$i'] as String,
+    ];
+    if (servers.isNotEmpty) _serverLists[chain] = servers;
+    final quorum = config['${chain}_spv_min_servers'];
+    if (quorum is int) _quorumControllers[chain]!.text = quorum.toString();
+    final height = config['${chain}_spv_checkpoint_height'];
+    if (height is int) {
+      _checkpointHeightControllers[chain]!.text = height.toString();
+    }
+    final hash = config['${chain}_spv_checkpoint_hash'];
+    if (hash is String) _checkpointHashControllers[chain]!.text = hash;
   }
 
   Future<void> _generateFreshConfig() async {

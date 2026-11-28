@@ -6,7 +6,7 @@
 |---|------|-------|------|--------|
 | 121 | iOS mobile CI failed at Build for simulator: Xcode could not find `rust-fuego-wallet/target/x86_64-apple-ios/release/libfuego_ffi.a` (force_load in OTHER_LDFLAGS). The Xcode build phase script only builds arches present in $ARCHS; on the arm64 macos-latest runner the simulator build still referenced the x86_64 slice. Pre-build all three iOS targets in the workflow before flutter build. Updated artifact upload to the simulator .app path. | grok | 2026-11-10 | ✅ fixed in `.github/workflows/fuego-wallet-mobile-ci.yml` |
 
-### Sign-off
+## [2026-11-07] DeXFG review (Valise): SPV quorum wording
 
 | Check | Result |
 |-------|--------|

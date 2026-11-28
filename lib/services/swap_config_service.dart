@@ -18,6 +18,7 @@ class SwapConfigService {
       .map((chain) => chain.key)
       .toSet();
 
+  final SwapKeystore _keystore;
   Process? _swapDaemon;
   String? _configPath;
   String? _swapdPath;
@@ -40,8 +41,8 @@ class SwapConfigService {
 
   String configPathSync() {
     if (_configPath != null) return _configPath!;
-    // Deliberately not system temp: this file holds chain private keys and
-    // the XFG spend key. World-readable temp dirs are unacceptable.
+    // Deliberately not system temp: the file names the keystore that holds
+    // chain private keys and the XFG spend key.
     final dir = Directory(Platform.resolvedExecutable).parent.path;
     _configPath = '$dir/swap_config.json';
     return _configPath!;
@@ -263,6 +264,34 @@ class SwapConfigService {
     return out;
   }
 
+  static const _secretKeys = {
+    'private_key',
+    'sol_keypair',
+    'xfg_secret_key',
+    'xmr_spend_key',
+    'xmr_view_key',
+  };
+
+  static bool _isSecretKey(String key) =>
+      _secretKeys.contains(key) || key.endsWith('_wif');
+
+  /// Remove raw private keys. Addresses, RPCs, registries, and modes stay.
+  static Map<String, dynamic> stripSecrets(Map<String, dynamic> config) {
+    final out = <String, dynamic>{};
+    for (final entry in config.entries) {
+      if (_isSecretKey(entry.key)) continue;
+      final value = entry.value;
+      if (value is Map<String, dynamic>) {
+        out[entry.key] = stripSecrets(value);
+      } else if (value is Map) {
+        out[entry.key] = stripSecrets(Map<String, dynamic>.from(value));
+      } else {
+        out[entry.key] = value;
+      }
+    }
+    return out;
+  }
+
   static Map<String, dynamic> buildConfig({
     required Map<String, SwapChainConfig> chains,
     required String network,
@@ -384,6 +413,14 @@ class SwapConfigService {
       if (cfg.checkpointHash != null && cfg.checkpointHash!.isNotEmpty) {
         config['${chain}_spv_checkpoint_hash'] = cfg.checkpointHash!;
       }
+      if (chain == 'kmd' || chain == 'dcr') {
+        throw ArgumentError(
+          '${chain.toUpperCase()} swaps are refused: SPV has no header '
+          'validator for it and its full-node path has not passed an '
+          'end-to-end gate',
+        );
+      }
+      throw ArgumentError('$chain cannot be configured for swaps in Valise');
     }
 
     if (evmChains.isNotEmpty) config['evm_chains'] = evmChains;
@@ -420,6 +457,9 @@ class SwapConfigService {
     ).hasMatch(wif)) {
       return 'WIF contains invalid Base58 characters';
     }
+    if (wif.length != 52) {
+      return 'Must be a 52-character compressed-key WIF';
+    }
     switch (chain.toLowerCase()) {
       case 'btc':
       case 'bch':
@@ -437,7 +477,7 @@ class SwapConfigService {
           return 'Must start with 7 or U';
         break;
     }
-    return null;
+    return '$chain has no WIF-keyed swap transport';
   }
 
   Future<bool> startDaemon({

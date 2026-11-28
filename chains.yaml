@@ -14,7 +14,8 @@
 #   gasToken      native gas ticker ('' when none, e.g. Tempo)
 #   color         brand color "#RRGGBB"
 #   icon          asset path (missing files are tolerated by the UI)
-#   tier          swap  = wired into xfg-swapd orderbook
+#   tier          swap  = an executable fuego-suite SwapPairCatalog pair
+#                         (ACTIVE or ADAPTER); xfg-swapd takes it via evm_chains
 #                 wallet = ERC20 wallet layer only
 #   confirmBlocks advisory confirmation depth before a tx is trusted
 #

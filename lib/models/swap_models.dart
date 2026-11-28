@@ -47,13 +47,13 @@ enum SwapLockTypeSdk {
 enum ChainTypeSdk {
   fuego(0, 'XFG', 'Fuego'),
   solana(1, 'SOL', 'Solana'),
-  ethereum(2, 'ETH', 'Ethereum'),
+  ethereum(2, 'ETH', 'Ethereum', EvmChainKey.eth),
   monero(3, 'XMR', 'Monero'),
   bitcoinCash(4, 'BCH', 'Bitcoin Cash'),
-  arbitrum(5, 'ARB', 'Arbitrum'),
-  base(6, 'BASE', 'Base'),
+  arbitrum(5, 'ARB', 'Arbitrum', EvmChainKey.arb),
+  base(6, 'BASE', 'Base', EvmChainKey.base),
   komodo(7, 'KMD', 'Komodo'),
-  bnb(8, 'BNB', 'BNB Chain'),
+  bnb(8, 'BNB', 'BNB Chain', EvmChainKey.bsc),
   decred(9, 'DCR', 'Decred'),
   bitcoin(10, 'BTC', 'Bitcoin'),
   litecoin(11, 'LTC', 'Litecoin'),
@@ -75,24 +75,10 @@ enum ChainTypeSdk {
   final int id;
   final String symbol;
   final String name;
-  const ChainTypeSdk(this.id, this.symbol, this.name);
+  final EvmChainKey? evm;
+  const ChainTypeSdk(this.id, this.symbol, this.name, [this.evm]);
 
-  bool get isEvm =>
-      this == ChainTypeSdk.ethereum ||
-      this == ChainTypeSdk.arbitrum ||
-      this == ChainTypeSdk.base ||
-      this == ChainTypeSdk.bnb ||
-      this == ChainTypeSdk.polygon ||
-      this == ChainTypeSdk.avax ||
-      this == ChainTypeSdk.gleec ||
-      this == ChainTypeSdk.robinhood ||
-      this == ChainTypeSdk.cro ||
-      this == ChainTypeSdk.bob ||
-      this == ChainTypeSdk.unichain ||
-      this == ChainTypeSdk.plasma ||
-      this == ChainTypeSdk.pulsex ||
-      this == ChainTypeSdk.monad ||
-      this == ChainTypeSdk.optimism;
+  bool get isEvm => evm != null;
   bool get isBtcFamily =>
       this == ChainTypeSdk.bitcoinCash ||
       this == ChainTypeSdk.komodo ||

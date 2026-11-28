@@ -360,11 +360,10 @@ class DexCubit extends Cubit<DexState> {
   );
 
   void selectPair(SwapPairSdk pair) {
-    final chain = _chainForPair(pair);
     emit(
       state.copyWith(
         selectedPair: pair,
-        selectedChain: chain,
+        selectedChain: pair.chain,
         offers: [],
         recentTrades: [],
         isLoading: true,
@@ -529,7 +528,7 @@ class DexCubit extends Cubit<DexState> {
       state.copyWith(
         selectedOffer: offer,
         selectedPair: offer.pair,
-        selectedChain: _chainForPair(offer.pair),
+        selectedChain: offer.pair.chain,
       ),
     );
   }
@@ -865,6 +864,9 @@ class DexCubit extends Cubit<DexState> {
       final hashLock = (match['hashLock'] as String?) ?? '';
       final preSig = (match['preSig'] as String?) ?? '';
       final ctrAddress = (match['ctrAddress'] as String?) ?? '';
+      final ctrClaimPubKey = (match['ctrClaimPubKey'] as String?) ?? '';
+      final makerSignature = (match['makerSignature'] as String?) ?? '';
+      final createdAt = (match['createdAt'] as num?)?.toInt() ?? 0;
       if (lockId.isEmpty) {
         emit(state.copyWith(error: 'Maker fill result missing lockId'));
         return;
@@ -884,6 +886,15 @@ class DexCubit extends Cubit<DexState> {
         );
         return;
       }
+      if (makerSignature.isEmpty) {
+        emit(
+          state.copyWith(
+            error:
+                'Maker fill result is unsigned — refusing to lock against it',
+          ),
+        );
+        return;
+      }
       await _initiateAfkSwap(
         lockId: lockId,
         makerEndpoint: makerEndpoint,
@@ -894,7 +905,10 @@ class DexCubit extends Cubit<DexState> {
         hashLock: hashLock,
         preSig: preSig,
         ctrAddress: ctrAddress,
-        expectedPeerPubkey: state.selectedOffer?.makerPubKey ?? '',
+        offerId: offer.offerId,
+        createdAt: createdAt,
+        makerSignature: makerSignature,
+        ctrClaimPubKey: ctrClaimPubKey,
       );
       return;
     }
@@ -914,9 +928,12 @@ class DexCubit extends Cubit<DexState> {
     required SwapChain runtimeChain,
     String adaptorPoint = '',
     String hashLock = '',
-    String preSig = '',
-    String ctrAddress = '',
-    String expectedPeerPubkey = '',
+    required String preSig,
+    required String ctrAddress,
+    required String offerId,
+    required int createdAt,
+    required String makerSignature,
+    required String ctrClaimPubKey,
   }) async {
     if (_swapClient == null) {
       emit(state.copyWith(error: 'Swap daemon not connected'));
@@ -993,6 +1010,16 @@ class DexCubit extends Cubit<DexState> {
       default:
         return 'SOL';
     }
+    if (runtimeChain.id != offer.pair.id) {
+      emit(
+        state.copyWith(
+          error:
+              'Selected runtime chain does not match the orderbook offer pair',
+        ),
+      );
+      return null;
+    }
+    return runtimeChain;
   }
 
   SwapChain? _readyRuntimeChainForOffer(SwapOfferSdk offer) {

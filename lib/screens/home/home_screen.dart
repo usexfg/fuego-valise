@@ -894,7 +894,7 @@ class _BalanceCardState extends State<_BalanceCard> {
                         },
                       ),
                       _CrownPusher(
-                        icon: Icons.local_fire_department,
+                        emblem: const FuegoLogo(size: 28, fit: BoxFit.cover),
                         label: 'MINT ΗΞΔŦ',
                         accent: AppTheme.accentColor,
                         onTap: () {
@@ -1226,12 +1226,14 @@ class _CrownPusher extends StatefulWidget {
   const _CrownPusher({
     required this.onTap,
     this.icon = Icons.arrow_upward,
+    this.emblem,
     this.label = 'SEND',
     this.accent,
   });
 
   final VoidCallback onTap;
   final IconData icon;
+  final Widget? emblem;
   final String label;
   final Color? accent;
 

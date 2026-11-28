@@ -164,6 +164,7 @@ void main() {
         },
         network: 'mainnet',
       );
+    });
 
       expect(config['xmr_daemon_host'], '127.0.0.1');
       expect(config['xmr_wallet_host'], '127.0.0.1');

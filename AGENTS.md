@@ -15,7 +15,7 @@ The Fuego swap system uses **two daemons** that serve different purposes:
 - Standalone swap daemon for cross-chain atomic swaps
 - Has its own JSON-RPC HTTP server on port 18902, status server on 18900, P2P on 18901
 - Configurable via `--swap-config` JSON with chain RPC endpoints and signer keys
-- Supports all 12 counterparty chains with SPV or RPC verification
+- Reports every catalog pair with `protocol`/`configured`/`ready`/`readinessError`; the Cross-Chain tab lists chains from that report
 - Connects to fuegod as an RPC client for Fuego chain operations
 - Used by: Dart wallet Cross-Chain tab
 - Built from: `src/SwapDaemon/` in the fuego C++ repo

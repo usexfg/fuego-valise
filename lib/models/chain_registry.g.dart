@@ -614,23 +614,4 @@ const Map<String, int> kChainColors = {
   'sei': 0x9E1F19,
 };
 
-const Set<String> kWalletTierKeys = {
-  'linea',
-  'zksync',
-  'hyperevm',
-  'ink',
-  'rsk',
-  'gnosis',
-  'flare',
-  'kaia',
-  'scroll',
-  'abstract',
-  'plume',
-  'soneium',
-  'doma',
-  'beam',
-  'moonriver',
-  'peaq',
-  'tempo',
-  'sei',
-};
+const Set<String> kWalletTierKeys = {'tempo'};

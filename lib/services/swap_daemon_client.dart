@@ -381,6 +381,7 @@ class SwapDaemonClient {
     bool requirePtlc = false,
     String? ptlcPoint,
     int? lockType,
+    Map<String, dynamic> signedFillResult = const {},
   }) async {
     await _requireControlTokenForMutation();
     await _requireReadyChain(pair);
